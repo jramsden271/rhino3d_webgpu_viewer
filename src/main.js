@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -28,6 +28,16 @@ let lastInput = performance.now();
 if (typeof prefs.showEdges === 'boolean') state.showEdges = prefs.showEdges;
 if (typeof prefs.showCurves === 'boolean') state.showCurves = prefs.showCurves;
 const camera = new Camera();
+let shiftDown = false;
+const walker = new Walker({
+  camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
+  mpu: () => METRES_PER_UNIT[model.units] || 1,
+  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); redraw(); },
+  onSettings: () => { syncWalkPanel(); savePrefs(); },
+  notice: (text, ms = 0) => notice(text, false, ms),
+  fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
+});
+if (prefs.walk) Object.assign(walker.settings, prefs.walk);
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
 let renderer = null, model = null, layerOn = [];
 
@@ -127,6 +137,11 @@ function loop() {
   // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
   // untouched page does not keep the GPU busy.
   if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
+  if (walker.active) {
+    walker.update(performance.now());
+    renderer.dirty = true; lastInput = performance.now();
+    if (!$('walkPanel').hidden) checkSunlight();
+  }
   if (renderer.dirty) { renderer.dirty = false; renderer.draw(frameState()); positionInspector(); }
   requestAnimationFrame(loop);
 }
@@ -159,6 +174,7 @@ async function readModel(kind, name, bytes) {
 
 async function openBytes(name, bytes) {
   const t0 = performance.now();
+  walker.exit();
   clearNotices();
   try {
     let m;
@@ -242,6 +258,7 @@ function zoomExtents() {
 }
 
 function setView(name, extents = true) {
+  walker.exit();
   camera.setView(name);
   if (extents) zoomExtents();
   syncToolbar();
@@ -253,6 +270,8 @@ function syncToolbar() {
   document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === (state.lastView || view))));
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
+  $('btnWalk').setAttribute('aria-pressed', String(walker.active));
+  $('btnWalk').disabled = !model || (camera.ortho && !walker.active);
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
@@ -1400,7 +1419,12 @@ function bindPointer() {
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 1) {
+    if (pointers.size === 1 && walker.active) {
+      // Pedestrian mode: any button (or one finger) drags to look.
+      drag = { mode: 'look', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      walker.skipFall();
+      canvas.classList.add('dragging');
+    } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
       // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
       // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
@@ -1411,7 +1435,7 @@ function bindPointer() {
       pivot = null;
       if (!pan) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       canvas.classList.add('dragging');
-    } else if (pointers.size === 2) {
+    } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
     }
   });
@@ -1432,7 +1456,8 @@ function bindPointer() {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
-    if (drag.mode === 'orbit') {
+    if (drag.mode === 'look') walker.turn(dx, dy);
+    else if (drag.mode === 'orbit') {
       camera.orbit(dx, dy, pivot);
       state.lastView = null;
       syncToolbar();
@@ -1448,7 +1473,7 @@ function bindPointer() {
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: 'orbit', x: p.x, y: p.y, moved: true };
+      drag = { mode: walker.active ? 'look' : 'orbit', x: p.x, y: p.y, moved: true };
     }
   };
   canvas.addEventListener('pointerup', end);
@@ -1457,6 +1482,7 @@ function bindPointer() {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (!model) return;
+    if (walker.active) { walker.wheel(e.deltaY); return; }
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
@@ -1473,7 +1499,7 @@ function bindPointer() {
   }, { passive: false });
 
   canvas.addEventListener('dblclick', async (e) => {
-    if (!model) return;
+    if (!model || walker.active) return;
     const p = await pickPoint(e);
     if (p) animateFocus(p); else zoomExtents();
   });
@@ -1509,10 +1535,15 @@ function onKey(e) {
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
+  // Pedestrian mode: movement keys walk, Esc stops; other shortcuts still work.
+  if (walker.active) {
+    if (walker.key(e, true)) { e.preventDefault(); return; }
+    if (k === 'escape') { e.preventDefault(); walker.exit(); return; }
+  }
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
+    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => { closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
@@ -1525,6 +1556,73 @@ function onKey(e) {
 // Toolbar and chrome
 
 function pickView(name) { state.lastView = name; setView(name, true); }
+function toggleWalk() {
+  if (walker.active) { walker.exit(); return; }
+  if (!model || camera.ortho) return;
+  state.lastView = null;
+  $('walkHint').hidden = false;
+  $('walkPanel').hidden = false;
+  syncWalkPanel();
+  walker.enter().then(() => syncToolbar());
+  syncToolbar();
+  canvas.focus();
+}
+// The Walk panel ------------------------------------------------------------------------------
+
+function syncWalkPanel() {
+  const S = walker.settings;
+  if (document.activeElement !== $('walkSpeed')) $('walkSpeed').value = S.speed;
+  $('walkMul').value = Math.log2(S.mul);
+  $('walkMulOut').value = '×' + (S.mul < 1 ? S.mul.toFixed(2) : S.mul.toFixed(1));
+  $('walkSpeedInfo').textContent = `Walking ${(S.speed * S.mul).toFixed(1)} m/s · Shift runs at ${(S.speed * S.mul * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the multiplier`;
+  $('walkCollide').checked = S.collide;
+}
+
+function bindWalkPanel() {
+  const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
+  $('walkSpeed').addEventListener('input', () => { const v = parseFloat($('walkSpeed').value); if (v > 0) { S.speed = Math.min(50, v); changed(); } });
+  $('walkSpeed').addEventListener('change', syncWalkPanel);
+  $('walkMul').addEventListener('input', () => { S.mul = Math.round(2 ** $('walkMul').value * 20) / 20; changed(); });
+  $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
+  $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
+  $('walkStop').addEventListener('click', () => walker.exit());
+  $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
+  syncWalkPanel();
+}
+
+// Is the walker standing in sunlight? A ray from the eye towards the sun, drawn with the pick
+// pass (so trees and every visible object cast shade), a few times a second.
+let sunlightAt = 0, sunlightBusy = false;
+function checkSunlight() {
+  const now = performance.now();
+  if (sunlightBusy || now - sunlightAt < 250) return;
+  sunlightAt = now;
+  // show() only touches the DOM when the text changes, so the Turn on button stays clickable.
+  const el = $('walkSun'), show = (cls, html, extra = '') => {
+    const k = cls + html + extra;
+    if (el.dataset.k === k) return;
+    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
+  };
+  if (!state.sun.on) { show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>'); return; }
+  const pos = sunPosition();
+  if (pos.altitude <= 0) { show('shade', '<b>Night</b> · the sun is below the horizon'); return; }
+  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = camera.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
+  // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
+  const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
+  const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
+  sunlightBusy = true;
+  renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
+    if (!walker.active) return;
+    const alt = `sun ${Math.round(pos.altitude)}° up`;
+    if (!h) show('lit', `<b>In sunlight</b> · ${alt}`);
+    else {
+      const layer = model.layers[model.objects[h.id]?.layer], dist = V3.len(V3.sub(h.p, eye)) / u;
+      show('shade', `<b>In shade</b> · cast by ${layer ? escapeHtml(layer.name) : 'an object'}, ${dist < 1 ? "less than 1" : Math.round(dist)} m away`);
+    }
+  }).finally(() => { sunlightBusy = false; });
+}
+
 function setMode(m) {
   const wasMat = showsMaterial();
   state.mode = m;
@@ -1634,6 +1732,11 @@ function bindUi() {
     buildLayerTree.refresh?.();
   }));
   window.addEventListener('keydown', onKey);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; walker.key(e, false); });
+  window.addEventListener('blur', () => { shiftDown = false; walker.blur(); });
+  $('btnWalk').addEventListener('click', toggleWalk);
+  bindWalkPanel();
   bindPointer();
   state.lastView = 'perspective';
   syncToolbar();

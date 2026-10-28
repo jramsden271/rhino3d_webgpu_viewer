@@ -191,6 +191,22 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .props dt { color: var(--muted); white-space: nowrap; }
 .props dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .changes { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+/* Pedestrian mode */
+.walk-hint { left: 50%; bottom: 64px; transform: translateX(-50%); padding: 6px 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.walk-hint kbd { margin-right: 2px; color: var(--text); }
+.walk-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
+.walk-fade.on { opacity: 0.6; transition: none; }
+.walk-sun { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); }
+.walk-sun b { font-weight: 600; }
+.walk-sun .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.walk-sun.lit { background: rgba(245, 180, 0, 0.16); }
+.walk-sun.lit .dot { background: #f5b400; box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.3); }
+.walk-sun.shade .dot { background: #64748b; }
+.walk-sun .link { margin-left: auto; }
+.walk-speed { font-weight: 400; color: var(--muted); }
+.walk-speed input { font: inherit; color: var(--text); width: 58px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.walk-speed input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#btnWalk:disabled { opacity: 0.45; cursor: default; }
 .notices { position: absolute; top: 60px; left: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .notice { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border); border-left: 3px solid #d97706; border-radius: 8px; padding: 8px 30px 8px 10px; box-shadow: var(--shadow); font-size: 12.5px; position: relative; }
 .notice.error { border-left-color: #dc2626; }

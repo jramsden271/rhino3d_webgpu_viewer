@@ -22,6 +22,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
+| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the speed multiplier | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Esc` to stop |
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
@@ -30,6 +31,25 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 
 Top, Front and Right are parallel (no perspective) views, as in Rhino; orbiting one turns it
 into a free view.
+
+**Pedestrian mode** walks round the model at eye height (1.5 m). Move the camera over the
+model in a perspective view and press Walk: the camera drops at the speed of gravity onto the
+surface below it (click or press a movement key to land straight away). It then follows the
+ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
+1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
+(so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings a downward view back to the horizontal. A fall with nothing
+below returns you to where you last stood, with the controls locked for a second. Only what is
+shown counts: hidden objects and layers are walked through, and so is vegetation (layers with
+the Vegetation magic material).
+
+The **Walk panel** opens with pedestrian mode. It sets the walking speed (m/s) and a speed
+multiplier (also the mouse wheel; Shift runs at three times the result), and turns collision
+detection off for walking through walls in demonstrations (you still follow the ground and
+climb steps). With the sun on, it shows whether you are standing in sunlight, checked a few
+times a second along a line from your eye to the sun; in shade it names the layer of whatever
+casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
+The settings are remembered in this browser. Walking is not recorded in the undo history; pressing Esc, a
+view button or `P` stops it and leaves you orbiting a point just ahead.
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
 materials, object colour and material sources, exploded blocks, Revert and the sun's
@@ -229,6 +249,7 @@ src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confi
 src/recent.js            recent files list (file handles in IndexedDB)
 src/materials.js         magic materials: keyword rules and default colours
 src/camera.js            Z-up orbit / pan / zoom camera
+src/walk.js              pedestrian mode: walking, ground following, steps, falls
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)
 ```

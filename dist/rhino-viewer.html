@@ -199,6 +199,22 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .props dt { color: var(--muted); white-space: nowrap; }
 .props dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .changes { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+/* Pedestrian mode */
+.walk-hint { left: 50%; bottom: 64px; transform: translateX(-50%); padding: 6px 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.walk-hint kbd { margin-right: 2px; color: var(--text); }
+.walk-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
+.walk-fade.on { opacity: 0.6; transition: none; }
+.walk-sun { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); }
+.walk-sun b { font-weight: 600; }
+.walk-sun .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.walk-sun.lit { background: rgba(245, 180, 0, 0.16); }
+.walk-sun.lit .dot { background: #f5b400; box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.3); }
+.walk-sun.shade .dot { background: #64748b; }
+.walk-sun .link { margin-left: auto; }
+.walk-speed { font-weight: 400; color: var(--muted); }
+.walk-speed input { font: inherit; color: var(--text); width: 58px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.walk-speed input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#btnWalk:disabled { opacity: 0.45; cursor: default; }
 .notices { position: absolute; top: 60px; left: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .notice { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border); border-left: 3px solid #d97706; border-radius: 8px; padding: 8px 30px 8px 10px; box-shadow: var(--shadow); font-size: 12.5px; position: relative; }
 .notice.error { border-left-color: #dc2626; }
@@ -312,6 +328,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       <button data-view="front" title="Front (2)">Front</button>
       <button data-view="right" title="Right (3)">Right</button>
     </div>
+    <button class="btn toggle" id="btnWalk" title="Pedestrian mode: walk around at eye height (perspective views only)"><svg viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1"/></svg>Walk</button>
     <span class="sep"></span>
     <div class="seg" data-group="mode">
       <button data-mode="0" title="Shaded: object / layer colours (M)">Shaded</button>
@@ -365,6 +382,25 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       <label class="check"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
     </div>
   </section>
+  <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
+    <div class="panel-head">
+      <span>Walk</span>
+      <span class="panel-actions"><button class="link" id="walkStop">Stop walking</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close (walking carries on)">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div class="walk-sun" id="walkSun"></div>
+      <div class="field">
+        <div class="field-label"><span>Walking speed</span><span class="walk-speed"><input type="number" id="walkSpeed" min="0.1" max="50" step="0.1"> m/s</span></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Speed multiplier</span><output id="walkMulOut"></output></div>
+        <input type="range" id="walkMul" min="-2" max="3.3219" step="0.01" title="Also the mouse wheel">
+        <div class="fine" id="walkSpeedInfo"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
+      <div class="fine">Off: walk through walls and objects; you still follow the ground and climb steps.</div>
+    </div>
+  </section>
   </div>
 
   <div id="matDialog" class="chrome popover" hidden role="dialog" aria-labelledby="matTitle">
@@ -412,6 +448,8 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     </div>
   </div>
   <div id="notices" class="notices"></div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop</div>
+  <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
     <div class="drop-card">
@@ -440,6 +478,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, saving a copy and reverting changes</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
@@ -1626,6 +1665,296 @@ class Camera {
 
 </script>
 <script>
+// Pedestrian mode: walk around the model at eye height, with WASD / arrow keys and drag to look.
+//
+// The walker is a vertical cylinder standing on the highest surface under its footprint. Each frame
+// the renderer draws a small view of the surroundings (Renderer.probe): a ground map looking down
+// from head height, and four views looking out sideways between step height and head height, so
+// walls modelled as single vertical surfaces are seen too. Results arrive a frame or two late,
+// which the footprint and body radius cover at walking speed.
+//
+// Rules: steps and walls up to STEP high are climbed; anything between STEP and the top of the
+// head blocks, and movement slides along it. Where the ground drops away the walker waits LEDGE
+// seconds (gaps between floors in imperfect models) and then falls under gravity. A fall with
+// nothing below, or below the model, returns the walker to its last stable position.
+//
+// All lengths here are in metres; the model is in its own units (mpu = metres per unit).
+
+const WALK = {
+  EYE: 1.5,         // eye height above the ground
+  HEAD: 1.65,       // top of the head: obstacles below this block
+  STEP: 1.0,        // highest step or wall that can be climbed
+  BODY: 0.25,       // body radius: keeps the eye this far from walls
+  FOOT: 0.25,       // footprint radius: the ground is the highest surface within it
+  DROP: 0.3,        // drops up to this follow the ground (stairs down); more is a fall
+  LEDGE: 0.15,      // seconds over a drop before falling starts
+  RUN: 3,           // Shift runs at this times the walking speed
+  ACCEL: 0.08,      // time constant for speeding up and slowing down
+  LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
+  SUBSTEP: 0.1,     // longest single move, so thin walls cannot be stepped over
+  GRAVITY: 9.81,
+  GROUND_HALF: 1.5, // the ground map covers ±this around the walker
+  REACH: 0.6,       // the wall views look this far out
+  LOST: 3,          // seconds falling with nothing below before returning
+  LOCK: 1,          // seconds the controls are locked after returning
+  EASE: 0.07,       // time constant for the eye following steps up and down
+};
+
+const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
+
+class Walker {
+  // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
+  //        shift(): Shift held, onExit(), onSettings() (the wheel changed them), notice(text, ms), fade() }
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.active = false;
+    this.keys = new Set();
+    // Set from the Walk panel: speed in m/s, a multiplier (also the mouse wheel), walls block.
+    this.settings = { speed: 1.4, mul: 1, collide: true };
+  }
+
+  // Current target speed in m/s.
+  speed() { const S = this.settings; return S.speed * S.mul * (this.ctx.shift() ? WALK.RUN : 1); }
+
+  get u() { return 1 / this.ctx.mpu(); } // model units per metre
+
+  // Starts walking from the current (perspective) camera. Resolves false, with a notice, when
+  // there is nothing below to stand on.
+  async enter() {
+    const { camera } = this.ctx, u = this.u;
+    const eye = camera.eye;
+    this.active = true;
+    this.pending = true;
+    this.keys.clear();
+    Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
+      lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
+    const before = camera.snapshot();
+    camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
+    camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+    // The first look round: the ground straight below the camera, however far down.
+    let map = null;
+    while (this.active && !(map = await this.look(eye[2] + 0.01 * u))) await new Promise(requestAnimationFrame);
+    if (!this.active) return false;
+    this.pending = false;
+    const g = map && this.groundAt(this.pos, WALK.FOOT * u, eye[2], map);
+    if (g == null) {
+      camera.restore(before);
+      this.ctx.notice('There is nothing below the camera to stand on. Move the camera over the model, then start walking.');
+      this.exit();
+      return false;
+    }
+    this.map = map;
+    if (g > eye[2] - WALK.EYE * u) { this.foot = g; this.grounded = true; } // closer than eye height: stand up on it
+    else this.entryFall = true;
+    this.updateCamera();
+    return true;
+  }
+
+  exit() {
+    if (!this.active) return;
+    this.active = false;
+    this.keys.clear();
+    this.ctx.onExit();
+  }
+
+  // Keyboard: returns true when the key was used for walking.
+  key(e, down) {
+    const k = e.key.toLowerCase();
+    if (!MOVE_KEYS[k]) return false;
+    if (down) { this.keys.add(k); this.skipFall(); } else this.keys.delete(k);
+    return true;
+  }
+  blur() { this.keys.clear(); }
+
+  // A long fall on entry ends as soon as the person moves or clicks.
+  skipFall() {
+    if (!this.entryFall || !this.map) return;
+    const g = this.groundAt(this.pos, WALK.FOOT * this.u, this.foot + WALK.HEAD * this.u);
+    if (g != null) this.land(g);
+  }
+
+  // Drag to look: dx, dy in CSS pixels. The view follows the pointer.
+  turn(dx, dy) {
+    const { camera } = this.ctx, eye = camera.eye;
+    const lim = (89 * Math.PI) / 180;
+    this.level = false;
+    camera.yaw -= dx * 0.004;
+    camera.pitch = Math.max(-lim, Math.min(lim, camera.pitch + dy * 0.004));
+    camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+  }
+
+  // Mouse wheel: the speed multiplier, between a quarter and ten times.
+  wheel(deltaY) {
+    const S = this.settings;
+    S.mul = Math.round(Math.max(0.25, Math.min(10, S.mul * Math.exp(-deltaY * 0.002))) * 20) / 20;
+    this.ctx.onSettings();
+  }
+
+  // Ask the renderer for the surroundings at the current position. top: the ground map looks down
+  // from here. Resolves to the decoded map, or null if a previous look is still in flight.
+  async look(top) {
+    const { renderer } = this.ctx, u = this.u, [mn] = this.ctx.bounds();
+    // Faster movement looks further ahead, so walls are seen before the walker reaches them.
+    const ahead = Math.max(this.speed(), Math.hypot(...(this.vel || [0, 0]))) * WALK.LOOKAHEAD;
+    const q = { x: this.pos[0], y: this.pos[1], half: (WALK.GROUND_HALF + ahead) * u, top, bottom: Math.min(mn[2], this.foot) - 5 * u,
+      reach: (WALK.REACH + ahead) * u, z0: this.foot + WALK.STEP * u, z1: this.foot + WALK.HEAD * u };
+    const r = await renderer.probe(q);
+    if (!r) return null;
+    // Ground cells by row and column, and the walls as a list of hit points.
+    const G = PROBE.ground, cell = (2 * q.half) / G;
+    const walls = [];
+    for (let i = 0; i < r.walls.length; i += 4) if (r.walls[i + 3] > 0) walls.push(r.walls[i], r.walls[i + 1], r.walls[i + 2]);
+    return { x0: q.x - q.half, y1: q.y + q.half, cell, G, g: r.ground, walls };
+  }
+
+  // Highest ground within radius r of p that is no higher than `below`, or null (nothing there,
+  // or p is off the map).
+  groundAt(p, r, below, map = this.map) {
+    if (!map) return null;
+    const { x0, y1, cell, G, g } = map;
+    const c0 = Math.floor((p[0] - r - x0) / cell), c1 = Math.floor((p[0] + r - x0) / cell);
+    const r0 = Math.floor((y1 - p[1] - r) / cell), r1 = Math.floor((y1 - p[1] + r) / cell);
+    if (c0 < 0 || r0 < 0 || c1 >= G || r1 >= G) return null;
+    let best = null;
+    for (let row = r0; row <= r1; row++)
+      for (let col = c0; col <= c1; col++) {
+        const i = (row * G + col) * 4;
+        if (g[i + 3] <= 0) continue;
+        const dx = g[i] - p[0], dy = g[i + 1] - p[1], z = g[i + 2];
+        if (dx * dx + dy * dy <= r * r && z <= below && (best == null || z > best)) best = z;
+      }
+    return best;
+  }
+
+  // Obstacle points (x, y) near p: wall hits and ground cells between step and head height.
+  obstacles(p, r) {
+    const u = this.u, lo = this.foot + WALK.STEP * u, hi = this.foot + WALK.HEAD * u, out = [], m = this.map;
+    const near = (x, y) => (x - p[0]) ** 2 + (y - p[1]) ** 2 < r * r;
+    const w = m.walls;
+    for (let i = 0; i < w.length; i += 3) if (w[i + 2] > lo && w[i + 2] < hi && near(w[i], w[i + 1])) out.push([w[i], w[i + 1]]);
+    const { x0, y1, cell, G, g } = m;
+    const c0 = Math.max(0, Math.floor((p[0] - r - x0) / cell)), c1 = Math.min(G - 1, Math.floor((p[0] + r - x0) / cell));
+    const r0 = Math.max(0, Math.floor((y1 - p[1] - r) / cell)), r1 = Math.min(G - 1, Math.floor((y1 - p[1] + r) / cell));
+    for (let row = r0; row <= r1; row++)
+      for (let col = c0; col <= c1; col++) {
+        const i = (row * G + col) * 4;
+        if (g[i + 3] > 0 && g[i + 2] > lo && g[i + 2] < hi && near(g[i], g[i + 1])) out.push([g[i], g[i + 1]]);
+      }
+    return out;
+  }
+
+  land(g) {
+    this.lag += this.foot - g;
+    if (this.entryFall) this.lag = 0;
+    // After a real fall, a view pointing down comes back up to the horizontal.
+    if ((this.entryFall || this.fallFrom - g > WALK.STEP * this.u) && this.ctx.camera.pitch > 0) this.level = true;
+    Object.assign(this, { foot: g, vz: 0, grounded: true, air: 0, entryFall: false });
+  }
+
+  // Called every frame while active.
+  update(now) {
+    const dt = Math.min(0.05, (now - this.last) / 1000);
+    this.last = now;
+    if (this.pending) return;
+    const u = this.u, { camera } = this.ctx;
+    // Keep a look in flight; each one replaces the map when it arrives, unless the walker has
+    // been moved back since (gen).
+    const gen = this.gen;
+    this.look(this.foot + WALK.HEAD * u).then((m) => { if (m && this.active && gen === this.gen) this.map = m; });
+    if (!this.map) return;
+
+    // Horizontal movement: the velocity (m/s) eases towards what the keys ask for.
+    const f = camera.forward, fl = Math.hypot(f[0], f[1]) || 1, fwd = [f[0] / fl, f[1] / fl], right = [fwd[1], -fwd[0]];
+    let mf = 0, mr = 0;
+    if (now >= this.lockUntil) for (const k of this.keys) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
+    const ml = Math.hypot(mf, mr), sp = ml > 0 ? this.speed() / ml : 0, k = 1 - Math.exp(-dt / WALK.ACCEL);
+    const want = [(fwd[0] * mf + right[0] * mr) * sp, (fwd[1] * mf + right[1] * mr) * sp];
+    this.vel = now < this.lockUntil ? [0, 0] : [this.vel[0] + (want[0] - this.vel[0]) * k, this.vel[1] + (want[1] - this.vel[1]) * k];
+    if (!ml && Math.hypot(...this.vel) < 0.02) this.vel = [0, 0];
+    if (this.vel[0] || this.vel[1]) this.move([this.vel[0] * dt * u, this.vel[1] * dt * u]);
+    const p = this.pos;
+
+    // Vertical: follow the ground, climb steps, fall where it drops away.
+    const g = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
+    if (this.grounded) {
+      if (g != null && g >= this.foot - WALK.DROP * u) {
+        this.lag += this.foot - g;
+        this.foot = g;
+        this.air = 0;
+        if (now - this.lastStable > 500) {
+          this.lastStable = now;
+          this.stable.push([...p, g]);
+          if (this.stable.length > 3) this.stable.shift();
+        }
+      } else if ((this.air += dt) > WALK.LEDGE) {
+        this.grounded = false;
+        this.fallFrom = this.foot;
+        this.air = 0;
+      }
+    } else {
+      this.air += dt;
+      this.vz -= WALK.GRAVITY * u * dt;
+      const z = this.foot + this.vz * dt;
+      if (g != null && z <= g) this.land(g);
+      else this.foot = z;
+      const [mn] = this.ctx.bounds();
+      const below = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
+      if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST))) this.lost(now);
+    }
+    this.lag *= Math.exp(-dt / WALK.EASE);
+    if (this.level) {
+      camera.pitch *= Math.exp(-dt / 0.15);
+      if (camera.pitch < 0.003) { camera.pitch = 0; this.level = false; }
+    }
+    this.updateCamera();
+  }
+
+  // Moves the walker by d (model units) in short steps, sliding along walls: each step is pushed
+  // out from the nearest obstacle point. A step is refused if it still runs into something (unless
+  // it gets the walker out of a tight spot), climbs onto ground that is too high, or leaves the map.
+  move(d) {
+    const u = this.u, R = WALK.BODY * u, len = Math.hypot(d[0], d[1]), collide = this.settings.collide;
+    const n = Math.max(1, Math.ceil(len / (WALK.SUBSTEP * u)));
+    const obs = collide ? this.obstacles([this.pos[0] + d[0] / 2, this.pos[1] + d[1] / 2], len / 2 + R * 2) : [];
+    const nearest = (at) => {
+      let best = null, bd = Infinity;
+      for (const q of obs) { const dd = Math.hypot(at[0] - q[0], at[1] - q[1]); if (dd < bd) { bd = dd; best = q; } }
+      return [best, bd];
+    };
+    const m = this.map, margin = (WALK.FOOT + 0.1) * u;
+    for (let i = 0; i < n; i++) {
+      let p = [this.pos[0] + d[0] / n, this.pos[1] + d[1] / n];
+      const [, before] = nearest(this.pos);
+      for (let it = 0; it < 4; it++) {
+        const [q, dd] = nearest(p);
+        if (!q || dd >= R || dd < 1e-9) break;
+        p = [p[0] + ((p[0] - q[0]) / dd) * (R - dd), p[1] + ((p[1] - q[1]) / dd) * (R - dd)];
+      }
+      const [, after] = nearest(p);
+      const ahead = collide ? this.groundAt(p, WALK.FOOT * u, this.foot + WALK.HEAD * u) : null;
+      const onMap = p[0] - margin > m.x0 && p[0] + margin < m.x0 + m.cell * m.G && p[1] + margin < m.y1 && p[1] - margin > m.y1 - m.cell * m.G;
+      if (!onMap || (after < R * 0.9 && after <= before) || (ahead != null && ahead > this.foot + WALK.STEP * u)) break;
+      this.pos = p;
+    }
+  }
+
+  // Fell into the abyss: back to where the walker last stood firmly.
+  lost(now) {
+    const s = this.stable[0];
+    if (!s) { this.ctx.notice('Fell off the model.'); this.exit(); return; }
+    this.pos = [s[0], s[1]];
+    Object.assign(this, { foot: s[2], vz: 0, vel: [0, 0], grounded: true, air: 0, lag: 0, lockUntil: now + WALK.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1 });
+    this.ctx.fade();
+  }
+
+  updateCamera() {
+    const { camera } = this.ctx, eye = [this.pos[0], this.pos[1], this.foot + (WALK.EYE * this.u) + this.lag];
+    camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+  }
+}
+
+</script>
+<script>
 // WebGPU renderer: reverse-Z depth, 4x MSAA, on-demand redraw, GPU picking for orbit/zoom
 // pivots, and sun lighting with cascaded shadow maps.
 
@@ -2380,6 +2709,7 @@ class Renderer {
       const rgb = o?.rgb || (type ? SPECIAL[type].rgb : (b.mat || [1, 1, 1]).slice(0, 3));
       const alpha = o ? o.alpha : type ? 1 : b.mat ? b.mat[3] : 1;
       b.effCls = type;
+      b.special = sp;
       b.transparent = b.kind === 'mesh' && type !== MAT_WATER && alpha < 1;
       ub.set([...rgb, alpha], base + 4);
       ub.set([b.vc ? 1 : 0, b.kind === 'edge' ? 1 : 0, type, o ? o.gloss : 0], base + 8);
@@ -2534,7 +2864,80 @@ class Renderer {
       this.pickBusy = false;
     }
   }
+
+  // Pedestrian mode's view of its surroundings (see walk.js), drawn with the pick pipeline so each
+  // texel holds the world position of the surface it sees (w = 0 for nothing):
+  //  - ground: GROUND_RES² texels looking straight down over the square of half size q.half
+  //    centred on (q.x, q.y), from q.top down to q.bottom: the highest surface below q.top;
+  //  - walls: four WALL_W x WALL_H views looking out along +x, -x, +y and -y from (q.x, q.y),
+  //    q.reach wide either side and q.reach deep, between heights q.z0 and q.z1.
+  // Vegetation (by its layer's magic material, even with the Magic button off) is left out, so
+  // people walk through trees. Resolves to { ground, walls } (Float32Arrays, 4 floats per texel),
+  // or null at once when the previous probe has not been read back yet.
+  probe(q) {
+    if (this.probeBusy || !this.batches.length) return Promise.resolve(null);
+    this.probeBusy = true;
+    const dev = this.device, G = PROBE.ground, W = PROBE.wallW, H = PROBE.wallH, rows = G + H, U = GPUBufferUsage;
+    if (!this.probeTex) {
+      const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+      this.probeTex = dev.createTexture({ size: [G, rows], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+      this.probeDepth = dev.createTexture({ size: [G, rows], format: DEPTH, usage: RA });
+      this.probeRead = dev.createBuffer({ size: G * 16 * rows, usage: U.MAP_READ | U.COPY_DST });
+      this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
+      this.probeBGs = null;
+    }
+    // Rebuilt when the object flags buffer is replaced (it grows with the model).
+    if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
+      this.probeFlagsBuf = this.objFlagsBuf;
+      this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
+        { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
+        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }] }));
+    }
+    const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
+    const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy], k) => {
+      const eye = [q.x, q.y, zm];
+      views.push({ vp: M4.mul(M4.ortho(hh, q.reach / hh, 0, q.reach), M4.lookAt(eye, [q.x + dx, q.y + dy, zm], [0, 0, 1])), rect: [k * W, G, W, H] });
+    });
+    views.forEach((v, i) => dev.queue.writeBuffer(this.probeBufs[i], 0, Float32Array.from(v.vp)));
+
+    const R = Math.max(q.half, q.reach);
+    const near = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION
+      && b.min[0] <= q.x + R && b.max[0] >= q.x - R && b.min[1] <= q.y + R && b.max[1] >= q.y - R && b.min[2] <= q.top && b.max[2] >= q.bottom);
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{ view: this.probeTex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+      depthStencilAttachment: { view: this.probeDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    pass.setPipeline(this.pipes.pick);
+    views.forEach((v, i) => {
+      pass.setViewport(...v.rect, 0, 1);
+      pass.setScissorRect(...v.rect);
+      pass.setBindGroup(0, this.probeBGs[i]);
+      for (const b of near) {
+        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+        pass.setIndexBuffer(b.gpu.idx, 'uint32');
+        pass.drawIndexed(b.count);
+      }
+    });
+    pass.end();
+    enc.copyTextureToBuffer({ texture: this.probeTex }, { buffer: this.probeRead, bytesPerRow: G * 16 }, [G, rows]);
+    dev.queue.submit([enc.finish()]);
+    return this.probeRead.mapAsync(GPUMapMode.READ).then(() => {
+      // Two sets of arrays used in turn, so the previous result stays valid and nothing is
+      // allocated per frame (garbage collection pauses showed as judder while walking).
+      this.probeOut = this.probeOut || [0, 1].map(() => ({ all: new Float32Array(G * rows * 4), walls: new Float32Array(4 * W * H * 4) }));
+      const out = this.probeOut[(this.probeFlip ^= 1)], all = out.all, walls = out.walls;
+      all.set(new Float32Array(this.probeRead.getMappedRange()));
+      this.probeRead.unmap();
+      for (let k = 0; k < 4; k++) for (let r = 0; r < H; r++)
+        walls.set(all.subarray(((G + r) * G + k * W) * 4, ((G + r) * G + (k + 1) * W) * 4), ((k * H + r) * W) * 4);
+      return { ground: all.subarray(0, G * G * 4), walls };
+    }, () => null).finally(() => { this.probeBusy = false; });
+  }
 }
+
+const PROBE = { ground: 128, wallW: 32, wallH: 16 };
 
 </script>
 <script>
@@ -2544,7 +2947,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -2568,6 +2971,16 @@ let lastInput = performance.now();
 if (typeof prefs.showEdges === 'boolean') state.showEdges = prefs.showEdges;
 if (typeof prefs.showCurves === 'boolean') state.showCurves = prefs.showCurves;
 const camera = new Camera();
+let shiftDown = false;
+const walker = new Walker({
+  camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
+  mpu: () => METRES_PER_UNIT[model.units] || 1,
+  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); redraw(); },
+  onSettings: () => { syncWalkPanel(); savePrefs(); },
+  notice: (text, ms = 0) => notice(text, false, ms),
+  fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
+});
+if (prefs.walk) Object.assign(walker.settings, prefs.walk);
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
 let renderer = null, model = null, layerOn = [];
 
@@ -2667,6 +3080,11 @@ function loop() {
   // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
   // untouched page does not keep the GPU busy.
   if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
+  if (walker.active) {
+    walker.update(performance.now());
+    renderer.dirty = true; lastInput = performance.now();
+    if (!$('walkPanel').hidden) checkSunlight();
+  }
   if (renderer.dirty) { renderer.dirty = false; renderer.draw(frameState()); positionInspector(); }
   requestAnimationFrame(loop);
 }
@@ -2699,6 +3117,7 @@ async function readModel(kind, name, bytes) {
 
 async function openBytes(name, bytes) {
   const t0 = performance.now();
+  walker.exit();
   clearNotices();
   try {
     let m;
@@ -2782,6 +3201,7 @@ function zoomExtents() {
 }
 
 function setView(name, extents = true) {
+  walker.exit();
   camera.setView(name);
   if (extents) zoomExtents();
   syncToolbar();
@@ -2793,6 +3213,8 @@ function syncToolbar() {
   document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === (state.lastView || view))));
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
+  $('btnWalk').setAttribute('aria-pressed', String(walker.active));
+  $('btnWalk').disabled = !model || (camera.ortho && !walker.active);
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
@@ -3940,7 +4362,12 @@ function bindPointer() {
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 1) {
+    if (pointers.size === 1 && walker.active) {
+      // Pedestrian mode: any button (or one finger) drags to look.
+      drag = { mode: 'look', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      walker.skipFall();
+      canvas.classList.add('dragging');
+    } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
       // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
       // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
@@ -3951,7 +4378,7 @@ function bindPointer() {
       pivot = null;
       if (!pan) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       canvas.classList.add('dragging');
-    } else if (pointers.size === 2) {
+    } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
     }
   });
@@ -3972,7 +4399,8 @@ function bindPointer() {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
-    if (drag.mode === 'orbit') {
+    if (drag.mode === 'look') walker.turn(dx, dy);
+    else if (drag.mode === 'orbit') {
       camera.orbit(dx, dy, pivot);
       state.lastView = null;
       syncToolbar();
@@ -3988,7 +4416,7 @@ function bindPointer() {
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: 'orbit', x: p.x, y: p.y, moved: true };
+      drag = { mode: walker.active ? 'look' : 'orbit', x: p.x, y: p.y, moved: true };
     }
   };
   canvas.addEventListener('pointerup', end);
@@ -3997,6 +4425,7 @@ function bindPointer() {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (!model) return;
+    if (walker.active) { walker.wheel(e.deltaY); return; }
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
@@ -4013,7 +4442,7 @@ function bindPointer() {
   }, { passive: false });
 
   canvas.addEventListener('dblclick', async (e) => {
-    if (!model) return;
+    if (!model || walker.active) return;
     const p = await pickPoint(e);
     if (p) animateFocus(p); else zoomExtents();
   });
@@ -4049,10 +4478,15 @@ function onKey(e) {
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
+  // Pedestrian mode: movement keys walk, Esc stops; other shortcuts still work.
+  if (walker.active) {
+    if (walker.key(e, true)) { e.preventDefault(); return; }
+    if (k === 'escape') { e.preventDefault(); walker.exit(); return; }
+  }
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
+    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => { closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
@@ -4065,6 +4499,73 @@ function onKey(e) {
 // Toolbar and chrome
 
 function pickView(name) { state.lastView = name; setView(name, true); }
+function toggleWalk() {
+  if (walker.active) { walker.exit(); return; }
+  if (!model || camera.ortho) return;
+  state.lastView = null;
+  $('walkHint').hidden = false;
+  $('walkPanel').hidden = false;
+  syncWalkPanel();
+  walker.enter().then(() => syncToolbar());
+  syncToolbar();
+  canvas.focus();
+}
+// The Walk panel ------------------------------------------------------------------------------
+
+function syncWalkPanel() {
+  const S = walker.settings;
+  if (document.activeElement !== $('walkSpeed')) $('walkSpeed').value = S.speed;
+  $('walkMul').value = Math.log2(S.mul);
+  $('walkMulOut').value = '×' + (S.mul < 1 ? S.mul.toFixed(2) : S.mul.toFixed(1));
+  $('walkSpeedInfo').textContent = `Walking ${(S.speed * S.mul).toFixed(1)} m/s · Shift runs at ${(S.speed * S.mul * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the multiplier`;
+  $('walkCollide').checked = S.collide;
+}
+
+function bindWalkPanel() {
+  const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
+  $('walkSpeed').addEventListener('input', () => { const v = parseFloat($('walkSpeed').value); if (v > 0) { S.speed = Math.min(50, v); changed(); } });
+  $('walkSpeed').addEventListener('change', syncWalkPanel);
+  $('walkMul').addEventListener('input', () => { S.mul = Math.round(2 ** $('walkMul').value * 20) / 20; changed(); });
+  $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
+  $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
+  $('walkStop').addEventListener('click', () => walker.exit());
+  $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
+  syncWalkPanel();
+}
+
+// Is the walker standing in sunlight? A ray from the eye towards the sun, drawn with the pick
+// pass (so trees and every visible object cast shade), a few times a second.
+let sunlightAt = 0, sunlightBusy = false;
+function checkSunlight() {
+  const now = performance.now();
+  if (sunlightBusy || now - sunlightAt < 250) return;
+  sunlightAt = now;
+  // show() only touches the DOM when the text changes, so the Turn on button stays clickable.
+  const el = $('walkSun'), show = (cls, html, extra = '') => {
+    const k = cls + html + extra;
+    if (el.dataset.k === k) return;
+    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
+  };
+  if (!state.sun.on) { show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>'); return; }
+  const pos = sunPosition();
+  if (pos.altitude <= 0) { show('shade', '<b>Night</b> · the sun is below the horizon'); return; }
+  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = camera.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
+  // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
+  const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
+  const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
+  sunlightBusy = true;
+  renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
+    if (!walker.active) return;
+    const alt = `sun ${Math.round(pos.altitude)}° up`;
+    if (!h) show('lit', `<b>In sunlight</b> · ${alt}`);
+    else {
+      const layer = model.layers[model.objects[h.id]?.layer], dist = V3.len(V3.sub(h.p, eye)) / u;
+      show('shade', `<b>In shade</b> · cast by ${layer ? escapeHtml(layer.name) : 'an object'}, ${dist < 1 ? "less than 1" : Math.round(dist)} m away`);
+    }
+  }).finally(() => { sunlightBusy = false; });
+}
+
 function setMode(m) {
   const wasMat = showsMaterial();
   state.mode = m;
@@ -4174,6 +4675,11 @@ function bindUi() {
     buildLayerTree.refresh?.();
   }));
   window.addEventListener('keydown', onKey);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; walker.key(e, false); });
+  window.addEventListener('blur', () => { shiftDown = false; walker.blur(); });
+  $('btnWalk').addEventListener('click', toggleWalk);
+  bindWalkPanel();
   bindPointer();
   state.lastView = 'perspective';
   syncToolbar();

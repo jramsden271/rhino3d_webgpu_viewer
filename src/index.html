@@ -30,6 +30,7 @@
       <button data-view="front" title="Front (2)">Front</button>
       <button data-view="right" title="Right (3)">Right</button>
     </div>
+    <button class="btn toggle" id="btnWalk" title="Pedestrian mode: walk around at eye height (perspective views only)"><svg viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1"/></svg>Walk</button>
     <span class="sep"></span>
     <div class="seg" data-group="mode">
       <button data-mode="0" title="Shaded: object / layer colours (M)">Shaded</button>
@@ -83,6 +84,25 @@
       <label class="check"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
     </div>
   </section>
+  <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
+    <div class="panel-head">
+      <span>Walk</span>
+      <span class="panel-actions"><button class="link" id="walkStop">Stop walking</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close (walking carries on)">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div class="walk-sun" id="walkSun"></div>
+      <div class="field">
+        <div class="field-label"><span>Walking speed</span><span class="walk-speed"><input type="number" id="walkSpeed" min="0.1" max="50" step="0.1"> m/s</span></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Speed multiplier</span><output id="walkMulOut"></output></div>
+        <input type="range" id="walkMul" min="-2" max="3.3219" step="0.01" title="Also the mouse wheel">
+        <div class="fine" id="walkSpeedInfo"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
+      <div class="fine">Off: walk through walls and objects; you still follow the ground and climb steps.</div>
+    </div>
+  </section>
   </div>
 
   <div id="matDialog" class="chrome popover" hidden role="dialog" aria-labelledby="matTitle">
@@ -130,6 +150,8 @@
     </div>
   </div>
   <div id="notices" class="notices"></div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop</div>
+  <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
     <div class="drop-card">
@@ -158,6 +180,7 @@
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, saving a copy and reverting changes</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
@@ -181,6 +204,7 @@
 <script src="recent.js"></script>
 <script src="sun.js"></script>
 <script src="camera.js"></script>
+<script src="walk.js"></script>
 <script src="renderer.js"></script>
 <script src="main.js"></script>
 </body>

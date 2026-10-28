@@ -752,6 +752,7 @@ class Renderer {
       const rgb = o?.rgb || (type ? SPECIAL[type].rgb : (b.mat || [1, 1, 1]).slice(0, 3));
       const alpha = o ? o.alpha : type ? 1 : b.mat ? b.mat[3] : 1;
       b.effCls = type;
+      b.special = sp;
       b.transparent = b.kind === 'mesh' && type !== MAT_WATER && alpha < 1;
       ub.set([...rgb, alpha], base + 4);
       ub.set([b.vc ? 1 : 0, b.kind === 'edge' ? 1 : 0, type, o ? o.gloss : 0], base + 8);
@@ -906,4 +907,77 @@ class Renderer {
       this.pickBusy = false;
     }
   }
+
+  // Pedestrian mode's view of its surroundings (see walk.js), drawn with the pick pipeline so each
+  // texel holds the world position of the surface it sees (w = 0 for nothing):
+  //  - ground: GROUND_RES² texels looking straight down over the square of half size q.half
+  //    centred on (q.x, q.y), from q.top down to q.bottom: the highest surface below q.top;
+  //  - walls: four WALL_W x WALL_H views looking out along +x, -x, +y and -y from (q.x, q.y),
+  //    q.reach wide either side and q.reach deep, between heights q.z0 and q.z1.
+  // Vegetation (by its layer's magic material, even with the Magic button off) is left out, so
+  // people walk through trees. Resolves to { ground, walls } (Float32Arrays, 4 floats per texel),
+  // or null at once when the previous probe has not been read back yet.
+  probe(q) {
+    if (this.probeBusy || !this.batches.length) return Promise.resolve(null);
+    this.probeBusy = true;
+    const dev = this.device, G = PROBE.ground, W = PROBE.wallW, H = PROBE.wallH, rows = G + H, U = GPUBufferUsage;
+    if (!this.probeTex) {
+      const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+      this.probeTex = dev.createTexture({ size: [G, rows], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+      this.probeDepth = dev.createTexture({ size: [G, rows], format: DEPTH, usage: RA });
+      this.probeRead = dev.createBuffer({ size: G * 16 * rows, usage: U.MAP_READ | U.COPY_DST });
+      this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
+      this.probeBGs = null;
+    }
+    // Rebuilt when the object flags buffer is replaced (it grows with the model).
+    if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
+      this.probeFlagsBuf = this.objFlagsBuf;
+      this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
+        { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
+        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }] }));
+    }
+    const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
+    const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy], k) => {
+      const eye = [q.x, q.y, zm];
+      views.push({ vp: M4.mul(M4.ortho(hh, q.reach / hh, 0, q.reach), M4.lookAt(eye, [q.x + dx, q.y + dy, zm], [0, 0, 1])), rect: [k * W, G, W, H] });
+    });
+    views.forEach((v, i) => dev.queue.writeBuffer(this.probeBufs[i], 0, Float32Array.from(v.vp)));
+
+    const R = Math.max(q.half, q.reach);
+    const near = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION
+      && b.min[0] <= q.x + R && b.max[0] >= q.x - R && b.min[1] <= q.y + R && b.max[1] >= q.y - R && b.min[2] <= q.top && b.max[2] >= q.bottom);
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{ view: this.probeTex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+      depthStencilAttachment: { view: this.probeDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    pass.setPipeline(this.pipes.pick);
+    views.forEach((v, i) => {
+      pass.setViewport(...v.rect, 0, 1);
+      pass.setScissorRect(...v.rect);
+      pass.setBindGroup(0, this.probeBGs[i]);
+      for (const b of near) {
+        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+        pass.setIndexBuffer(b.gpu.idx, 'uint32');
+        pass.drawIndexed(b.count);
+      }
+    });
+    pass.end();
+    enc.copyTextureToBuffer({ texture: this.probeTex }, { buffer: this.probeRead, bytesPerRow: G * 16 }, [G, rows]);
+    dev.queue.submit([enc.finish()]);
+    return this.probeRead.mapAsync(GPUMapMode.READ).then(() => {
+      // Two sets of arrays used in turn, so the previous result stays valid and nothing is
+      // allocated per frame (garbage collection pauses showed as judder while walking).
+      this.probeOut = this.probeOut || [0, 1].map(() => ({ all: new Float32Array(G * rows * 4), walls: new Float32Array(4 * W * H * 4) }));
+      const out = this.probeOut[(this.probeFlip ^= 1)], all = out.all, walls = out.walls;
+      all.set(new Float32Array(this.probeRead.getMappedRange()));
+      this.probeRead.unmap();
+      for (let k = 0; k < 4; k++) for (let r = 0; r < H; r++)
+        walls.set(all.subarray(((G + r) * G + k * W) * 4, ((G + r) * G + (k + 1) * W) * 4), ((k * H + r) * W) * 4);
+      return { ground: all.subarray(0, G * G * 4), walls };
+    }, () => null).finally(() => { this.probeBusy = false; });
+  }
 }
+
+const PROBE = { ground: 128, wallW: 32, wallH: 16 };
