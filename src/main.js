@@ -1398,7 +1398,7 @@ function bindSunPanel() {
       [e.clientX, e.clientY]);
   });
   $('sunPlay').addEventListener('click', toggleSunPlay);
-  $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
+  $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   syncSunPanel();
 }
@@ -1460,9 +1460,13 @@ function applyLocation() {
   else if (state.sun.on) { state.sun.on = false; warnNoLocation('The sun is off because there is no location now.'); }
   $('btnLocation').classList.toggle('set', !!A);
   $('locName').textContent = A ? A.name || fmtCoords(A.lat, A.lon) : 'Set location';
-  $('btnLocation').title = A ? `${A.name ? fmtCoords(A.lat, A.lon) + ', ' : ''}${fmtUtc(A.utcOffset)}, ${LOCATION_KINDS[A.kind]}. Click to change the location or weather file.`
-    : 'Set the site location, or add a weather file (EPW)';
+  $('btnLocation').title = A ? `${A.name ? fmtCoords(A.lat, A.lon) + ', ' : ''}${fmtUtc(A.utcOffset)}, ${LOCATION_KINDS[A.kind]}. Click to change the location.`
+    : 'Set the site location';
+  const e = site.epw;
+  $('btnWeather').classList.toggle('set', !!e);
+  $('btnWeather').title = e ? `Weather file: ${e.fileName}` : 'Add a weather file (EPW)';
   locationDialog?.refresh();
+  weatherDialog?.refresh();
   syncSunPanel();
   redraw();
 }
@@ -1502,7 +1506,7 @@ function setCustomLocation(c, typing = false) {
   applyLocation();
 }
 
-// A weather file from the Set location dialog or dropped onto the window. A new one is used
+// A weather file from the Weather file dialog or dropped onto the window. A new one is used
 // for the location straight away, when it has one.
 async function loadEpw(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -1521,6 +1525,47 @@ function setEpw(epw, bytes) {
   applyLocation();
 }
 
+// The weather file's name, place and coordinates (or that there is none), as HTML.
+function epwStatusHtml() {
+  const e = site.epw;
+  return e
+    ? `<div>${escapeHtml(e.location.name || 'Unnamed location')}</div><div class="fine">${escapeHtml(e.fileName)} · ${e.location.known ? `${fmtCoords(e.location.lat, e.location.lon)} · ${fmtUtc(e.location.utcOffset ?? 0)}` : 'no usable latitude and longitude; its weather is still shown'}</div>`
+    : '<div class="fine">None. Choose one, or drop an .epw file onto the window.</div>';
+}
+
+// Weather file dialog: load, replace or remove the open model's EPW file.
+let weatherDialog = null;
+function openWeatherDialog() {
+  if (weatherDialog) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'loc-dlg';
+  wrap.innerHTML = `
+    <section class="loc-src">
+      <div class="loc-status" data-el="epw"></div>
+      <div class="loc-actions"><button class="btn small" data-el="pick"></button><button class="link" data-el="remove">Remove</button></div>
+    </section>
+    <div class="fine" data-el="note"></div>
+    <input type="file" accept=".epw" data-el="input" hidden>`;
+  const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
+  el('pick').addEventListener('click', () => el('input').click());
+  el('input').addEventListener('change', () => { const f = el('input').files[0]; el('input').value = ''; if (f) loadEpw(f); });
+  el('remove').addEventListener('click', () => setEpw(null, null));
+  const refresh = () => {
+    const e = site.epw;
+    el('epw').innerHTML = epwStatusHtml();
+    el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
+    el('remove').hidden = !e;
+    el('note').textContent = `The weather file gives the weather in the Sun panel at its date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
+      ? 'It belongs to the open model; with none open, it is cleared when one is opened.'
+      : model.handle ? `It belongs to ${model.name} and comes back when you reopen it from Recent files.`
+        : `It belongs to ${model.name} while it is open.`}`;
+  };
+  refresh();
+  weatherDialog = { refresh };
+  Dialog.open({ title: 'Weather file', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 420 })
+    .then(() => { weatherDialog = null; });
+}
+
 // Set location dialog: the three sources, each marked "In use" or offering "Use this location".
 // Changes apply as they are made.
 let locationDialog = null;
@@ -1533,7 +1578,7 @@ function openLocationDialog() {
     <section class="loc-src" data-kind="epw">
       ${head('epw', 'Weather file (EPW)')}
       <div class="loc-status" data-el="epw"></div>
-      <div class="loc-actions"><button class="btn small" data-el="pick"></button><button class="link" data-el="remove">Remove</button></div>
+      <div class="loc-actions"><button class="btn small" data-el="pick"></button></div>
     </section>
     <section class="loc-src" data-kind="custom">
       ${head('custom', 'Custom location')}
@@ -1549,15 +1594,12 @@ function openLocationDialog() {
       ${head('file', 'Rhino file')}
       <div class="loc-status" data-el="file"></div>
     </section>
-    <div class="fine" data-el="note"></div>
-    <input type="file" accept=".epw" data-el="input" hidden>`;
+    <div class="fine" data-el="note"></div>`;
   const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
   const lat = el('lat'), lon = el('lon'), utc = el('utc'), search = wrap.querySelector('.city-search'), list = wrap.querySelector('.city-list');
 
   wrap.querySelectorAll('[data-use]').forEach((b) => b.addEventListener('click', () => useLocation(b.dataset.use)));
-  el('pick').addEventListener('click', () => el('input').click());
-  el('input').addEventListener('change', () => { const f = el('input').files[0]; el('input').value = ''; if (f) loadEpw(f); });
-  el('remove').addEventListener('click', () => setEpw(null, null));
+  el('pick').addEventListener('click', openWeatherDialog);
 
   // Typing a latitude and longitude sets the custom location; the UTC offset follows the
   // longitude until one is typed.
@@ -1601,11 +1643,8 @@ function openLocationDialog() {
       b.classList.toggle('in-use', inUse);
       b.textContent = inUse ? 'In use' : 'Use this location';
     });
-    el('epw').innerHTML = e
-      ? `<div>${escapeHtml(e.location.name || 'Unnamed location')}</div><div class="fine">${escapeHtml(e.fileName)} · ${e.location.known ? `${fmtCoords(e.location.lat, e.location.lon)} · ${fmtUtc(e.location.utcOffset ?? 0)}` : 'no usable latitude and longitude; its weather is still shown'}</div>`
-      : '<div class="fine">None. Choose one, or drop an .epw file onto the window. It also gives the weather in the Sun panel.</div>';
+    el('epw').innerHTML = epwStatusHtml();
     el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
-    el('remove').hidden = !e;
     for (const [input, k] of [[lat, 'lat'], [lon, 'lon'], [utc, 'utcOffset']])
       if (document.activeElement !== input) input.value = c ? c[k] : '';
     el('file').innerHTML = !model ? '<div class="fine">No file open</div>'
@@ -2031,6 +2070,7 @@ function bindUi() {
   };
   $('btnHome').addEventListener('click', goHome);
   $('btnLocation').addEventListener('click', openLocationDialog);
+  $('btnWeather').addEventListener('click', openWeatherDialog);
   $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });

@@ -294,6 +294,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .loc-btn.set { color: var(--text); }
 .loc-btn.set svg path { fill: #dc2626; stroke: #dc2626; }
 .loc-btn.set svg circle { fill: #fff; stroke: none; }
+/* Weather file: the header button (greyed out until a file is loaded) */
+.wx-btn { margin-left: -6px; color: var(--muted); }
+.wx-btn svg { width: 19px; height: 19px; }
+.wx-btn .sun { opacity: 0.55; }
+.wx-btn .cloud { fill: var(--surface-solid); }
+.wx-btn.set .sun { opacity: 1; color: #f2b01e; }
+.wx-btn.set .sun circle { fill: #f6c344; }
+.wx-btn.set .cloud { color: var(--text); fill: #f3f4f6; }
 .loc-dlg { display: flex; flex-direction: column; gap: 10px; }
 .loc-dlg > .fine { font-size: 11.5px; color: var(--muted); }
 .loc-src { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }

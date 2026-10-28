@@ -185,9 +185,9 @@ The pin at the top left shows the site location: grey **Set location** when noth
 one, or a red pin and the place name (or coordinates) when something does. Click it to open
 **Set location**, which has three sources:
 
-- **Weather file (EPW)**: choose an EnergyPlus weather file, or drop an `.epw` onto the
-  window. It gives the location, named from the file (e.g. "Riyadh Khalid, Saudi Arabia"),
-  and the weather in the Sun panel.
+- **Weather file (EPW)**: the location from the weather file, named from the file (e.g.
+  "Riyadh Khalid, Saudi Arabia"). **Choose EPW file…** or **Replace…** opens the Weather
+  file dialog (below).
 - **Custom location**: type a latitude and longitude (the UTC offset follows the longitude
   until you type one), or choose from about 60 cities (standard-time UTC offset, without
   daylight saving; the list is in `src/cities.js`).
@@ -199,6 +199,12 @@ The source in use is outlined and marked **In use**; any other source with a loc
 straight away. Until you choose, the first that is set is used: custom location, weather
 file, Rhino file. With none, there is no location: the sun cannot be turned on, and trying
 shows a warning with a link to Set location. Location changes are not part of undo.
+
+The **weather button** next to the pin (a sun behind a cloud) opens the **Weather file**
+dialog. The icon is in colour when a weather file is loaded, with the file's name in its
+tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`.epw`), or
+drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
+the weather in the Sun panel and, when it has a latitude and longitude, the location.
 
 **The custom location, the weather file and your choice belong to one model.** Setting any
 of them links it to the open model's entry in **Recent files** (shown there as "custom
