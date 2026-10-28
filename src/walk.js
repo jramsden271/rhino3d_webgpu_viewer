@@ -21,6 +21,8 @@ const WALK = {
   FOOT: 0.25,       // footprint radius: the ground is the highest surface within it
   DROP: 0.3,        // drops up to this follow the ground (stairs down); more is a fall
   LEDGE: 0.15,      // seconds over a drop before falling starts
+  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider and the mouse wheel
+  MAX_SPEED: 15,
   RUN: 3,           // Shift runs at this times the walking speed
   ACCEL: 0.08,      // time constant for speeding up and slowing down
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
@@ -42,12 +44,12 @@ class Walker {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: speed in m/s, a multiplier (also the mouse wheel), walls block.
-    this.settings = { speed: 1.4, mul: 1, collide: true };
+    // Set from the Walk panel: walking speed in m/s (also the mouse wheel), walls block.
+    this.settings = { speed: 1.4, collide: true };
   }
 
   // Current target speed in m/s.
-  speed() { const S = this.settings; return S.speed * S.mul * (this.ctx.shift() ? WALK.RUN : 1); }
+  speed() { return this.settings.speed * (this.ctx.shift() ? WALK.RUN : 1); }
 
   get u() { return 1 / this.ctx.mpu(); } // model units per metre
 
@@ -116,10 +118,10 @@ class Walker {
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
   }
 
-  // Mouse wheel: the speed multiplier, between a quarter and ten times.
+  // Mouse wheel: the walking speed, in proportion (finer steps when slow).
   wheel(deltaY) {
     const S = this.settings;
-    S.mul = Math.round(Math.max(0.25, Math.min(10, S.mul * Math.exp(-deltaY * 0.002))) * 20) / 20;
+    S.speed = Math.round(Math.max(WALK.MIN_SPEED, Math.min(WALK.MAX_SPEED, S.speed * Math.exp(-deltaY * 0.002))) * 10) / 10;
     this.ctx.onSettings();
   }
 

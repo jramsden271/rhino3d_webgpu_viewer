@@ -22,7 +22,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the speed multiplier | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Esc` to stop |
+| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the walking speed | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Esc` to stop |
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
@@ -42,8 +42,8 @@ below returns you to where you last stood, with the controls locked for a second
 shown counts: hidden objects and layers are walked through, and so is vegetation (layers with
 the Vegetation magic material).
 
-The **Walk panel** opens with pedestrian mode. It sets the walking speed (m/s) and a speed
-multiplier (also the mouse wheel; Shift runs at three times the result), and turns collision
+The **Walk panel** opens with pedestrian mode. It sets the walking speed, 0.5 to 15 m/s
+(1.4 m/s to start with; also the mouse wheel; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). With the sun on, it shows whether you are standing in sunlight, checked a few
 times a second along a line from your eye to the sun; in shade it names the layer of whatever

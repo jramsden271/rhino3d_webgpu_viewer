@@ -37,7 +37,10 @@ const walker = new Walker({
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
-if (prefs.walk) Object.assign(walker.settings, prefs.walk);
+if (prefs.walk) {
+  walker.settings.collide = prefs.walk.collide !== false;
+  if (prefs.walk.speed > 0) walker.settings.speed = Math.min(WALK.MAX_SPEED, Math.max(WALK.MIN_SPEED, prefs.walk.speed));
+}
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
 let renderer = null, model = null, layerOn = [];
 
@@ -1571,18 +1574,17 @@ function toggleWalk() {
 
 function syncWalkPanel() {
   const S = walker.settings;
-  if (document.activeElement !== $('walkSpeed')) $('walkSpeed').value = S.speed;
-  $('walkMul').value = Math.log2(S.mul);
-  $('walkMulOut').value = '×' + (S.mul < 1 ? S.mul.toFixed(2) : S.mul.toFixed(1));
-  $('walkSpeedInfo').textContent = `Walking ${(S.speed * S.mul).toFixed(1)} m/s · Shift runs at ${(S.speed * S.mul * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the multiplier`;
+  $('walkSpeed').value = S.speed;
+  // While Shift is held the label shows the running speed.
+  $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
+  $('walkSpeedOut').classList.toggle('running', shiftDown);
+  $('walkSpeedInfo').textContent = `Shift runs at ${(S.speed * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the speed too`;
   $('walkCollide').checked = S.collide;
 }
 
 function bindWalkPanel() {
   const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
-  $('walkSpeed').addEventListener('input', () => { const v = parseFloat($('walkSpeed').value); if (v > 0) { S.speed = Math.min(50, v); changed(); } });
-  $('walkSpeed').addEventListener('change', syncWalkPanel);
-  $('walkMul').addEventListener('input', () => { S.mul = Math.round(2 ** $('walkMul').value * 20) / 20; changed(); });
+  $('walkSpeed').addEventListener('input', () => { S.speed = +$('walkSpeed').value; changed(); });
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   $('walkStop').addEventListener('click', () => walker.exit());
@@ -1732,9 +1734,10 @@ function bindUi() {
     buildLayerTree.refresh?.();
   }));
   window.addEventListener('keydown', onKey);
-  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
-  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; walker.key(e, false); });
-  window.addEventListener('blur', () => { shiftDown = false; walker.blur(); });
+  const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); });
+  window.addEventListener('blur', () => { setShift(false); walker.blur(); });
   $('btnWalk').addEventListener('click', toggleWalk);
   bindWalkPanel();
   bindPointer();

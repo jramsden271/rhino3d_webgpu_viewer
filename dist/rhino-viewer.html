@@ -211,9 +211,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .walk-sun.lit .dot { background: #f5b400; box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.3); }
 .walk-sun.shade .dot { background: #64748b; }
 .walk-sun .link { margin-left: auto; }
-.walk-speed { font-weight: 400; color: var(--muted); }
-.walk-speed input { font: inherit; color: var(--text); width: 58px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
-.walk-speed input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#walkSpeedOut.running { color: var(--accent); font-weight: 600; }
 #btnWalk:disabled { opacity: 0.45; cursor: default; }
 .notices { position: absolute; top: 60px; left: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .notice { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border); border-left: 3px solid #d97706; border-radius: 8px; padding: 8px 30px 8px 10px; box-shadow: var(--shadow); font-size: 12.5px; position: relative; }
@@ -390,11 +388,8 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     <div class="sun-body">
       <div class="walk-sun" id="walkSun"></div>
       <div class="field">
-        <div class="field-label"><span>Walking speed</span><span class="walk-speed"><input type="number" id="walkSpeed" min="0.1" max="50" step="0.1"> m/s</span></div>
-      </div>
-      <div class="field">
-        <div class="field-label"><span>Speed multiplier</span><output id="walkMulOut"></output></div>
-        <input type="range" id="walkMul" min="-2" max="3.3219" step="0.01" title="Also the mouse wheel">
+        <div class="field-label"><span>Walking speed</span><output id="walkSpeedOut"></output></div>
+        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Also the mouse wheel">
         <div class="fine" id="walkSpeedInfo"></div>
       </div>
       <label class="check"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
@@ -1688,6 +1683,8 @@ const WALK = {
   FOOT: 0.25,       // footprint radius: the ground is the highest surface within it
   DROP: 0.3,        // drops up to this follow the ground (stairs down); more is a fall
   LEDGE: 0.15,      // seconds over a drop before falling starts
+  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider and the mouse wheel
+  MAX_SPEED: 15,
   RUN: 3,           // Shift runs at this times the walking speed
   ACCEL: 0.08,      // time constant for speeding up and slowing down
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
@@ -1709,12 +1706,12 @@ class Walker {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: speed in m/s, a multiplier (also the mouse wheel), walls block.
-    this.settings = { speed: 1.4, mul: 1, collide: true };
+    // Set from the Walk panel: walking speed in m/s (also the mouse wheel), walls block.
+    this.settings = { speed: 1.4, collide: true };
   }
 
   // Current target speed in m/s.
-  speed() { const S = this.settings; return S.speed * S.mul * (this.ctx.shift() ? WALK.RUN : 1); }
+  speed() { return this.settings.speed * (this.ctx.shift() ? WALK.RUN : 1); }
 
   get u() { return 1 / this.ctx.mpu(); } // model units per metre
 
@@ -1783,10 +1780,10 @@ class Walker {
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
   }
 
-  // Mouse wheel: the speed multiplier, between a quarter and ten times.
+  // Mouse wheel: the walking speed, in proportion (finer steps when slow).
   wheel(deltaY) {
     const S = this.settings;
-    S.mul = Math.round(Math.max(0.25, Math.min(10, S.mul * Math.exp(-deltaY * 0.002))) * 20) / 20;
+    S.speed = Math.round(Math.max(WALK.MIN_SPEED, Math.min(WALK.MAX_SPEED, S.speed * Math.exp(-deltaY * 0.002))) * 10) / 10;
     this.ctx.onSettings();
   }
 
@@ -2980,7 +2977,10 @@ const walker = new Walker({
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
-if (prefs.walk) Object.assign(walker.settings, prefs.walk);
+if (prefs.walk) {
+  walker.settings.collide = prefs.walk.collide !== false;
+  if (prefs.walk.speed > 0) walker.settings.speed = Math.min(WALK.MAX_SPEED, Math.max(WALK.MIN_SPEED, prefs.walk.speed));
+}
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
 let renderer = null, model = null, layerOn = [];
 
@@ -4514,18 +4514,17 @@ function toggleWalk() {
 
 function syncWalkPanel() {
   const S = walker.settings;
-  if (document.activeElement !== $('walkSpeed')) $('walkSpeed').value = S.speed;
-  $('walkMul').value = Math.log2(S.mul);
-  $('walkMulOut').value = '×' + (S.mul < 1 ? S.mul.toFixed(2) : S.mul.toFixed(1));
-  $('walkSpeedInfo').textContent = `Walking ${(S.speed * S.mul).toFixed(1)} m/s · Shift runs at ${(S.speed * S.mul * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the multiplier`;
+  $('walkSpeed').value = S.speed;
+  // While Shift is held the label shows the running speed.
+  $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
+  $('walkSpeedOut').classList.toggle('running', shiftDown);
+  $('walkSpeedInfo').textContent = `Shift runs at ${(S.speed * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the speed too`;
   $('walkCollide').checked = S.collide;
 }
 
 function bindWalkPanel() {
   const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
-  $('walkSpeed').addEventListener('input', () => { const v = parseFloat($('walkSpeed').value); if (v > 0) { S.speed = Math.min(50, v); changed(); } });
-  $('walkSpeed').addEventListener('change', syncWalkPanel);
-  $('walkMul').addEventListener('input', () => { S.mul = Math.round(2 ** $('walkMul').value * 20) / 20; changed(); });
+  $('walkSpeed').addEventListener('input', () => { S.speed = +$('walkSpeed').value; changed(); });
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   $('walkStop').addEventListener('click', () => walker.exit());
@@ -4675,9 +4674,10 @@ function bindUi() {
     buildLayerTree.refresh?.();
   }));
   window.addEventListener('keydown', onKey);
-  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
-  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; walker.key(e, false); });
-  window.addEventListener('blur', () => { shiftDown = false; walker.blur(); });
+  const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); });
+  window.addEventListener('blur', () => { setShift(false); walker.blur(); });
   $('btnWalk').addEventListener('click', toggleWalk);
   bindWalkPanel();
   bindPointer();

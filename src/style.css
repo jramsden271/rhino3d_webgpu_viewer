@@ -203,9 +203,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .walk-sun.lit .dot { background: #f5b400; box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.3); }
 .walk-sun.shade .dot { background: #64748b; }
 .walk-sun .link { margin-left: auto; }
-.walk-speed { font-weight: 400; color: var(--muted); }
-.walk-speed input { font: inherit; color: var(--text); width: 58px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
-.walk-speed input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#walkSpeedOut.running { color: var(--accent); font-weight: 600; }
 #btnWalk:disabled { opacity: 0.45; cursor: default; }
 .notices { position: absolute; top: 60px; left: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .notice { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border); border-left: 3px solid #d97706; border-radius: 8px; padding: 8px 30px 8px 10px; box-shadow: var(--shadow); font-size: 12.5px; position: relative; }
