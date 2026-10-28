@@ -39,7 +39,6 @@ const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
   onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); syncLightsPanel(); redraw(); },
-  onSettings: () => { syncWalkPanel(); savePrefs(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -424,24 +423,30 @@ function buildLayerTree() {
 // Right-click menu for a layer row. `tree` is the layer and all its sub-layers, or null when it
 // has none (the sub-layer items are then left out). Selection takes visible objects only.
 function openLayerMenu(i, tree, [x, y]) {
-  const L = model.layers, menu = $('layerMenu');
+  const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
     return model.objects.flatMap((o, id) => (!o.gone && set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
   };
   const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
   const own = visibleOn([i]), all = tree && visibleOn(tree);
-  const items = [
+  showMenu(L[i].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
     '-',
     { label: 'Show all', run: () => setOn(true) },
     { label: 'Hide all', run: () => setOn(false) },
-  ].filter(Boolean);
+  ].filter(Boolean), [x, y]);
+}
+
+// A right-click menu at (x, y): items are { label, n (a count shown on the right; 0 disables
+// the item), run } or '-' for a divider.
+function showMenu(titleText, items, [x, y]) {
+  const menu = $('layerMenu');
   menu.innerHTML = '';
   const title = document.createElement('div');
   title.className = 'menu-title';
-  title.textContent = title.title = L[i].fullPath;
+  title.textContent = title.title = titleText;
   menu.appendChild(title);
   for (const it of items) {
     if (it === '-') { menu.appendChild(document.createElement('hr')); continue; }
@@ -1337,10 +1342,7 @@ function syncSunPanel() {
     ? `Altitude <b>${p.altitude.toFixed(1)}°</b> · Azimuth <b>${p.azimuth.toFixed(1)}°</b> (${dirName})`
     : `<b>Sun below the horizon</b> (${p.altitude.toFixed(1)}°)`;
   const day2 = p.polar === 'day' ? 'Sun up all day' : p.polar === 'night' ? 'Sun down all day' : `Sunrise <b>${fmtHour(p.sunrise)}</b> · Sunset <b>${fmtHour(p.sunset)}</b>`;
-  const m = moonPosition(sunOpts());
-  const moon = `Moon: <b>${m.phase}</b> (${Math.round(m.lit * 100)}% lit) · `
-    + (m.altitude > -0.83 ? `altitude <b>${m.altitude.toFixed(1)}°</b>, ${COMPASS[Math.round(m.azimuth / 22.5) % 16]}` : 'below the horizon');
-  $('sunRead').innerHTML = `${pos}<br>${day2}<br>${moon}`;
+  $('sunRead').innerHTML = `${pos}<br>${day2}`;
   document.querySelector('.sun-body').classList.toggle('off', !S.on);
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
 }
@@ -1386,10 +1388,13 @@ function bindSunPanel() {
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
-  document.querySelectorAll('[data-md]').forEach((b) => b.addEventListener('click', () => {
-    const [m, d] = b.dataset.md.split('-').map(Number);
-    setSun({ doy: dayOfYear(EPW_YEAR, m, d) });
-  }));
+  // Right-click the date slider for the solstices and equinoxes.
+  $('sunDay').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (label, m, d) => ({ label, run: () => setSun({ doy: dayOfYear(EPW_YEAR, m, d) }) });
+    showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
+      at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
+  });
   $('sunPlay').addEventListener('click', toggleSunPlay);
   $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
@@ -1705,7 +1710,7 @@ function bindPointer() {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (!model) return;
-    if (walker.active) { walker.wheel(e.deltaY); return; }
+    if (walker.active) { walker.zoom(e.deltaY); redraw(); return; }
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
@@ -1816,12 +1821,18 @@ function syncLightsPanel() {
       <span class="light-name">Torch (T)</span><span class="light-meta">Spot · ${torchMeta}</span></div>`
     + (group('From the Rhino file', 'file') || '<div class="lights-empty">The Rhino file has no point or spot lights.</div>')
     + group('Added here', 'added');
-  $('lightsFoot').innerHTML = `<kbd>B</kbd> adds a lamp at the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes added lamps. Up to ${MAX_LAMPS} lights at once; shadows for the torch and about four lamps.`;
+}
+
+function showLightsHelp() {
+  Dialog.open({ title: 'Lights', html: true, width: 360, body: `<p>The Rhino file's point and spot lights, lamps you add and the walker's torch light the model; they show best at night.</p>
+    <p><kbd>B</kbd> adds a lamp just off the surface under the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes the lamps you added · <kbd>T</kbd> switches the torch on and off while walking.</p>
+    <p>Up to ${MAX_LAMPS} lights shine at once: the torch first, then the list in order. The torch and about four lamps also cast shadows.</p>` });
 }
 
 function bindLightsPanel() {
   document.querySelector('[data-act="lights"]').addEventListener('click', toggleLightsPanel);
   $('lightsClose').addEventListener('click', () => state.lightsPanel && toggleLightsPanel());
+  $('lightsHelp').addEventListener('click', showLightsHelp);
   const setAll = (on) => { state.lamps.forEach((l) => { l.on = on; }); syncLightsPanel(); redraw(); };
   $('lightsAllOn').addEventListener('click', () => setAll(true));
   $('lightsAllOff').addEventListener('click', () => setAll(false));
@@ -1895,7 +1906,6 @@ function syncWalkPanel() {
   // While Shift is held the label shows the running speed.
   $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
   $('walkSpeedOut').classList.toggle('running', shiftDown);
-  $('walkSpeedInfo').textContent = `Shift runs at ${(S.speed * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the speed too`;
   $('walkCollide').checked = S.collide;
 }
 

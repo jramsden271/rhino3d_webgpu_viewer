@@ -69,10 +69,7 @@
       <div class="sun-read" id="sunRead"></div>
       <div class="field">
         <div class="field-label"><span>Date</span><output id="sunDateOut"></output></div>
-        <input type="range" id="sunDay" min="1" max="365" step="1">
-        <div class="chips">
-          <button data-md="3-21">21 Mar</button><button data-md="6-21">21 Jun</button><button data-md="9-23">23 Sep</button><button data-md="12-21">21 Dec</button>
-        </div>
+        <input type="range" id="sunDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes">
       </div>
       <div class="field">
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
@@ -88,10 +85,9 @@
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
     <div class="panel-head">
       <span>Lights</span>
-      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
+      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x q" id="lightsHelp" aria-label="About lights" title="About lights">?</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
     </div>
     <div id="lightsList" class="lights-list"></div>
-    <div class="panel-foot" id="lightsFoot"></div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
@@ -102,11 +98,9 @@
       <div class="walk-sun" id="walkSun"></div>
       <div class="field">
         <div class="field-label"><span>Walking speed</span><output id="walkSpeedOut"></output></div>
-        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Also the mouse wheel">
-        <div class="fine" id="walkSpeedInfo"></div>
+        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">
       </div>
-      <label class="check"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
-      <div class="fine">Off: walk through walls and objects; you still follow the ground and climb steps.</div>
+      <label class="check" title="Off: walk through walls and objects; you still follow the ground and climb steps"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
     </div>
   </section>
   </div>
@@ -160,7 +154,7 @@
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
   <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
@@ -191,7 +185,7 @@
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
-        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>

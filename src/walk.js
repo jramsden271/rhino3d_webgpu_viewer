@@ -21,8 +21,10 @@ const WALK = {
   FOOT: 0.25,       // footprint radius: the ground is the highest surface within it
   DROP: 0.3,        // drops up to this follow the ground (stairs down); more is a fall
   LEDGE: 0.15,      // seconds over a drop before falling starts
-  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider and the mouse wheel
+  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider
   MAX_SPEED: 15,
+  MIN_FOV: 10,      // field of view range (degrees) for zooming with the mouse wheel
+  MAX_FOV: 75,
   RUN: 3,           // Shift runs at this times the walking speed
   ACCEL: 0.08,      // time constant for speeding up and slowing down
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
@@ -39,12 +41,12 @@ const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], 
 
 class Walker {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
-  //        shift(): Shift held, onExit(), onSettings() (the wheel changed them), notice(text, ms), fade() }
+  //        shift(): Shift held, onExit(), notice(text, ms), fade() }
   constructor(ctx) {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: walking speed in m/s (also the mouse wheel), walls block.
+    // Set from the Walk panel: walking speed in m/s, walls block.
     this.settings = { speed: 1.4, collide: true };
   }
 
@@ -64,6 +66,7 @@ class Walker {
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
       lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
     const before = camera.snapshot();
+    this.fov0 = camera.fov;
     camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
     // The first look round: the ground straight below the camera, however far down.
@@ -89,6 +92,7 @@ class Walker {
     if (!this.active) return;
     this.active = false;
     this.keys.clear();
+    if (this.fov0) this.ctx.camera.fov = this.fov0;
     this.ctx.onExit();
   }
 
@@ -118,11 +122,11 @@ class Walker {
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
   }
 
-  // Mouse wheel: the walking speed, in proportion (finer steps when slow).
-  wheel(deltaY) {
-    const S = this.settings;
-    S.speed = Math.round(Math.max(WALK.MIN_SPEED, Math.min(WALK.MAX_SPEED, S.speed * Math.exp(-deltaY * 0.002))) * 10) / 10;
-    this.ctx.onSettings();
+  // Mouse wheel: zooms by narrowing or widening the field of view (the eye stays where the walker
+  // stands). Walking ends with the field of view it started with.
+  zoom(deltaY) {
+    const { camera } = this.ctx, deg = Math.PI / 180;
+    camera.fov = Math.max(WALK.MIN_FOV * deg, Math.min(WALK.MAX_FOV * deg, camera.fov * Math.exp(deltaY * 0.0015)));
   }
 
   // Ask the renderer for the surroundings at the current position. top: the ground map looks down

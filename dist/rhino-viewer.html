@@ -82,6 +82,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 12px; }
 .panel-actions .x { margin: -2px -6px -2px -4px; }
+.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; }
 .panel-foot { padding: 8px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
@@ -165,9 +166,6 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .field-label { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .field-label output { font-weight: 400; font-variant-numeric: tabular-nums; }
 .field input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
-.chips { display: flex; gap: 4px; }
-.chips button { flex: 1; border: 1px solid var(--border); background: transparent; border-radius: 6px; padding: 3px 0; font-size: 11.5px; cursor: pointer; }
-.chips button:hover { background: var(--hover); }
 .play { border: 1px solid var(--border); background: transparent; border-radius: 6px; width: 26px; height: 22px; margin-left: 8px; cursor: pointer; font-size: 10px; line-height: 1; }
 .play:hover { background: var(--hover); }
 .play.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
@@ -287,6 +285,8 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .dlg-backdrop.open .dlg { transform: none; }
 .dlg-body { padding: 12px; overflow: auto; color: var(--text); white-space: pre-line; }
 .dlg-body:has(> *) { white-space: normal; }
+.dlg-body p { margin: 0 0 8px; line-height: 1.45; }
+.dlg-body p:last-child { margin-bottom: 0; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 12px 12px; }
 .dlg-actions .btn { border: 1px solid var(--border); }
 .dlg-actions .btn.primary { border-color: transparent; }
@@ -412,10 +412,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       <div class="sun-read" id="sunRead"></div>
       <div class="field">
         <div class="field-label"><span>Date</span><output id="sunDateOut"></output></div>
-        <input type="range" id="sunDay" min="1" max="365" step="1">
-        <div class="chips">
-          <button data-md="3-21">21 Mar</button><button data-md="6-21">21 Jun</button><button data-md="9-23">23 Sep</button><button data-md="12-21">21 Dec</button>
-        </div>
+        <input type="range" id="sunDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes">
       </div>
       <div class="field">
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
@@ -431,10 +428,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
     <div class="panel-head">
       <span>Lights</span>
-      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
+      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x q" id="lightsHelp" aria-label="About lights" title="About lights">?</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
     </div>
     <div id="lightsList" class="lights-list"></div>
-    <div class="panel-foot" id="lightsFoot"></div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
@@ -445,11 +441,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       <div class="walk-sun" id="walkSun"></div>
       <div class="field">
         <div class="field-label"><span>Walking speed</span><output id="walkSpeedOut"></output></div>
-        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Also the mouse wheel">
-        <div class="fine" id="walkSpeedInfo"></div>
+        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">
       </div>
-      <label class="check"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
-      <div class="fine">Off: walk through walls and objects; you still follow the ground and climb steps.</div>
+      <label class="check" title="Off: walk through walls and objects; you still follow the ground and climb steps"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
     </div>
   </section>
   </div>
@@ -503,7 +497,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
   <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
@@ -534,7 +528,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
-        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
@@ -2149,8 +2143,10 @@ const WALK = {
   FOOT: 0.25,       // footprint radius: the ground is the highest surface within it
   DROP: 0.3,        // drops up to this follow the ground (stairs down); more is a fall
   LEDGE: 0.15,      // seconds over a drop before falling starts
-  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider and the mouse wheel
+  MIN_SPEED: 0.5,   // walking speed range (m/s) of the Walk panel's slider
   MAX_SPEED: 15,
+  MIN_FOV: 10,      // field of view range (degrees) for zooming with the mouse wheel
+  MAX_FOV: 75,
   RUN: 3,           // Shift runs at this times the walking speed
   ACCEL: 0.08,      // time constant for speeding up and slowing down
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
@@ -2167,12 +2163,12 @@ const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], 
 
 class Walker {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
-  //        shift(): Shift held, onExit(), onSettings() (the wheel changed them), notice(text, ms), fade() }
+  //        shift(): Shift held, onExit(), notice(text, ms), fade() }
   constructor(ctx) {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: walking speed in m/s (also the mouse wheel), walls block.
+    // Set from the Walk panel: walking speed in m/s, walls block.
     this.settings = { speed: 1.4, collide: true };
   }
 
@@ -2192,6 +2188,7 @@ class Walker {
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
       lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
     const before = camera.snapshot();
+    this.fov0 = camera.fov;
     camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
     // The first look round: the ground straight below the camera, however far down.
@@ -2217,6 +2214,7 @@ class Walker {
     if (!this.active) return;
     this.active = false;
     this.keys.clear();
+    if (this.fov0) this.ctx.camera.fov = this.fov0;
     this.ctx.onExit();
   }
 
@@ -2246,11 +2244,11 @@ class Walker {
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
   }
 
-  // Mouse wheel: the walking speed, in proportion (finer steps when slow).
-  wheel(deltaY) {
-    const S = this.settings;
-    S.speed = Math.round(Math.max(WALK.MIN_SPEED, Math.min(WALK.MAX_SPEED, S.speed * Math.exp(-deltaY * 0.002))) * 10) / 10;
-    this.ctx.onSettings();
+  // Mouse wheel: zooms by narrowing or widening the field of view (the eye stays where the walker
+  // stands). Walking ends with the field of view it started with.
+  zoom(deltaY) {
+    const { camera } = this.ctx, deg = Math.PI / 180;
+    camera.fov = Math.max(WALK.MIN_FOV * deg, Math.min(WALK.MAX_FOV * deg, camera.fov * Math.exp(deltaY * 0.0015)));
   }
 
   // Ask the renderer for the surroundings at the current position. top: the ground map looks down
@@ -3739,7 +3737,6 @@ const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
   onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); syncLightsPanel(); redraw(); },
-  onSettings: () => { syncWalkPanel(); savePrefs(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -4124,24 +4121,30 @@ function buildLayerTree() {
 // Right-click menu for a layer row. `tree` is the layer and all its sub-layers, or null when it
 // has none (the sub-layer items are then left out). Selection takes visible objects only.
 function openLayerMenu(i, tree, [x, y]) {
-  const L = model.layers, menu = $('layerMenu');
+  const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
     return model.objects.flatMap((o, id) => (!o.gone && set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
   };
   const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
   const own = visibleOn([i]), all = tree && visibleOn(tree);
-  const items = [
+  showMenu(L[i].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
     '-',
     { label: 'Show all', run: () => setOn(true) },
     { label: 'Hide all', run: () => setOn(false) },
-  ].filter(Boolean);
+  ].filter(Boolean), [x, y]);
+}
+
+// A right-click menu at (x, y): items are { label, n (a count shown on the right; 0 disables
+// the item), run } or '-' for a divider.
+function showMenu(titleText, items, [x, y]) {
+  const menu = $('layerMenu');
   menu.innerHTML = '';
   const title = document.createElement('div');
   title.className = 'menu-title';
-  title.textContent = title.title = L[i].fullPath;
+  title.textContent = title.title = titleText;
   menu.appendChild(title);
   for (const it of items) {
     if (it === '-') { menu.appendChild(document.createElement('hr')); continue; }
@@ -5037,10 +5040,7 @@ function syncSunPanel() {
     ? `Altitude <b>${p.altitude.toFixed(1)}°</b> · Azimuth <b>${p.azimuth.toFixed(1)}°</b> (${dirName})`
     : `<b>Sun below the horizon</b> (${p.altitude.toFixed(1)}°)`;
   const day2 = p.polar === 'day' ? 'Sun up all day' : p.polar === 'night' ? 'Sun down all day' : `Sunrise <b>${fmtHour(p.sunrise)}</b> · Sunset <b>${fmtHour(p.sunset)}</b>`;
-  const m = moonPosition(sunOpts());
-  const moon = `Moon: <b>${m.phase}</b> (${Math.round(m.lit * 100)}% lit) · `
-    + (m.altitude > -0.83 ? `altitude <b>${m.altitude.toFixed(1)}°</b>, ${COMPASS[Math.round(m.azimuth / 22.5) % 16]}` : 'below the horizon');
-  $('sunRead').innerHTML = `${pos}<br>${day2}<br>${moon}`;
+  $('sunRead').innerHTML = `${pos}<br>${day2}`;
   document.querySelector('.sun-body').classList.toggle('off', !S.on);
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
 }
@@ -5086,10 +5086,13 @@ function bindSunPanel() {
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
-  document.querySelectorAll('[data-md]').forEach((b) => b.addEventListener('click', () => {
-    const [m, d] = b.dataset.md.split('-').map(Number);
-    setSun({ doy: dayOfYear(EPW_YEAR, m, d) });
-  }));
+  // Right-click the date slider for the solstices and equinoxes.
+  $('sunDay').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (label, m, d) => ({ label, run: () => setSun({ doy: dayOfYear(EPW_YEAR, m, d) }) });
+    showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
+      at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
+  });
   $('sunPlay').addEventListener('click', toggleSunPlay);
   $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
@@ -5405,7 +5408,7 @@ function bindPointer() {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (!model) return;
-    if (walker.active) { walker.wheel(e.deltaY); return; }
+    if (walker.active) { walker.zoom(e.deltaY); redraw(); return; }
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
@@ -5516,12 +5519,18 @@ function syncLightsPanel() {
       <span class="light-name">Torch (T)</span><span class="light-meta">Spot · ${torchMeta}</span></div>`
     + (group('From the Rhino file', 'file') || '<div class="lights-empty">The Rhino file has no point or spot lights.</div>')
     + group('Added here', 'added');
-  $('lightsFoot').innerHTML = `<kbd>B</kbd> adds a lamp at the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes added lamps. Up to ${MAX_LAMPS} lights at once; shadows for the torch and about four lamps.`;
+}
+
+function showLightsHelp() {
+  Dialog.open({ title: 'Lights', html: true, width: 360, body: `<p>The Rhino file's point and spot lights, lamps you add and the walker's torch light the model; they show best at night.</p>
+    <p><kbd>B</kbd> adds a lamp just off the surface under the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes the lamps you added · <kbd>T</kbd> switches the torch on and off while walking.</p>
+    <p>Up to ${MAX_LAMPS} lights shine at once: the torch first, then the list in order. The torch and about four lamps also cast shadows.</p>` });
 }
 
 function bindLightsPanel() {
   document.querySelector('[data-act="lights"]').addEventListener('click', toggleLightsPanel);
   $('lightsClose').addEventListener('click', () => state.lightsPanel && toggleLightsPanel());
+  $('lightsHelp').addEventListener('click', showLightsHelp);
   const setAll = (on) => { state.lamps.forEach((l) => { l.on = on; }); syncLightsPanel(); redraw(); };
   $('lightsAllOn').addEventListener('click', () => setAll(true));
   $('lightsAllOff').addEventListener('click', () => setAll(false));
@@ -5595,7 +5604,6 @@ function syncWalkPanel() {
   // While Shift is held the label shows the running speed.
   $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
   $('walkSpeedOut').classList.toggle('running', shiftDown);
-  $('walkSpeedInfo').textContent = `Shift runs at ${(S.speed * WALK.RUN).toFixed(1)} m/s · the mouse wheel changes the speed too`;
   $('walkCollide').checked = S.collide;
 }
 

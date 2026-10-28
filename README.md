@@ -26,7 +26,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the walking speed | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `T` torch · `Esc` to stop |
+| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel zooms (field of view) | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
@@ -45,10 +45,11 @@ ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); a
 (so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings a downward view back to the horizontal. A fall with nothing
 below returns you to where you last stood, with the controls locked for a second. Only what is
 shown counts: hidden objects and layers are walked through, and so is vegetation (layers with
-the Vegetation magic material).
+the Vegetation magic material). The mouse wheel zooms by narrowing or widening the field of
+view, from 10° to 75°; it goes back to normal when you stop walking.
 
 The **Walk panel** opens with pedestrian mode. It sets the walking speed, 0.5 to 15 m/s
-(1.4 m/s to start with; also the mouse wheel; Shift runs at three times it), and turns collision
+(1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). With the sun on, it shows whether you are standing in sunlight, checked a few
 times a second along a line from your eye to the sun; in shade it names the layer of whatever
@@ -215,9 +216,9 @@ follow the time of day: a low sun turns orange-red with a warm glow along the ho
 sky darkens through twilight, and at night the stars come out (placed for the location, date
 and time, so they turn through the night) and the model is lit by a dim blue night light.
 The moon is shown in its real position and phase (lit on the side facing the sun), and once
-the sky is dark it lights the model and casts soft shadows, brighter towards full moon. The
-panel shows the moon's phase, how much of it is lit and its altitude. Set the date
-and local time with the sliders (or the solstice/equinox buttons), and press ▶ to animate
+the sky is dark it lights the model and casts soft shadows, brighter towards full moon. Set
+the date and local time with the sliders (right-click the date slider to jump to a solstice
+or equinox), and press ▶ to animate
 from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
 sunrise and sunset. The date has no year: sun positions change too little from year to
 year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
@@ -251,7 +252,8 @@ Point and spot lights light the model in any shading mode; they show best at nig
 - **Added here**: lamps added with `B`, which puts a warm lamp just off the surface under the
   cursor (towards you). × removes one, `Shift+B` all of them. They are not saved with the file.
 
-Each light has a checkbox, and **All on** / **All off** switch the file's and added lights
+The panel's **?** button repeats the keys and limits. Each light has a checkbox, and
+**All on** / **All off** switch the file's and added lights
 together. Up to 8 lights shine at once (the torch first, then the list in order); the panel
 marks the others "not shown". Light falls off with the square of the distance and fades out
 by 30 m (40 m for the torch). A lamp in view is drawn as a small glowing bulb.
