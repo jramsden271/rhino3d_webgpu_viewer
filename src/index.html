@@ -17,6 +17,7 @@
       <button class="btn icon" id="btnUndo" disabled title="Nothing to undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="btn icon" id="btnRedo" disabled title="Nothing to redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
     </span>
+    <button class="loc-btn" id="btnLocation" title="Set the site location, or add a weather file (EPW)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-7-6.2-7-11.5a7 7 0 0 1 14 0c0 5.3-7 11.5-7 11.5Z"/><circle cx="12" cy="10" r="2.6"/></svg><span id="locName">Set location</span></button>
     <input type="file" id="fileInput" accept=".3dm" hidden>
   </header>
 
@@ -76,11 +77,11 @@
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
         <input type="range" id="sunHour" min="0" max="24" step="0.0833">
       </div>
-      <div class="sun-loc">
-        <div class="sun-loc-text"><div id="sunLocName"></div><div class="fine" id="sunLocInfo"></div></div>
-        <button class="btn small outline" id="sunPickCity" title="Latitude, longitude, UTC offset and north angle, or choose a city">Select location…</button>
+      <label class="check sun-only"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
+      <div class="field">
+        <div class="field-label"><span>Weather</span><output id="sunWeatherSrc"></output></div>
+        <div id="sunWeather" class="sun-weather"></div>
       </div>
-      <label class="check"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
     </div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
@@ -135,6 +136,10 @@
     <div class="panel-head"><span id="fileTitle"></span><button class="x" id="fileClose" aria-label="Close">×</button></div>
     <div class="pop-body">
       <dl id="fileBody" class="props"></dl>
+      <div class="north">
+        <label class="field-row">North angle <span class="north-input"><input type="number" id="fileNorth" step="1" min="-360" max="360"> °</span></label>
+        <div class="fine" id="fileNorthInfo"></div>
+      </div>
       <div class="changes">
         <div class="field-label"><span>Changes in this viewer</span></div>
         <div class="fine" id="fileChanges"></div>
@@ -179,10 +184,11 @@
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
-        <dt>File</dt><dd>Click the file name (top left) for properties, saving a copy and reverting changes</dd>
+        <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
+        <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
-        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and sun location changes; not views, hiding or layer visibility) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
+        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun</dd>
       </dl>
       <button class="btn" data-act="help">Close</button>

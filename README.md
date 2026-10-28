@@ -56,9 +56,9 @@ The settings are remembered in this browser. Walking is not recorded in the undo
 view button or `P` stops it and leaves you orbiting a point just ahead.
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
-materials, object colour and material sources, exploded blocks, Revert and the sun's
-location (latitude, longitude, UTC offset, north angle). View changes, date and time,
-hiding objects and turning layers on or off are not recorded. Dragging a slider or colour
+materials, object colour and material sources, exploded blocks, the north angle and Revert.
+View changes, date and time, hiding objects, turning layers on or off and the site location
+(a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. Undoing an explode rebuilds the model, which takes a moment on large
 files. The history starts afresh each time a file is opened.
 
@@ -162,15 +162,47 @@ the selection. Curves and points are not clickable.
 
 **File properties.** Click the file name (top left) for the file's statistics (size, units,
 objects, triangles, curves, block instances, layers, location, anything not shown) and the
-changes made in the viewer. From there, **Download .3dm** saves a copy with your colour,
-material and block changes, and **Revert changes** puts everything (layer colours and
-materials, object colours and materials, exploded blocks, hidden objects and layer
-visibility) back to how it is in the file.
+changes made in the viewer. It also has the model's **north angle**, as in Rhino: degrees
+anticlockwise from the model's +X axis to north, so 90 means +Y is north. It comes from the
+file's Sun settings or Earth anchor point, or is 90 when the file sets neither. From there,
+**Download .3dm** saves a copy with your colour, material and block changes, and **Revert
+changes** puts everything (layer colours and materials, object colours and materials,
+exploded blocks, the north angle, hidden objects and layer visibility) back to how it is in
+the file.
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
 view; it switches off in X-ray mode. It is computed from the true (faceted) surfaces, so the
 smooth shading of foliage does not darken the outlines of tree canopies.
+
+## Location and weather
+
+The pin at the top left shows the site location: grey **Set location** when nothing sets
+one, or a red pin and the place name (or coordinates) when something does. Click it to open
+**Set location**, which has three sources:
+
+- **Weather file (EPW)**: choose an EnergyPlus weather file, or drop an `.epw` onto the
+  window. It gives the location, named from the file (e.g. "Riyadh Khalid, Saudi Arabia"),
+  and the weather in the Sun panel.
+- **Custom location**: type a latitude and longitude (the UTC offset follows the longitude
+  until you type one), or choose from about 60 cities (standard-time UTC offset, without
+  daylight saving; the list is in `src/cities.js`).
+- **Rhino file**: the open model's Sun settings (Rendering panel → Sun) or, failing that,
+  its Earth anchor point.
+
+The source in use is outlined and marked **In use**; any other source with a location has a
+**Use this location** button to switch to it. A new weather file or custom location is used
+straight away. Until you choose, the first that is set is used: custom location, weather
+file, Rhino file. With none, there is no location: the sun cannot be turned on, and trying
+shows a warning with a link to Set location. Location changes are not part of undo.
+
+**The custom location, the weather file and your choice belong to one model.** Setting any
+of them links it to the open model's entry in **Recent files** (shown there as "custom
+location …" and "weather …"; a copy of the weather file is kept, so it reloads without
+asking for permission again), and they come back when you reopen that model from the list
+or drop it again. Opening any other model clears them, even one with no location of its own.
+Models opened another way (the plain file input, a `?model=` link) have no entry to link
+to, so these last only while they are open.
 
 ## Sun and shadows
 
@@ -178,18 +210,16 @@ Click **Sun** (or press `S`) to open the Sun panel, and switch it on there to li
 by the sun with cast shadows. In perspective views the sky shows the sun itself. Set the date
 and local time with the sliders (or the solstice/equinox buttons), and press ▶ to animate
 from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
-sunrise and sunset.
+sunrise and sunset. The date has no year: sun positions change too little from year to
+year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
+starting date and time.
 
-- **Location, time zone, north and date** come from the file when Rhino has them: first
-  the Sun settings (Rendering panel → Sun, which include date, time and time zone), then
-  the Earth anchor point. Otherwise London is used. The panel shows the current location;
-  click **Select location…** to type a latitude, longitude, UTC offset or north angle, or to
-  choose from about 60 cities (this sets latitude, longitude and the standard-time UTC offset,
-  without daylight saving; the list is in `src/cities.js`). Changes apply as you make them.
-- **North angle** follows Rhino: degrees anticlockwise from the model's +X axis to north,
-  so 90 means +Y is north.
-- **UTC offset** is the clock's offset including any daylight saving, e.g. 1 for UK summer
-  time, 3 for Qatar.
+- **Weather**: with a weather file loaded, the panel shows the air temperature, relative
+  humidity, wind speed and direction, and global horizontal, direct normal and diffuse
+  horizontal irradiance at the panel's date and time. Values are interpolated between the
+  file's hourly records, each taken as the middle of its hour. The date and time sliders work
+  with the sun off too.
+- **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
 - **Shadows on a ground plane** adds a shadow catcher at the bottom of the model, for
   massing models without terrain.
 
@@ -249,7 +279,7 @@ src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
-src/cities.js            city list for the Select location dialog
+src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
 src/materials.js         magic materials: keyword rules and default colours

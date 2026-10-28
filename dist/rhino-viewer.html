@@ -166,7 +166,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .check input { accent-color: var(--accent); margin: 0; }
 .sun-body .fine { font-size: 11.5px; color: var(--muted); }
-.sun-body.off > :not(.sun-read) { opacity: 0.55; }
+.sun-body.off .sun-only { opacity: 0.55; }
 .switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .switch span { position: absolute; inset: 0; background: var(--border); border-radius: 9px; cursor: pointer; transition: background 0.15s; }
@@ -282,13 +282,45 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 @media (prefers-reduced-motion: reduce) { .dlg-backdrop, .dlg { transition: none; } }
 
 /* Location (Sun panel) */
-.sun-loc { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.sun-loc-text { min-width: 0; font-size: 12.5px; }
-.sun-loc-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sun-loc .btn { flex: none; }
-.loc-dlg .fine { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
-.loc-cities { margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; }
-.loc-cities .fine { margin: 0; }
+/* Site location: the header button and the Set location dialog */
+.loc-btn { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font: inherit; white-space: nowrap;
+  border: 0; background: none; padding: 4px 8px 4px 6px; border-radius: 6px; cursor: pointer; }
+.loc-btn:hover { background: var(--hover); color: var(--text); }
+.loc-btn span { overflow: hidden; text-overflow: ellipsis; }
+.loc-btn svg { flex: none; width: 17px; height: 17px; }
+.loc-btn.set { color: var(--text); }
+.loc-btn.set svg path { fill: #dc2626; stroke: #dc2626; }
+.loc-btn.set svg circle { fill: #fff; stroke: none; }
+.loc-dlg { display: flex; flex-direction: column; gap: 10px; }
+.loc-dlg > .fine { font-size: 11.5px; color: var(--muted); }
+.loc-src { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.loc-src.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.loc-head { display: flex; align-items: center; gap: 8px; }
+.loc-head .btn { margin-left: auto; padding: 3px 9px; }
+.loc-use { display: none; font-size: 10.5px; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 0 6px; line-height: 16px; }
+.loc-src.active .loc-use { display: inline-block; }
+.loc-status .fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.loc-actions { display: flex; align-items: center; gap: 12px; }
+.loc-actions .link { font-size: 12px; }
+.loc-actions .link[hidden] { display: none; }
+.loc-dlg .city-search { margin-bottom: 0; }
+.loc-dlg .city-list { max-height: 168px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.grid3 label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.grid3 input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; width: 100%; font-variant-numeric: tabular-nums; }
+.grid3 input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+/* Weather in the Sun panel */
+.sun-weather { font-size: 12px; }
+.sun-weather .wx { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.sun-weather dt { color: var(--muted); }
+.sun-weather dd { margin: 0; }
+.sun-weather b { font-weight: 600; }
+#sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+/* North angle in the file panel */
+.north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.north-input { display: flex; align-items: center; gap: 5px; }
+.north-input input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; width: 80px; font-variant-numeric: tabular-nums; }
+.north .fine { font-size: 11.5px; color: var(--muted); }
 .city-list button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
 .city-search { width: 100%; font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
 .city-list { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; margin: 0 -4px; }
@@ -315,6 +347,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       <button class="btn icon" id="btnUndo" disabled title="Nothing to undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="btn icon" id="btnRedo" disabled title="Nothing to redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
     </span>
+    <button class="loc-btn" id="btnLocation" title="Set the site location, or add a weather file (EPW)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-7-6.2-7-11.5a7 7 0 0 1 14 0c0 5.3-7 11.5-7 11.5Z"/><circle cx="12" cy="10" r="2.6"/></svg><span id="locName">Set location</span></button>
     <input type="file" id="fileInput" accept=".3dm" hidden>
   </header>
 
@@ -374,11 +407,11 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
         <input type="range" id="sunHour" min="0" max="24" step="0.0833">
       </div>
-      <div class="sun-loc">
-        <div class="sun-loc-text"><div id="sunLocName"></div><div class="fine" id="sunLocInfo"></div></div>
-        <button class="btn small outline" id="sunPickCity" title="Latitude, longitude, UTC offset and north angle, or choose a city">Select location…</button>
+      <label class="check sun-only"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
+      <div class="field">
+        <div class="field-label"><span>Weather</span><output id="sunWeatherSrc"></output></div>
+        <div id="sunWeather" class="sun-weather"></div>
       </div>
-      <label class="check"><input type="checkbox" id="sunGround" checked> Shadows on a ground plane</label>
     </div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
@@ -433,6 +466,10 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     <div class="panel-head"><span id="fileTitle"></span><button class="x" id="fileClose" aria-label="Close">×</button></div>
     <div class="pop-body">
       <dl id="fileBody" class="props"></dl>
+      <div class="north">
+        <label class="field-row">North angle <span class="north-input"><input type="number" id="fileNorth" step="1" min="-360" max="360"> °</span></label>
+        <div class="fine" id="fileNorthInfo"></div>
+      </div>
       <div class="changes">
         <div class="field-label"><span>Changes in this viewer</span></div>
         <div class="fine" id="fileChanges"></div>
@@ -477,10 +514,11 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
-        <dt>File</dt><dd>Click the file name (top left) for properties, saving a copy and reverting changes</dd>
+        <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
+        <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
-        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and sun location changes; not views, hiding or layer visibility) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
+        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun</dd>
       </dl>
       <button class="btn" data-act="help">Close</button>
@@ -1409,9 +1447,15 @@ const CITIES = [
 // with a click. Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()           -> [{ name, size, modified, opened, handle }], newest first
+//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw }], newest first
 //   await Recent.add(handle, file) remembers a file just opened (up to Recent.MAX)
 //   await Recent.remove(index)
+//   await Recent.link(handle, { custom, epw, use })  a model's custom location, weather file and
+//                                 which location source it uses (any of them)
+//   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset, name } | null, epw: { name, bytes } | null,
+//                                      use: 'custom' | 'epw' | 'file' | null }
+//
+// A model's weather file is kept as a copy, so it comes back without another permission prompt.
 
 const Recent = {
   MAX: 5,
@@ -1444,19 +1488,50 @@ const Recent = {
     try { await this.store('readwrite', (s) => s.put(list, 'recent')); } catch (e) { /* storage unavailable */ }
   },
 
-  async add(handle, file) {
-    if (!this.supported || !handle) return;
-    const list = await this.list();
-    // The same file opened again moves to the top.
-    const same = await Promise.all(list.map((r) => r.handle.isSameEntry(handle).catch(() => false)));
-    const rest = list.filter((_, i) => !same[i]);
-    await this.save([{ name: file.name, size: file.size, modified: file.lastModified, opened: Date.now(), handle }, ...rest].slice(0, this.MAX));
+  // Changes to the list run one at a time, so one cannot overwrite another made just before it.
+  serial(fn) {
+    const p = (this.chain || Promise.resolve()).then(fn);
+    this.chain = p.catch(() => {});
+    return p;
   },
 
-  async remove(index) {
-    const list = await this.list();
-    list.splice(index, 1);
-    await this.save(list);
+  add(handle, file) {
+    if (!this.supported || !handle) return Promise.resolve();
+    return this.serial(async () => {
+      const list = await this.list();
+      // The same file opened again moves to the top, keeping its location and weather file.
+      const i = await this.find(list, handle), old = i >= 0 ? list[i] : {};
+      const rest = list.filter((_, k) => k !== i);
+      await this.save([{ name: file.name, size: file.size, modified: file.lastModified, opened: Date.now(), handle,
+        custom: old.custom || null, epw: old.epw || null, use: old.use || null }, ...rest].slice(0, this.MAX));
+    });
+  },
+
+  async find(list, handle) {
+    const same = await Promise.all(list.map((r) => r.handle.isSameEntry(handle).catch(() => false)));
+    return same.indexOf(true);
+  },
+
+  link(handle, changes) {
+    return this.serial(async () => {
+      const list = await this.list(), i = await this.find(list, handle);
+      if (i < 0) return;
+      Object.assign(list[i], changes);
+      await this.save(list);
+    });
+  },
+
+  async links(handle) {
+    const list = await this.list(), i = await this.find(list, handle);
+    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null };
+  },
+
+  remove(index) {
+    return this.serial(async () => {
+      const list = await this.list();
+      list.splice(index, 1);
+      await this.save(list);
+    });
   },
 };
 
@@ -3227,14 +3302,16 @@ const state = {
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
 };
-// Sun study settings. Location defaults to London until a file provides one.
-const today = new Date();
+// Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
+// the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
   on: false, ground: true, panel: false,
-  lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90, place: 'London',
-  year: today.getFullYear(), doy: dayOfYear(today.getFullYear(), 6, 21), hour: 12,
-  source: 'Default location (London) — the file has no location set',
+  lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
+  doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
+// The site location of the open model: a custom location, the weather file (epw, an EPW object)
+// and which source to use (use: 'custom', 'epw', 'file' or null for the first that is set).
+const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the toolbar's Magic button
 const SKY = { top: [0.55, 0.69, 0.86, 1], bottom: [0.87, 0.9, 0.93, 1] };
@@ -3283,6 +3360,8 @@ const can64 = () => HAS_MEMORY64 && typeof RHINO3DM_WASM === 'object';
 
 async function boot() {
   bindUi();
+  applyLocation();
+  Recent.store('readwrite', (s) => s.delete('epw')).catch(() => {}); // a browser-wide copy kept by earlier versions
   try {
     renderer = await Renderer.create(canvas);
   } catch (e) {
@@ -3349,7 +3428,7 @@ function frameState() {
 
 function sunPosition() {
   const S = state.sun;
-  return solarPosition({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: S.year, doy: S.doy, hour: S.hour });
+  return solarPosition({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, doy: S.doy, hour: S.hour });
 }
 
 function loop() {
@@ -3370,11 +3449,26 @@ function loop() {
 
 // handle: the file's FileSystemFileHandle, when there is one, for the recent files list.
 async function openFile(file, handle = null) {
-  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm file.`, true); return; }
+  if (/\.epw$/i.test(file.name)) { loadEpw(file); return; }
+  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm or .epw file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
   await Recent.add(handle, file);
   renderRecent();
-  await openBytes(file.name, new Uint8Array(await file.arrayBuffer()));
+  await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), handle);
+}
+
+// The custom location, weather file and choice of location linked to a model come back with it.
+// Returns what came back, for a notice.
+async function restoreLinks(handle) {
+  const { custom, epw: d, use } = await Recent.links(handle), back = [];
+  const c = custom && Math.abs(custom.lat) <= 90 && Math.abs(custom.lon) <= 180 && Math.abs(custom.utcOffset) <= 14 ? custom : null;
+  if (c) { site.custom = { lat: +c.lat, lon: +c.lon, utcOffset: +c.utcOffset, name: typeof c.name === 'string' ? c.name : null }; back.push(`custom location ${site.custom.name || fmtCoords(c.lat, c.lon)}`); }
+  if (d) {
+    try { site.epw = EPW.fromBytes(d.bytes, d.name); back.push(`weather file ${d.name}`); }
+    catch (e) { notice(`Could not read ${d.name}, the weather file linked to this model: ${e.message}`, true); }
+  }
+  if (['custom', 'epw', 'file'].includes(use)) site.use = use;
+  return back;
 }
 
 async function readModel(kind, name, bytes) {
@@ -3391,7 +3485,8 @@ async function readModel(kind, name, bytes) {
   }
 }
 
-async function openBytes(name, bytes) {
+// handle: the file's handle when it was opened from the user's files (see openFile).
+async function openBytes(name, bytes, handle = null) {
   const t0 = performance.now();
   walker.exit();
   clearNotices();
@@ -3413,6 +3508,7 @@ async function openBytes(name, bytes) {
     model.name = name;
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
+    model.handle = handle;
     if (loadEdits()) {
       showBusy('Applying your changes', 0.92);
       await new Promise((r) => setTimeout(r, 20));
@@ -3432,13 +3528,17 @@ async function openBytes(name, bytes) {
     applyLayerVisibility();
     buildLayerTree();
     applyLayerMaterials(false);
+    Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
+    const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
+    if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
     setView('perspective', true);
     leaveHome();
     $('fileName').textContent = name;
     document.title = `${name} · 3DM Viewer`;
     renderFileInfo();
     reportSkipped(m.stats);
+    return true;
   } catch (e) {
     console.error(e);
     notice(`Could not open ${name}: ${e.message || e}`, true);
@@ -3805,15 +3905,15 @@ function replayObjectEdits(exploded = [], objEdits = {}) {
 
 // ---------------------------------------------------------------------------------------------
 // Undo and redo, as in Rhino: changes to the model (layer colours, materials and magic materials,
-// object colour and material sources, exploded blocks, Revert, the sun's location) can be undone. View changes,
-// hiding objects and turning layers on or off are not recorded. Each entry keeps the edit state
-// from before the change; undoing swaps it with the current one. Not kept between sessions.
+// object colour and material sources, exploded blocks, the north angle, Revert) can be undone. View
+// changes, hiding objects, turning layers on or off and the site location (a viewer setting, not
+// part of the model) are not recorded. Each entry keeps the edit state from before the change;
+// undoing swaps it with the current one. Not kept between sessions.
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const SUN_LOCATION = ['lat', 'lon', 'utcOffset', 'north', 'place', 'source'];
 const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, exploded: state.exploded,
-  sun: Object.fromEntries(SUN_LOCATION.map((k) => [k, state.sun[k]])) });
+  north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
 // make one entry, until endUndoGroup() (the control's change event, or the dialog closing).
@@ -3870,7 +3970,7 @@ async function restoreEdits(e) {
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
   if (state.sel.ids.length) showInspector();
   pushObjectFlags();
-  if (e.sun) setSun(e.sun);
+  if (e.north !== undefined) { setSun({ north: e.north }); renderFileInfo(); }
 }
 
 // Restore the changes remembered for this model. Returns true if objects changed (the batches
@@ -4409,6 +4509,9 @@ function renderFileInfo() {
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
+  if (state.sun.north !== fileNorth()) changes.push('North angle changed');
+  if (document.activeElement !== $('fileNorth')) $('fileNorth').value = state.sun.north;
+  $('fileNorthInfo').textContent = `Degrees anticlockwise from the model’s +X axis to north (90: +Y is north). ${loc ? `The file’s is ${+fileNorth().toFixed(1)}°, from its ${loc.source}.` : 'The file does not set one; 90 is the default.'}`;
   $('fileChanges').textContent = changes.length ? changes.join(' · ') : 'No changes made in the viewer.';
   $('btnDownload').disabled = saved.length === 0;
   $('btnDownload').title = saved.length ? 'Save a copy of the .3dm with the colours, materials and exploded blocks changed in this viewer'
@@ -4424,11 +4527,12 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, exploded blocks, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material and block changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours and materials, exploded blocks, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
-  const n = editCount();
-  if (n.mat + n.col + n.obj + n.expl) recordUndo('Revert changes');
+  const n = editCount(), north = fileNorth();
+  if (n.mat + n.col + n.obj + n.expl || state.sun.north !== north) recordUndo('Revert changes');
+  setSun({ north });
   const rebuild = state.exploded.length || Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
@@ -4447,9 +4551,22 @@ async function revertChanges() {
   buildLayerTree.refresh?.();
   pushObjectFlags();
   syncHiddenButton();
+  renderFileInfo();
 }
 
+// The open model's north angle: the file's own (Rhino sun settings or Earth anchor), else 90.
+const fileNorth = () => (model?.location ? +model.location.north.toFixed(2) : 90);
+
 function bindFileDialog() {
+  const north = $('fileNorth');
+  north.addEventListener('input', () => {
+    const v = parseFloat(north.value);
+    if (!model || !Number.isFinite(v) || Math.abs(v) > 360 || v === state.sun.north) return;
+    recordUndo('Change north angle', 'north');
+    setSun({ north: v });
+    renderFileInfo();
+  });
+  north.addEventListener('change', endUndoGroup);
   $('fileName').addEventListener('click', () => toggleFileDialog());
   $('fileClose').addEventListener('click', () => toggleFileDialog(false));
   $('btnDownload').addEventListener('click', downloadCopy);
@@ -4463,36 +4580,32 @@ const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', '
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 let sunAnim = 0;
 
+// A newly opened model: its north angle, and the date and time from Rhino's sun settings if any.
 function applyFileLocation(loc) {
   const S = state.sun;
-  if (loc) {
-    Object.assign(S, { lat: +loc.lat.toFixed(5), lon: +loc.lon.toFixed(5), utcOffset: loc.utcOffset, north: +loc.north.toFixed(2), place: null, source: `Location from the ${loc.source}` });
-    if (loc.date) { S.year = loc.date.year; S.doy = dayOfYear(loc.date.year, loc.date.month, loc.date.day); S.hour = loc.date.hour; }
-  } else {
-    S.source = `No location in the file — using ${S.lat.toFixed(2)}°, ${S.lon.toFixed(2)}°`;
-  }
-  syncSunPanel();
+  S.north = fileNorth();
+  if (loc?.date) { S.doy = dayOfYear(EPW_YEAR, loc.date.month, loc.date.day); S.hour = loc.date.hour; }
+  applyLocation();
 }
 
 function syncSunPanel() {
   const S = state.sun;
   $('sunOn').checked = S.on;
   $('sunGround').checked = S.ground;
-  $('sunDay').max = daysInYear(S.year);
+  $('sunDay').max = daysInYear(EPW_YEAR);
   $('sunDay').value = S.doy;
   $('sunHour').value = S.hour;
-  // The location fields are in the Select location dialog, when it is open.
-  for (const [id, k] of [['sunLat', 'lat'], ['sunLon', 'lon'], ['sunUtc', 'utcOffset'], ['sunNorth', 'north']])
-    if ($(id) && document.activeElement !== $(id)) $(id).value = S[k];
-  if ($('sunSource')) $('sunSource').textContent = S.source;
-  const { month, day } = dateFromDayOfYear(S.year, S.doy);
-  $('sunDateOut').textContent = `${day} ${MONTHS[month - 1]} ${S.year}`;
-  const utc = fmtUtc(S.utcOffset);
-  const coords = `${Math.abs(S.lat).toFixed(2)}° ${S.lat < 0 ? 'S' : 'N'}, ${Math.abs(S.lon).toFixed(2)}° ${S.lon < 0 ? 'W' : 'E'}`;
-  $('sunLocName').textContent = S.place || coords;
-  $('sunLocInfo').textContent = `${S.place ? coords + ' · ' : ''}${utc} · north ${+S.north.toFixed(1)}°`;
-  $('sunLocName').parentNode.title = S.source;
-  $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${utc}`;
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, S.doy);
+  $('sunDateOut').textContent = `${day} ${MONTHS[month - 1]}`;
+  $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
+  syncWeather(month, day);
+  if (!activeLocation()) {
+    $('sunTimeOut').textContent = fmtHour(S.hour);
+    $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
+    document.querySelector('.sun-body').classList.toggle('off', true);
+    document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
+    return;
+  }
   const p = sunPosition();
   const dirName = COMPASS[Math.round(p.azimuth / 22.5) % 16];
   const pos = p.altitude > -0.83
@@ -4505,6 +4618,10 @@ function syncSunPanel() {
 }
 
 function setSun(changes) {
+  if (changes.on && !activeLocation()) {
+    changes = { ...changes, on: false };
+    warnNoLocation('The sun needs a location to be turned on.');
+  }
   Object.assign(state.sun, changes);
   syncSunPanel();
   redraw();
@@ -4520,6 +4637,7 @@ function toggleSunPanel() {
 function toggleSunPlay() {
   if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; $('sunPlay').classList.remove('on'); $('sunPlay').textContent = '▶'; return; }
   if (!state.sun.on) setSun({ on: true });
+  if (!state.sun.on) return; // no location
   $('sunPlay').classList.add('on'); $('sunPlay').textContent = '❚❚';
   let last = performance.now();
   const step = (now) => {
@@ -4537,15 +4655,38 @@ function toggleSunPlay() {
 function bindSunPanel() {
   $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
   $('sunGround').addEventListener('change', (e) => setSun({ ground: e.target.checked }));
-  $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value, on: true }));
-  $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value, on: true }));
+  // Date and time work with the sun off too, for the weather.
+  $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
+  $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
   document.querySelectorAll('[data-md]').forEach((b) => b.addEventListener('click', () => {
     const [m, d] = b.dataset.md.split('-').map(Number);
-    setSun({ doy: dayOfYear(state.sun.year, m, d), on: true });
+    setSun({ doy: dayOfYear(EPW_YEAR, m, d) });
   }));
   $('sunPlay').addEventListener('click', toggleSunPlay);
-  $('sunPickCity').addEventListener('click', selectLocation);
+  $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
+  $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   syncSunPanel();
+}
+
+// Weather at the panel's date and time, interpolated from the weather file.
+function syncWeather(month, day) {
+  const el = $('sunWeather'), e = site.epw;
+  $('sunWeatherSrc').textContent = e ? e.location.name || e.fileName : '';
+  $('sunWeatherSrc').title = e ? e.fileName : '';
+  if (!e) {
+    el.innerHTML = '<span class="fine">Add a weather file (EPW) to see the weather at this date and time.</span> <button class="link">Add one…</button>';
+    return;
+  }
+  const w = e.at(month, day, state.sun.hour), v = (x, d = 0) => (x === null ? '—' : x.toFixed(d));
+  const wind = w.windSpeed === null ? '—' : w.windSpeed < 0.05 ? '<b>Calm</b>'
+    : `<b>${v(w.windSpeed, 1)}</b> m/s${w.windDirection === null ? '' : ` from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°)`}`;
+  el.innerHTML = `<dl class="wx">
+    <dt>Air temperature</dt><dd><b>${v(w.dryBulb, 1)}</b> °C</dd>
+    <dt>Relative humidity</dt><dd><b>${v(w.relativeHumidity)}</b>%</dd>
+    <dt>Wind</dt><dd>${wind}</dd>
+    <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
+    <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
+    <dt>Diffuse horizontal</dt><dd><b>${v(w.diffuseHorizontal)}</b> W/m²</dd></dl>`;
 }
 
 // "UTC", "UTC+3", "UTC−3:30".
@@ -4554,63 +4695,189 @@ function fmtUtc(h) {
   return h === 0 ? 'UTC' : `UTC${h > 0 ? '+' : '−'}${Math.floor(a)}${m ? ':' + String(m).padStart(2, '0') : ''}`;
 }
 
-// The sun's location: latitude, longitude, UTC offset and north angle, typed in or set from a city
-// (cities.js). Changes apply as they are made.
-function selectLocation() {
+// ---------------------------------------------------------------------------------------------
+// Site location and weather file. Three sources: a custom location (typed in or a city), the
+// weather file's and the open Rhino file's. The one chosen with "Use this location" is used;
+// until a choice is made, the first that is set, in that order. With none, there is no location
+// and the sun cannot be turned on.
+//
+// The custom location, the weather file and the choice belong to the open model: opening another
+// model clears them, and only those linked to it (in its recent files entry) come back with it.
+
+const LOCATION_KINDS = { custom: 'custom location', epw: 'from the weather file', file: 'from the Rhino file' };
+const fmtCoords = (lat, lon) => `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(2)}° ${lon < 0 ? 'W' : 'E'}`;
+
+// { lat, lon, utcOffset, name, kind } for one source, or null when it has no location.
+function locationOf(kind) {
+  if (kind === 'custom') return site.custom && { ...site.custom, kind };
+  if (kind === 'epw') {
+    const e = site.epw?.location;
+    return e?.known ? { lat: e.lat, lon: e.lon, utcOffset: e.utcOffset ?? Math.round(e.lon / 15), name: e.name, kind } : null;
+  }
+  const f = model?.location;
+  return f ? { lat: f.lat, lon: f.lon, utcOffset: f.utcOffset, name: null, kind } : null;
+}
+const activeLocation = () => (site.use && locationOf(site.use)) || locationOf('custom') || locationOf('epw') || locationOf('file');
+
+function applyLocation() {
+  const A = activeLocation();
+  if (A) Object.assign(state.sun, { lat: +A.lat.toFixed(5), lon: +A.lon.toFixed(5), utcOffset: A.utcOffset });
+  else if (state.sun.on) { state.sun.on = false; warnNoLocation('The sun is off because there is no location now.'); }
+  $('btnLocation').classList.toggle('set', !!A);
+  $('locName').textContent = A ? A.name || fmtCoords(A.lat, A.lon) : 'Set location';
+  $('btnLocation').title = A ? `${A.name ? fmtCoords(A.lat, A.lon) + ', ' : ''}${fmtUtc(A.utcOffset)}, ${LOCATION_KINDS[A.kind]}. Click to change the location or weather file.`
+    : 'Set the site location, or add a weather file (EPW)';
+  locationDialog?.refresh();
+  syncSunPanel();
+  redraw();
+}
+
+function warnNoLocation(why) {
+  document.querySelectorAll('.notice.no-loc').forEach((n) => n.remove());
+  notice(`${why} Set one from a weather file, a custom location or the Rhino file.`, false, 0, { label: 'Set location…', run: openLocationDialog }).classList.add('no-loc');
+}
+
+// Save a change to the open model's links. Typing saves once the typing pauses.
+let linkTimer = 0, linkPending = null; // { handle, changes }
+function linkToModel(changes, delay = 0) {
+  const h = model?.handle;
+  if (!h) return;
+  if (linkPending && linkPending.handle !== h) flushLinks();
+  linkPending = { handle: h, changes: { ...linkPending?.changes, ...changes } };
+  clearTimeout(linkTimer);
+  if (delay) linkTimer = setTimeout(flushLinks, delay); else flushLinks();
+}
+function flushLinks() {
+  clearTimeout(linkTimer);
+  const p = linkPending;
+  linkPending = null;
+  if (p) Recent.link(p.handle, p.changes).then(renderRecent);
+}
+
+function useLocation(kind) {
+  site.use = kind;
+  linkToModel({ use: kind });
+  applyLocation();
+}
+
+function setCustomLocation(c, typing = false) {
+  site.custom = c;
+  site.use = 'custom';
+  linkToModel({ custom: c, use: 'custom' }, typing ? 400 : 0);
+  applyLocation();
+}
+
+// A weather file from the Set location dialog or dropped onto the window. A new one is used
+// for the location straight away, when it has one.
+async function loadEpw(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try { setEpw(EPW.fromBytes(bytes, file.name), bytes); }
+  catch (e) { notice(`Could not read ${file.name}: ${e.message}`, true); return; }
+  if (!site.epw.location.known) notice(`${file.name} has no usable latitude and longitude, so it does not set the location. Its weather is still shown.`);
+  else notice(`Location and weather from ${file.name}.`, false, 3000);
+}
+
+// epw: an EPW object, or null to remove it. A copy of the file is linked to the open model.
+function setEpw(epw, bytes) {
+  site.epw = epw;
+  if (epw?.location.known) site.use = 'epw';
+  else if (site.use === 'epw') site.use = null;
+  linkToModel({ epw: epw ? { name: epw.fileName, bytes } : null, use: site.use });
+  applyLocation();
+}
+
+// Set location dialog: the three sources, each marked "In use" or offering "Use this location".
+// Changes apply as they are made.
+let locationDialog = null;
+function openLocationDialog() {
+  if (locationDialog) return;
   const wrap = document.createElement('div');
   wrap.className = 'loc-dlg';
-  wrap.innerHTML = `<div class="grid2">
-      <label>Latitude<input type="number" id="sunLat" step="0.0001" min="-90" max="90"></label>
-      <label>Longitude<input type="number" id="sunLon" step="0.0001" min="-180" max="180"></label>
-      <label>UTC offset (h)<input type="number" id="sunUtc" step="0.5" min="-12" max="14"></label>
-      <label title="Degrees anticlockwise from the model's +X axis to north (90 = +Y is north)">North angle (°)<input type="number" id="sunNorth" step="1"></label>
-    </div>
-    <div class="fine" id="sunSource"></div>
-    <div class="loc-cities">Or choose a city <span class="fine">(sets latitude, longitude and the standard-time UTC offset)</span></div>
-    <input type="search" class="city-search" placeholder="Search cities or countries" aria-label="Search cities">
-    <div class="city-list" role="listbox"></div>`;
-  const search = wrap.querySelector('.city-search'), list = wrap.querySelector('.city-list');
-  const num = (id, key, lo, hi, label, typed) => {
-    const el = wrap.querySelector('#' + id);
-    el.addEventListener('change', endUndoGroup);
-    el.addEventListener('input', (e) => {
-      const v = parseFloat(e.target.value);
-      if (!Number.isFinite(v) || v < lo || v > hi || v === state.sun[key]) return;
-      if (model) recordUndo(`Change ${label}`, id);
-      setSun({ [key]: v, on: true, ...(typed && { place: null, source: 'Latitude and longitude typed in' }) });
-      if (typed) show(); // no city is selected now
-    });
+  const head = (kind, title) => `<div class="loc-head"><b>${title}</b><span class="loc-use">In use</span><button class="btn small primary" data-use="${kind}">Use this location</button></div>`;
+  wrap.innerHTML = `
+    <section class="loc-src" data-kind="epw">
+      ${head('epw', 'Weather file (EPW)')}
+      <div class="loc-status" data-el="epw"></div>
+      <div class="loc-actions"><button class="btn small" data-el="pick"></button><button class="link" data-el="remove">Remove</button></div>
+    </section>
+    <section class="loc-src" data-kind="custom">
+      ${head('custom', 'Custom location')}
+      <div class="grid3">
+        <label>Latitude<input type="number" data-el="lat" step="0.0001" min="-90" max="90"></label>
+        <label>Longitude<input type="number" data-el="lon" step="0.0001" min="-180" max="180"></label>
+        <label>UTC offset (h)<input type="number" data-el="utc" step="0.5" min="-12" max="14"></label>
+      </div>
+      <input type="search" class="city-search" placeholder="Or search cities and countries" aria-label="Search cities">
+      <div class="city-list" role="listbox"></div>
+    </section>
+    <section class="loc-src" data-kind="file">
+      ${head('file', 'Rhino file')}
+      <div class="loc-status" data-el="file"></div>
+    </section>
+    <div class="fine" data-el="note"></div>
+    <input type="file" accept=".epw" data-el="input" hidden>`;
+  const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
+  const lat = el('lat'), lon = el('lon'), utc = el('utc'), search = wrap.querySelector('.city-search'), list = wrap.querySelector('.city-list');
+
+  wrap.querySelectorAll('[data-use]').forEach((b) => b.addEventListener('click', () => useLocation(b.dataset.use)));
+  el('pick').addEventListener('click', () => el('input').click());
+  el('input').addEventListener('change', () => { const f = el('input').files[0]; el('input').value = ''; if (f) loadEpw(f); });
+  el('remove').addEventListener('click', () => setEpw(null, null));
+
+  // Typing a latitude and longitude sets the custom location; the UTC offset follows the
+  // longitude until one is typed.
+  let utcTyped = !!site.custom;
+  const typed = () => {
+    const a = parseFloat(lat.value), o = parseFloat(lon.value), u = parseFloat(utc.value);
+    if (!(Math.abs(a) <= 90 && Math.abs(o) <= 180)) return;
+    setCustomLocation({ lat: a, lon: o, utcOffset: utcTyped && Math.abs(u) <= 14 ? u : Math.round(o / 15), name: null }, true);
   };
-  num('sunLat', 'lat', -90, 90, 'latitude', true);
-  num('sunLon', 'lon', -180, 180, 'longitude', true);
-  num('sunUtc', 'utcOffset', -12, 14, 'UTC offset');
-  num('sunNorth', 'north', -360, 360, 'north angle');
-  const show = () => {
+  lat.addEventListener('input', typed);
+  lon.addEventListener('input', typed);
+  utc.addEventListener('input', () => { utcTyped = utc.value !== ''; typed(); });
+
+  const showCities = () => {
     const q = search.value.trim().toLowerCase();
     const hits = CITIES.filter(([n, c]) => !q || n.toLowerCase().includes(q) || c.toLowerCase().includes(q));
     list.innerHTML = hits.length ? '' : '<div class="empty">No matching city. Type a latitude and longitude above instead.</div>';
-    for (const [name, country, lat, lon, off] of hits) {
+    for (const [name, country, la, lo, off] of hits) {
       const b = document.createElement('button');
       b.setAttribute('role', 'option');
       b.innerHTML = '<span></span><span class="n"></span>';
       b.firstChild.textContent = `${name}, ${country}`;
-      b.lastChild.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)} · ${fmtUtc(off)}`;
-      b.setAttribute('aria-selected', String(state.sun.place === name && state.sun.lat === lat && state.sun.lon === lon));
-      b.addEventListener('click', () => {
-        if (model) { endUndoGroup(); recordUndo(`Set location to ${name}`); }
-        setSun({ lat, lon, utcOffset: off, on: true, place: name, source: `${name}, ${country}, from the city list (UTC offset is standard time, without daylight saving)` });
-        show();
-      });
+      b.lastChild.textContent = `${la.toFixed(2)}, ${lo.toFixed(2)} · ${fmtUtc(off)}`;
+      b.setAttribute('aria-selected', String(site.custom?.name === `${name}, ${country}`));
+      b.addEventListener('click', () => { utcTyped = true; setCustomLocation({ lat: la, lon: lo, utcOffset: off, name: `${name}, ${country}` }); });
       list.appendChild(b);
     }
   };
-  search.addEventListener('input', show);
-  // Enter in the search box picks the first match (and, through the dialog, closes it).
-  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') list.querySelector('button')?.click(); });
-  show();
-  const dlg = new Dialog({ title: 'Select location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 420,
-    onOpen: () => { search.focus(); syncSunPanel(); } });
-  dlg.result.then(endUndoGroup);
+  search.addEventListener('input', showCities);
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.stopPropagation(); list.querySelector('button')?.click(); } });
+
+  const refresh = () => {
+    const A = activeLocation(), e = site.epw, c = site.custom, f = model?.location;
+    wrap.querySelectorAll('.loc-src').forEach((s) => s.classList.toggle('active', A?.kind === s.dataset.kind));
+    wrap.querySelectorAll('[data-use]').forEach((b) => { b.hidden = !locationOf(b.dataset.use) || A?.kind === b.dataset.use; });
+    el('epw').innerHTML = e
+      ? `<div>${escapeHtml(e.location.name || 'Unnamed location')}</div><div class="fine">${escapeHtml(e.fileName)} · ${e.location.known ? `${fmtCoords(e.location.lat, e.location.lon)} · ${fmtUtc(e.location.utcOffset ?? 0)}` : 'no usable latitude and longitude; its weather is still shown'}</div>`
+      : '<div class="fine">None. Choose one, or drop an .epw file onto the window. It also gives the weather in the Sun panel.</div>';
+    el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
+    el('remove').hidden = !e;
+    for (const [input, k] of [[lat, 'lat'], [lon, 'lon'], [utc, 'utcOffset']])
+      if (document.activeElement !== input) input.value = c ? c[k] : '';
+    el('file').innerHTML = !model ? '<div class="fine">No file open</div>'
+      : f ? `<div>${fmtCoords(f.lat, f.lon)} · ${fmtUtc(f.utcOffset)}</div><div class="fine">From the ${escapeHtml(f.source)} in ${escapeHtml(model.name)}</div>`
+        : `<div class="fine">${escapeHtml(model.name)} does not set a location</div>`;
+    el('note').textContent = `${A ? '' : 'No location is set, so the sun cannot be turned on. '}A new weather file or custom location is used straight away. ${!model
+      ? 'They belong to the open model; with none open, they are cleared when one is opened.'
+      : model.handle ? `They belong to ${model.name}, with your choice, and come back when you reopen it from Recent files. Other models do not use them.`
+        : `They belong to ${model.name} while it is open. It was not opened from your files, so they cannot be kept with it.`}`;
+    showCities();
+  };
+  refresh();
+  locationDialog = { refresh };
+  Dialog.open({ title: 'Set location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460 })
+    .then(() => { locationDialog = null; });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -4833,8 +5100,7 @@ function checkSunlight() {
   sunlightBusy = true;
   renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
     if (!walker.active) return;
-    const alt = `sun ${Math.round(pos.altitude)}° up`;
-    if (!h) show('lit', `<b>In sunlight</b> · ${alt}`);
+    if (!h) show('lit', '<b>In sunlight</b>');
     else {
       const layer = model.layers[model.objects[h.id]?.layer], dist = V3.len(V3.sub(h.p, eye)) / u;
       show('shade', `<b>In shade</b> · cast by ${layer ? escapeHtml(layer.name) : 'an object'}, ${dist < 1 ? "less than 1" : Math.round(dist)} m away`);
@@ -4888,7 +5154,8 @@ async function renderRecent() {
     const li = document.createElement('li');
     li.innerHTML = '<button class="recent-open"><span class="recent-name"></span><span class="recent-info"></span></button><button class="x" aria-label="Remove from the list" title="Remove from the list">×</button>';
     li.querySelector('.recent-name').textContent = r.name;
-    li.querySelector('.recent-info').textContent = `${(r.size / 1e6).toFixed(r.size < 1e7 ? 1 : 0)} MB · opened ${date(r.opened)}`;
+    const linked = [r.custom && `custom location ${r.custom.name || fmtCoords(r.custom.lat, r.custom.lon)}`, r.epw && `weather ${r.epw.name}`].filter(Boolean);
+    li.querySelector('.recent-info').textContent = [`${(r.size / 1e6).toFixed(r.size < 1e7 ? 1 : 0)} MB`, `opened ${date(r.opened)}`, ...linked].join(' · ');
     li.querySelector('.recent-open').title = `Open ${r.name}`;
     li.querySelector('.recent-open').addEventListener('click', () => openRecent(r));
     li.querySelector('.x').addEventListener('click', async () => { await Recent.remove(i); renderRecent(); });
@@ -4918,6 +5185,7 @@ function bindUi() {
     openFile(await handle.getFile(), handle);
   };
   $('btnHome').addEventListener('click', goHome);
+  $('btnLocation').addEventListener('click', openLocationDialog);
   $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
@@ -4986,8 +5254,9 @@ function showBusy(text, frac) {
 }
 function hideBusy() { $('busy').hidden = true; }
 
-// timeout: remove after this many ms (brief, informational notices).
-function notice(text, error = false, timeout = 0) {
+// timeout: remove after this many ms (brief, informational notices). action: { label, run } adds
+// a link that runs it and dismisses the notice.
+function notice(text, error = false, timeout = 0, action = null) {
   const n = document.createElement('div');
   n.className = 'notice' + (error ? ' error' : '') + (timeout ? ' brief' : '');
   if (timeout) {
@@ -4995,11 +5264,18 @@ function notice(text, error = false, timeout = 0) {
     setTimeout(() => n.remove(), timeout);
   }
   n.textContent = text;
+  if (action) {
+    const a = document.createElement('button');
+    a.className = 'link'; a.textContent = action.label;
+    a.onclick = () => { n.remove(); action.run(); };
+    n.append(' ', a);
+  }
   const x = document.createElement('button');
   x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'Dismiss');
   x.onclick = () => n.remove();
   n.appendChild(x);
   $('notices').appendChild(n);
+  return n;
 }
 function clearNotices() { $('notices').innerHTML = ''; }
 

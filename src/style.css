@@ -158,7 +158,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .check input { accent-color: var(--accent); margin: 0; }
 .sun-body .fine { font-size: 11.5px; color: var(--muted); }
-.sun-body.off > :not(.sun-read) { opacity: 0.55; }
+.sun-body.off .sun-only { opacity: 0.55; }
 .switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .switch span { position: absolute; inset: 0; background: var(--border); border-radius: 9px; cursor: pointer; transition: background 0.15s; }
@@ -274,13 +274,45 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 @media (prefers-reduced-motion: reduce) { .dlg-backdrop, .dlg { transition: none; } }
 
 /* Location (Sun panel) */
-.sun-loc { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.sun-loc-text { min-width: 0; font-size: 12.5px; }
-.sun-loc-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sun-loc .btn { flex: none; }
-.loc-dlg .fine { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
-.loc-cities { margin: 14px 0 6px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; }
-.loc-cities .fine { margin: 0; }
+/* Site location: the header button and the Set location dialog */
+.loc-btn { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font: inherit; white-space: nowrap;
+  border: 0; background: none; padding: 4px 8px 4px 6px; border-radius: 6px; cursor: pointer; }
+.loc-btn:hover { background: var(--hover); color: var(--text); }
+.loc-btn span { overflow: hidden; text-overflow: ellipsis; }
+.loc-btn svg { flex: none; width: 17px; height: 17px; }
+.loc-btn.set { color: var(--text); }
+.loc-btn.set svg path { fill: #dc2626; stroke: #dc2626; }
+.loc-btn.set svg circle { fill: #fff; stroke: none; }
+.loc-dlg { display: flex; flex-direction: column; gap: 10px; }
+.loc-dlg > .fine { font-size: 11.5px; color: var(--muted); }
+.loc-src { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.loc-src.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.loc-head { display: flex; align-items: center; gap: 8px; }
+.loc-head .btn { margin-left: auto; padding: 3px 9px; }
+.loc-use { display: none; font-size: 10.5px; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 0 6px; line-height: 16px; }
+.loc-src.active .loc-use { display: inline-block; }
+.loc-status .fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.loc-actions { display: flex; align-items: center; gap: 12px; }
+.loc-actions .link { font-size: 12px; }
+.loc-actions .link[hidden] { display: none; }
+.loc-dlg .city-search { margin-bottom: 0; }
+.loc-dlg .city-list { max-height: 168px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.grid3 label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.grid3 input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; width: 100%; font-variant-numeric: tabular-nums; }
+.grid3 input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+/* Weather in the Sun panel */
+.sun-weather { font-size: 12px; }
+.sun-weather .wx { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.sun-weather dt { color: var(--muted); }
+.sun-weather dd { margin: 0; }
+.sun-weather b { font-weight: 600; }
+#sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+/* North angle in the file panel */
+.north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.north-input { display: flex; align-items: center; gap: 5px; }
+.north-input input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; width: 80px; font-variant-numeric: tabular-nums; }
+.north .fine { font-size: 11.5px; color: var(--muted); }
 .city-list button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
 .city-search { width: 100%; font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
 .city-list { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; margin: 0 -4px; }
