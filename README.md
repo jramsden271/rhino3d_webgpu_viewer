@@ -1,0 +1,238 @@
+# 3DM Viewer
+
+A single HTML file that opens Rhino `.3dm` models in the browser and renders them with WebGPU.
+No install, no server, no internet connection: the Rhino file reader (McNeel's rhino3dm,
+compiled to WebAssembly) is embedded in the page, and the model never leaves your computer.
+
+## Using it
+
+1. Open `dist/rhino-viewer.html` in a current **Chrome** or **Microsoft Edge** (double-click it).
+2. Drag a `.3dm` file onto the page, or click **Open…**.
+
+The welcome screen lists the last five files opened (in this browser); click one to open it
+again, or × to remove it from the list. The browser asks once per session for permission to
+read the file again. A file that has been moved or renamed has to be opened afresh.
+
+The file can be copied anywhere (a project folder, a network drive, an email) and shared as is.
+
+| Action | Mouse / touch | Keys |
+| --- | --- | --- |
+| Orbit (around the point under the cursor) | Right-drag, Alt + left-drag · one finger (in Top, Front and Right views: Alt + left-drag only) | |
+| Pan | Left- or middle-drag, Shift + right-drag · two fingers · in Top, Front and Right views also right-drag and one finger | |
+| Zoom (towards the cursor) | Wheel · pinch | |
+| Focus on a point | Double-click a surface | |
+| Zoom extents | Double-click empty space | `F` |
+| Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
+| Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
+| Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
+| Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
+| Select all visible objects | | `Ctrl+A` |
+
+Top, Front and Right are parallel (no perspective) views, as in Rhino; orbiting one turns it
+into a free view.
+
+**Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
+materials, object colour and material sources, exploded blocks, Revert and the sun's
+location (latitude, longitude, UTC offset, north angle). View changes, date and time,
+hiding objects and turning layers on or off are not recorded. Dragging a slider or colour
+picker is one step. Undoing an explode rebuilds the model, which takes a moment on large
+files. The history starts afresh each time a file is opened.
+
+In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
+visibility saved in the file. Right-click a layer for:
+
+- **Select objects**: the visible objects on that layer (the count is shown).
+- **Select sublayer objects**: the visible objects on that layer and all its sub-layers
+  (only for layers with sub-layers).
+- **Show all** / **Hide all**: turn the layer and all its sub-layers on or off.
+
+The Layers and Sun panels close with their × button or from the toolbar.
+
+**Magic materials** give common site elements a look a plain colour cannot: animated water,
+glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
+its material dialog (click the layer's square in Rendered view):
+
+- **Auto** (the default): the layer is matched by name. The layer's own name is tried first,
+  then its parent layers' names, then the name of its render material. The match is shown as
+  a small tag after the layer name (e.g. *auto: vegetation*) and explained in the dialog.
+- **Always off**: no magic material, whatever the name.
+- **Water, Glass, Vegetation, Grass, Road, Paving, Ground**: always this one.
+
+Like any layer material, a magic material reaches only objects whose material comes from
+that layer ("By layer", or "By parent" inside a block instance that takes it from the layer).
+Blocks are not matched by their names: the parts of a tree block use the magic material of
+the layer their material comes from.
+
+The **Magic ✨** button on the toolbar turns magic materials on and off. When off,
+everything renders with its plain material colour.
+
+The colour in the dialog is the magic material's **base colour**: vegetation varies around
+it from object to object, and grass, road, paving and ground across the surface. Pick any
+colour (pink for cherry blossom, say) and the variation is kept. For water it is the colour of
+the water body, and for glass the tint (the sky reflection stays). Until you change it, the
+base colour is the magic material's default.
+
+| Matches (start of a word) | Look |
+| --- | --- |
+| water, river, canal, lake, pond, sea, stream, reservoir, harbour | Animated water: ripples, sky reflection, sun glint |
+| glass, glazing, curtain wall, window | Blue-grey glass reflecting the sky |
+| tree, vegetation, planting, foliage, hedge, shrub, bush, woodland | Smooth-shaded foliage, varied greens |
+| grass, lawn, turf, meadow, green space, soft landscape, pitch | Natural grass with subtle variation |
+| road, carriageway, asphalt, tarmac, highway, parking, rail | Dark asphalt |
+| pavement, paving, footway, footpath, walk, public realm, plaza | Light warm stone |
+| terrain, land, soil, ground, topo | Warm earth |
+
+Where surfaces of these types nearly coincide or cross (a road draped over terrain, say), the
+viewer gives hard surfaces display priority: water, road and paving show in front of grass,
+and grass in front of ground/terrain. This follows each layer's magic material, even with
+the Magic button off.
+
+The keyword lists are at the top of `src/materials.js`; edit them to match your own layer
+conventions and rebuild. Independently of the rules, Rendered mode is matte (Rhino gloss
+settings are ignored), uses filmic tone mapping, varies the shade of each building slightly,
+and fades distant geometry into a light haze. Water ripples animate while you interact and
+pause after 15 seconds idle.
+
+**Layer colours and materials.** Each layer's square in the Layers panel shows what that view
+uses: in Shaded (and Clay) view, the layer's **display colour**; in Rendered view, its
+**material**. Click it to change that one:
+
+- In Shaded view: the display colour.
+- In Rendered view: the magic material (see above), colour, gloss and transparency.
+
+As in Rhino, a layer setting changes only objects whose colour or material source is
+"By layer" (or "By parent" on a block whose instance takes it from the layer). When objects on
+the layer have their own colour or material, the dialog says how many and offers to select
+them, so you can switch them to "By layer" in the object panel. Edited squares get a blue ring;
+*Reset to file* removes the setting (the magic material goes back to Auto).
+
+**Object colours and materials.** The object panel shows a **Colour** source in Shaded view
+(By layer, By object, By parent, By material) or a **Material** source in Rendered view (By
+layer, By object, By parent). "By object" adds a colour picker or a list of the file's
+materials. With several objects selected, a source that differs between them shows as *Mixed*,
+and a change applies to all of them. On a block instance the source applies to the parts inside
+it that are set to "By parent".
+
+**Explode blocks.** When the selection includes block instances, *Explode block(s)* replaces
+each with the objects inside it, including nested blocks, so each part can be selected and
+changed. Parts set to "By parent" take the instance's colour and material as their own, so
+nothing changes on screen. The block definitions themselves are unchanged.
+
+All of these changes are **remembered automatically** in this browser for each model (by file
+name and size) and restored when you open it again. **Download .3dm** in the file properties
+(click the file name) writes a *copy* of the .3dm with them: layer colours, a Rhino material
+for each layer material set in the viewer (assigned as the layer's render material), changed
+object colour and material sources, and exploded blocks (replaced by copies of their parts).
+Your original file is not touched. Materials with a magic material are named after it (e.g.
+"Water – 010_WaterBody"), so Auto matches them again when the copy is reopened. "Always off"
+is not saved in the copy.
+
+**Inspect and hide objects.** The object panel can be dragged by its title bar; it then stays
+put until it closes. Click a surface or mesh to select the whole object (a block
+instance is one object) and show its type, block name, layer (click to find it in the Layers
+panel), material, size, triangle count, Rhino user text and ID (click to copy). Shift-click
+adds or removes objects; with several selected the panel summarises types, layers, overall
+extent and triangles. **Hide** (or `H`) removes the selection from view, including its edges,
+curves and shadows; a floating **Unhide all (n)** button brings everything back. `Esc` clears
+the selection. Curves and points are not clickable.
+
+**File properties.** Click the file name (top left) for the file's statistics (size, units,
+objects, triangles, curves, block instances, layers, location, anything not shown) and the
+changes made in the viewer. From there, **Download .3dm** saves a copy with your colour,
+material and block changes, and **Revert changes** puts everything (layer colours and
+materials, object colours and materials, exploded blocks, hidden objects and layer
+visibility) back to how it is in the file.
+
+**Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
+bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
+view; it switches off in X-ray mode. It is computed from the true (faceted) surfaces, so the
+smooth shading of foliage does not darken the outlines of tree canopies.
+
+## Sun and shadows
+
+Click **Sun** (or press `S`) to open the Sun panel, and switch it on there to light the model
+by the sun with cast shadows. In perspective views the sky shows the sun itself. Set the date
+and local time with the sliders (or the solstice/equinox buttons), and press ▶ to animate
+from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
+sunrise and sunset.
+
+- **Location, time zone, north and date** come from the file when Rhino has them: first
+  the Sun settings (Rendering panel → Sun, which include date, time and time zone), then
+  the Earth anchor point. Otherwise London is used. The panel shows the current location;
+  click **Select location…** to type a latitude, longitude, UTC offset or north angle, or to
+  choose from about 60 cities (this sets latitude, longitude and the standard-time UTC offset,
+  without daylight saving; the list is in `src/cities.js`). Changes apply as you make them.
+- **North angle** follows Rhino: degrees anticlockwise from the model's +X axis to north,
+  so 90 means +Y is north.
+- **UTC offset** is the clock's offset including any daylight saving, e.g. 1 for UK summer
+  time, 3 for Qatar.
+- **Shadows on a ground plane** adds a shadow catcher at the bottom of the model, for
+  massing models without terrain.
+
+Sun positions use the NOAA solar position equations (with refraction), which match
+published sunrise/sunset times to within about a minute. This is a visual study tool, not a
+validated daylight or solar analysis. Shadows are cast by surfaces and meshes only (not
+curves); materials more than 40% transparent do not cast shadows. Shadows use four
+cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
+
+## What is shown
+
+- Meshes, polysurfaces/Breps, extrusions, curves, points and block instances (nested,
+  with "by parent" colours and materials).
+- Colours follow Rhino's rules (layer, object, material or parent colour); Rendered mode uses
+  the object's render material, including PBR base colours and transparency.
+- Brep edges, mesh creases and boundaries are drawn as edges.
+- Analysis meshes with vertex colours keep their colours.
+- Hidden objects, layout (page space) objects and block definitions themselves are skipped.
+- Not shown: annotations, text, dimensions, hatches, lights, textures.
+
+### Polysurfaces need render meshes
+
+A browser cannot turn NURBS into triangles; only Rhino can. The viewer draws the render
+meshes Rhino caches in the file. A normal **Save** includes them; **Save Small**, or files
+written by other tools, may not. If anything is missing, the viewer tells you how many
+objects were skipped. Fix: open the model in Rhino, show it in a shaded view, then save it
+normally (or use `ExtractRenderMesh`).
+
+## Large files
+
+Files up to a few hundred MB load fine. Above 150 MB the viewer switches to the 64-bit
+(memory64) build of rhino3dm automatically, and it also falls back to it if the 32-bit reader
+runs out of memory. As a guide, a 494 MB masterplan (2.5 million triangles, 3,900 block
+instances) loads in about 15 seconds.
+
+Models far from the origin (e.g. on British National Grid coordinates) are re-centred in
+double precision before conversion, so there is no jitter when zoomed in.
+
+## Rebuilding
+
+Only needed after editing `src/` or to update rhino3dm. Requires Node.js 18 or later.
+
+```bash
+node build.js
+```
+
+The first build downloads rhino3dm from the npm registry into `vendor/`. After that it works
+offline. To update rhino3dm, change `RHINO3DM_VERSION` in `build.js`.
+
+## Layout
+
+```
+dist/rhino-viewer.html   the viewer (the only file anyone needs)
+build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist/
+src/index.html, style.css  page and UI
+src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
+src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
+src/sun.js               solar position, sun direction and colour
+src/cities.js            city list for the Select location dialog
+src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
+src/recent.js            recent files list (file handles in IndexedDB)
+src/materials.js         magic materials: keyword rules and default colours
+src/camera.js            Z-up orbit / pan / zoom camera
+src/main.js              file loading, input, layer panel, toolbar
+tools/                   development helpers (local server, Node test scripts)
+```
+
+During development, `node tools/serve.js` serves the project on http://localhost:8123/.
+`src/index.html` runs unbuilt, and `dist/rhino-viewer.html?model=/samples/x.3dm` opens a
+model straight away.

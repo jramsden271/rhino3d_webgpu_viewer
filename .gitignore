@@ -1,0 +1,11 @@
+# Test models (large, project data): keep out of the repository
+samples/
+*.3dm
+*.3dmbak
+
+# rhino3dm, downloaded by build.js on first build
+vendor/
+node_modules/
+
+.DS_Store
+Thumbs.db
