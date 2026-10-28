@@ -19,7 +19,7 @@ const state = {
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
-  on: false, ground: true, panel: false,
+  on: false, panel: false,
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -136,9 +136,7 @@ function frameState() {
       sky: light.sky + 0.06 * moonRgb[2] / 0.32, sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north,
       lst: siderealTime(sunOpts()) };
     if ((light.up > 0 || byMoon) && !state.xray) {
-      // Shadows cover the model plus a margin of ground around it for long, low-sun shadows.
-      s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * (state.sun.ground ? 1.6 : 1.1) });
-      if (state.sun.ground) s.ground = [c[0], c[1], mn[2] - R * 1e-4, R * 1.6];
+      s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
   }
   return s;
@@ -1321,7 +1319,6 @@ function applyFileLocation(loc) {
 function syncSunPanel() {
   const S = state.sun;
   $('sunOn').checked = S.on;
-  $('sunGround').checked = S.ground;
   $('sunDay').max = daysInYear(EPW_YEAR);
   $('sunDay').value = S.doy;
   $('sunHour').value = S.hour;
@@ -1332,7 +1329,6 @@ function syncSunPanel() {
   if (!activeLocation()) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
-    document.querySelector('.sun-body').classList.toggle('off', true);
     document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
     return;
   }
@@ -1343,7 +1339,6 @@ function syncSunPanel() {
     : `<b>Sun below the horizon</b> (${p.altitude.toFixed(1)}°)`;
   const day2 = p.polar === 'day' ? 'Sun up all day' : p.polar === 'night' ? 'Sun down all day' : `Sunrise <b>${fmtHour(p.sunrise)}</b> · Sunset <b>${fmtHour(p.sunset)}</b>`;
   $('sunRead').innerHTML = `${pos}<br>${day2}`;
-  document.querySelector('.sun-body').classList.toggle('off', !S.on);
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
 }
 
@@ -1384,7 +1379,6 @@ function toggleSunPlay() {
 
 function bindSunPanel() {
   $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
-  $('sunGround').addEventListener('change', (e) => setSun({ ground: e.target.checked }));
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
@@ -1394,6 +1388,14 @@ function bindSunPanel() {
     const at = (label, m, d) => ({ label, run: () => setSun({ doy: dayOfYear(EPW_YEAR, m, d) }) });
     showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
       at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
+  });
+  // Right-click the time slider for the usual analysis times.
+  $('sunHour').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (label, hour) => ({ label, run: () => setSun({ hour }) });
+    const noon = activeLocation() ? sunPosition().noon : null;
+    showMenu('Go to', [at('10:00', 10), at('12:00', 12), noon != null && at(`Solar noon · ${fmtHour(noon)}`, noon), at('15:00', 15)].filter(Boolean),
+      [e.clientX, e.clientY]);
   });
   $('sunPlay').addEventListener('click', toggleSunPlay);
   $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });

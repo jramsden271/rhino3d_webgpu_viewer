@@ -218,7 +218,7 @@ and time, so they turn through the night) and the model is lit by a dim blue nig
 The moon is shown in its real position and phase (lit on the side facing the sun), and once
 the sky is dark it lights the model and casts soft shadows, brighter towards full moon. Set
 the date and local time with the sliders (right-click the date slider to jump to a solstice
-or equinox), and press ▶ to animate
+or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00), and press ▶ to animate
 from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
 sunrise and sunset. The date has no year: sun positions change too little from year to
 year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
@@ -230,13 +230,12 @@ starting date and time.
   file's hourly records, each taken as the middle of its hour. The date and time sliders work
   with the sun off too.
 - **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
-- **Shadows on a ground plane** adds a shadow catcher at the bottom of the model, for
-  massing models without terrain.
 
 Sun positions use the NOAA solar position equations (with refraction), which match
 published sunrise/sunset times to within about a minute. This is a visual study tool, not a
-validated daylight or solar analysis. Shadows are cast by surfaces and meshes only (not
-curves); materials more than 40% transparent do not cast shadows. Shadows use four
+validated daylight or solar analysis. Shadows fall only on the model's own geometry: where
+there is no ground modelled, there is nothing to receive them. They are cast by surfaces and
+meshes only (not curves); materials more than 40% transparent do not cast shadows. Shadows use four
 cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
 
 ## Lights

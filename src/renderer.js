@@ -56,7 +56,7 @@ struct Frame {
   sunColor: vec4f,  // rgb = linear key light colour x intensity, w = sky brightness
   splits: vec4f,    // far view depth of each shadow cascade
   texel: vec4f,     // world size of one shadow texel, per cascade
-  ground: vec4f,    // shadow-catcher plane: centre x, centre y, z, half size
+  spare: vec4f,     // unused (keeps the offsets below)
   misc: vec4f,      // x = time (s), y = metres per model unit, z = haze start distance, w = haze density
   sel: vec4f,       // yzw = highlight colour for selected objects (see objFlags)
   camRight: vec4f,  // xyz camera right, w = tan(fov / 2)
@@ -489,20 +489,6 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   return vec4f(highlight(finish(lit, in.wp), in.oid), alpha);
 }
 
-// Shadow-catcher ground plane: transparent except where shadows fall -------------------------
-struct GOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
-@vertex fn vsGround(@builtin(vertex_index) i: u32) -> GOut {
-  var q = array<vec2f, 6>(vec2f(-1, -1), vec2f(1, -1), vec2f(1, 1), vec2f(-1, -1), vec2f(1, 1), vec2f(-1, 1));
-  let wp = vec3f(F.ground.xy + q[i] * F.ground.w, F.ground.z);
-  return GOut(F.viewProj * vec4f(wp, 1.0), wp);
-}
-@fragment fn fsGround(in: GOut) -> @location(0) vec4f {
-  let vis = sunVisibility(in.wp, vec3f(0.0, 0.0, 1.0));
-  let r = length(in.wp.xy - F.ground.xy) / F.ground.w;
-  let fade = 1.0 - smoothstep(0.6, 1.0, r);
-  return vec4f(0.08, 0.09, 0.12, (1.0 - vis) * 0.5 * fade);
-}
-
 // Curves and edges ---------------------------------------------------------------------------
 // Lines are nudged towards the camera (reverse-Z: larger depth is nearer) so curves lying on a
 // surface win the depth test instead of breaking up into dashes.
@@ -834,7 +820,6 @@ class Renderer {
       point: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'greater-equal' }),
       pointX: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'always', write: false }),
       pick: mk('vsPick', 'fsPick', [POS, OID], { format: 'rgba32float', samples: 1, layout: frameOnly }),
-      ground: mk('vsGround', 'fsGround', [], { layout: frameOnly, blend, write: false }),
       gbuf: mk('vsMesh', 'fsGbuf', [POS, NRM, OID], { format: 'rgba32float', samples: 1 }),
     };
 
@@ -1017,7 +1002,6 @@ class Renderer {
     f.set(s.sun ? [...s.sun.rgb, s.sun.sky] : [0, 0, 0, 1], 52);
     f.set(sh ? sh.splits : [0, 0, 0, 0], 56);
     f.set(sh ? sh.texel : [0, 0, 0, 0], 60);
-    f.set(s.ground || [0, 0, 0, 0], 64);
     f.set([s.time || 0, s.metresPerUnit || 1, s.hazeStart || 0, s.hazeDensity || 0], 68);
     f.set([0, 0.25, 0.55, 1.0], 72); // highlight colour for selected objects
     const cam = s.cam;
@@ -1105,7 +1089,7 @@ class Renderer {
   }
 
   // s: { viewProj, eye, viewDir, light, ortho, mode, xray, showEdges, showCurves, showPoints,
-  //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades(), ground?: [cx, cy, z, half] }
+  //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades() }
   draw(s) {
     if (!this.width) return;
     s.aoActive = !!(s.ao && s.cam && !s.xray);
@@ -1137,7 +1121,6 @@ class Renderer {
       pass.drawIndexed(b.count);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
-    if (s.ground && s.shadows && !s.xray) { pass.setPipeline(P.ground); pass.draw(6); }
     for (const b of vis) {
       // Edges on water and foliage are noise, so they are hidden when those materials apply.
       const softEdge = b.kind === 'edge' && ((s.mode === 1 && (b.effCls === MAT_WATER || b.effCls === MAT_VEGETATION)) || (s.mode === 2 && b.effCls === MAT_WATER));
