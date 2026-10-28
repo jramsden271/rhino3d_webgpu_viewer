@@ -7,11 +7,15 @@ compiled to WebAssembly) is embedded in the page, and the model never leaves you
 ## Using it
 
 1. Open `dist/rhino-viewer.html` in a current **Chrome** or **Microsoft Edge** (double-click it).
-2. Drag a `.3dm` file onto the page, or click **Open…**.
+2. Drag a `.3dm` file onto the page, or click **browse for one**.
 
 The welcome screen lists the last five files opened (in this browser); click one to open it
 again, or × to remove it from the list. The browser asks once per session for permission to
 read the file again. A file that has been moved or renamed has to be opened afresh.
+
+Click **3DM Viewer** (top left) to return to the welcome screen and open another file. The
+model you were looking at stays loaded until another opens: **Back to …** (or Esc) returns to it.
+A file can also be dropped onto the page at any time.
 
 The file can be copied anywhere (a project folder, a network drive, an email) and shared as is.
 

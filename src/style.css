@@ -41,7 +41,9 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 
 .top-left { top: 12px; left: 12px; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; max-width: calc(100% - 24px); }
-.brand { display: flex; align-items: center; gap: 7px; font-weight: 600; white-space: nowrap; }
+.brand { display: flex; align-items: center; gap: 7px; font: inherit; font-weight: 600; white-space: nowrap; color: inherit;
+  border: 0; background: none; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+.brand:hover { background: var(--hover); }
 .brand svg { fill: var(--accent); stroke: none; }
 .file-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
   border: 0; background: none; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; font: inherit; text-align: left; }
@@ -53,8 +55,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .btn.icon { padding: 6px; display: inline-flex; }
 .btn[hidden] { display: none; }
 .btn.toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-#btnOpen { background: var(--accent); color: #fff; }
-#btnOpen:hover { filter: brightness(1.08); }
 .link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; }
 .link:hover { text-decoration: underline; }
 
@@ -219,6 +219,8 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .drop-card h1 { font-size: 20px; margin: 12px 0 6px; }
 .drop-card p { margin: 4px 0; color: #5e6672; }
 .drop-card .link { color: #2563eb; }
+.drop-back { margin-top: 16px !important; }
+.drop-back .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drop-card .fine { font-size: 12px; margin-top: 14px; }
 .recent { margin-top: 22px; text-align: left; }
 .recent-head { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #5e6672; margin: 0 0 6px 8px; }

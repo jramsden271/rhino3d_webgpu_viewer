@@ -193,6 +193,7 @@ async function openBytes(name, bytes) {
       m.reader = 'w64';
     }
     model = m;
+    layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
     model.name = name;
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
@@ -212,13 +213,12 @@ async function openBytes(name, bytes) {
     $('undoRedo').hidden = false;
     $('fileDialog').hidden = true;
     $('matDialog').hidden = true;
-    layerOn = m.layers.map((l) => l.visible);
     applyLayerVisibility();
     buildLayerTree();
     applyLayerMaterials(false);
     applyFileLocation(m.location);
     setView('perspective', true);
-    $('drop').hidden = true;
+    leaveHome();
     $('fileName').textContent = name;
     document.title = `${name} · 3DM Viewer`;
     renderFileInfo();
@@ -1549,7 +1549,8 @@ function onKey(e) {
     p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
-    '?': toggleHelp, escape: () => { closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+    '?': toggleHelp, escape: () => {
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
   };
   if (actions[k] && (model || ['?', 'escape', 'l'].includes(k))) { e.preventDefault(); actions[k](); }
@@ -1644,6 +1645,22 @@ function toggle(key) {
 }
 function toggleHelp() { $('help').hidden = !$('help').hidden; }
 
+// Home: the welcome screen, with recent files. An open model stays loaded underneath, and
+// "Back to …" (or Esc) returns to it.
+let atHome = false;
+function goHome() {
+  walker.exit();
+  if (model) { atHome = true; $('dropBackName').textContent = model.name; }
+  $('dropBack').hidden = !model;
+  $('drop').hidden = false;
+  renderRecent();
+}
+function leaveHome() {
+  atHome = false;
+  $('drop').hidden = true;
+  canvas.focus();
+}
+
 // Recent files on the welcome screen (recent.js) ---------------------------------------------
 
 async function renderRecent() {
@@ -1684,18 +1701,19 @@ function bindUi() {
     try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'Rhino model', accept: { 'application/octet-stream': ['.3dm'] } }] }); } catch (e) { return; } // cancelled
     openFile(await handle.getFile(), handle);
   };
-  $('btnOpen').addEventListener('click', browse);
+  $('btnHome').addEventListener('click', goHome);
+  $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
 
   const drop = $('drop');
   let depth = 0;
   window.addEventListener('dragenter', (e) => { e.preventDefault(); if (++depth === 1) { drop.hidden = false; drop.classList.add('over'); } });
-  window.addEventListener('dragleave', () => { if (--depth === 0) { drop.classList.remove('over'); if (model) drop.hidden = true; } });
+  window.addEventListener('dragleave', () => { if (--depth === 0) { drop.classList.remove('over'); if (model && !atHome) drop.hidden = true; } });
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => {
     e.preventDefault(); depth = 0; drop.classList.remove('over');
-    if (model) drop.hidden = true;
+    if (model && !atHome) drop.hidden = true;
     const f = e.dataTransfer.files[0];
     // The handle has to be requested before anything else is awaited.
     const h = Recent.supported ? e.dataTransfer.items[0]?.getAsFileSystemHandle?.() : null;

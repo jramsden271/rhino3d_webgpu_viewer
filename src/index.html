@@ -11,13 +11,12 @@
   <canvas id="gfx" tabindex="0" aria-label="3D model view"></canvas>
 
   <header class="chrome top-left">
-    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg>3DM Viewer</div>
+    <button class="brand" id="btnHome" title="Home: open another file or a recent one"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg><span>3DM Viewer</span></button>
     <button id="fileName" class="file-name" title="File properties"></button>
     <span class="undo-redo" id="undoRedo" hidden>
       <button class="btn icon" id="btnUndo" disabled title="Nothing to undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="btn icon" id="btnRedo" disabled title="Nothing to redo" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
     </span>
-    <button id="btnOpen" class="btn">Open…</button>
     <input type="file" id="fileInput" accept=".3dm" hidden>
   </header>
 
@@ -156,6 +155,7 @@
       <h1>Drop a Rhino <code>.3dm</code> file</h1>
       <p>or <button class="link" id="dropBrowse">browse for one</button></p>
       <p class="fine">Everything runs locally in this page; the model never leaves your computer.</p>
+      <p class="drop-back" id="dropBack" hidden><button class="btn primary" id="btnBack">Back to <span id="dropBackName"></span></button></p>
       <div class="recent" id="recent" hidden>
         <div class="recent-head">Recent files</div>
         <ul id="recentList"></ul>
