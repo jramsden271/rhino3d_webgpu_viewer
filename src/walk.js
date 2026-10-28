@@ -11,6 +11,10 @@
 // seconds (gaps between floors in imperfect models) and then falls under gravity. A fall with
 // nothing below, or below the model, returns the walker to its last stable position.
 //
+// Space jumps (an upward kick, then gravity). E and Q rise and sink at a steady speed, ignoring
+// gravity while held; sinking stops on the ground. With Fly on there is no gravity: the walker
+// hovers wherever E and Q leave it, stays level off edges, and lands when ground comes up to it.
+//
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
 const WALK = {
@@ -30,6 +34,8 @@ const WALK = {
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
   SUBSTEP: 0.1,     // longest single move, so thin walls cannot be stepped over
   GRAVITY: 9.81,
+  JUMP: 3.5,        // take-off speed (m/s) of a jump: about 0.6 m high
+  CLIMB: 2,         // rising and sinking speed (m/s) with E and Q; Shift multiplies it by RUN
   GROUND_HALF: 1.5, // the ground map covers ±this around the walker
   REACH: 0.6,       // the wall views look this far out
   LOST: 3,          // seconds falling with nothing below before returning
@@ -38,6 +44,7 @@ const WALK = {
 };
 
 const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
+const CLIMB_KEYS = { e: 1, q: -1 };
 
 class Walker {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
@@ -46,8 +53,8 @@ class Walker {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: walking speed in m/s, walls block.
-    this.settings = { speed: 1.4, collide: true };
+    // Set from the Walk panel: walking speed in m/s, walls block, no gravity.
+    this.settings = { speed: 1.4, collide: true, fly: false };
   }
 
   // Current target speed in m/s.
@@ -99,15 +106,24 @@ class Walker {
   // Keyboard: returns true when the key was used for walking.
   key(e, down) {
     const k = e.key.toLowerCase();
-    if (!MOVE_KEYS[k]) return false;
-    if (down) { this.keys.add(k); this.skipFall(); } else this.keys.delete(k);
+    if (k === ' ') { if (down && !e.repeat) this.jump(); return true; }
+    if (!MOVE_KEYS[k] && !CLIMB_KEYS[k]) return false;
+    if (!down) this.keys.delete(k);
+    else { this.keys.add(k); if (MOVE_KEYS[k]) this.skipFall(); }
     return true;
   }
   blur() { this.keys.clear(); }
 
-  // A long fall on entry ends as soon as the person moves or clicks.
+  // Jumps from the ground (not while flying, where E rises instead).
+  jump() {
+    if (!this.grounded || this.settings.fly || performance.now() < this.lockUntil) return;
+    Object.assign(this, { grounded: false, vz: WALK.JUMP * this.u, air: 0, fallFrom: this.foot });
+  }
+
+  // A long fall on entry ends as soon as the person moves or clicks (unless flying: then the
+  // walker stays where the camera was).
   skipFall() {
-    if (!this.entryFall || !this.map) return;
+    if (!this.entryFall || !this.map || this.settings.fly) return;
     const g = this.groundAt(this.pos, WALK.FOOT * this.u, this.foot + WALK.HEAD * this.u);
     if (g != null) this.land(g);
   }
@@ -205,7 +221,7 @@ class Walker {
     // Horizontal movement: the velocity (m/s) eases towards what the keys ask for.
     const f = camera.forward, fl = Math.hypot(f[0], f[1]) || 1, fwd = [f[0] / fl, f[1] / fl], right = [fwd[1], -fwd[0]];
     let mf = 0, mr = 0;
-    if (now >= this.lockUntil) for (const k of this.keys) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
+    if (now >= this.lockUntil) for (const k of this.keys) if (MOVE_KEYS[k]) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
     const ml = Math.hypot(mf, mr), sp = ml > 0 ? this.speed() / ml : 0, k = 1 - Math.exp(-dt / WALK.ACCEL);
     const want = [(fwd[0] * mf + right[0] * mr) * sp, (fwd[1] * mf + right[1] * mr) * sp];
     this.vel = now < this.lockUntil ? [0, 0] : [this.vel[0] + (want[0] - this.vel[0]) * k, this.vel[1] + (want[1] - this.vel[1]) * k];
@@ -213,7 +229,15 @@ class Walker {
     if (this.vel[0] || this.vel[1]) this.move([this.vel[0] * dt * u, this.vel[1] * dt * u]);
     const p = this.pos;
 
-    // Vertical: follow the ground, climb steps, fall where it drops away.
+    // Vertical: follow the ground, climb steps, fall where it drops away. E and Q rise and sink
+    // at a steady speed (Q only off the ground).
+    const fly = this.settings.fly;
+    let climb = 0;
+    if (now >= this.lockUntil) for (const k of this.keys) climb += CLIMB_KEYS[k] || 0;
+    if (climb < 0 && this.grounded) climb = 0;
+    if (climb) Object.assign(this, { grounded: false, entryFall: false, air: 0, vz: climb * WALK.CLIMB * (this.ctx.shift() ? WALK.RUN : 1) * u });
+    else if (this.climbing) this.vz = 0; // let go: stop, then fall from rest
+    this.climbing = climb !== 0;
     const g = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
     if (this.grounded) {
       if (g != null && g >= this.foot - WALK.DROP * u) {
@@ -225,20 +249,23 @@ class Walker {
           this.stable.push([...p, g]);
           if (this.stable.length > 3) this.stable.shift();
         }
-      } else if ((this.air += dt) > WALK.LEDGE) {
-        this.grounded = false;
-        this.fallFrom = this.foot;
-        this.air = 0;
+      } else if (fly || (this.air += dt) > WALK.LEDGE) {
+        // Off an edge: fall, or with Fly on, hover at this height.
+        Object.assign(this, { grounded: false, fallFrom: this.foot, air: 0, vz: 0 });
       }
     } else {
       this.air += dt;
-      this.vz -= WALK.GRAVITY * u * dt;
+      // Only a fall under gravity counts towards levelling the view on landing.
+      if (climb || fly) this.fallFrom = this.foot;
+      if (fly && !climb) this.vz = 0;
+      else if (!climb) this.vz -= WALK.GRAVITY * u * dt;
       const z = this.foot + this.vz * dt;
-      if (g != null && z <= g) this.land(g);
+      // Rising passes through ledges; coming down (or hovering) lands on them.
+      if (g != null && z <= g && this.vz <= 0) this.land(g);
       else this.foot = z;
       const [mn] = this.ctx.bounds();
       const below = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
-      if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST))) this.lost(now);
+      if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST && !fly))) this.lost(now);
     }
     this.lag *= Math.exp(-dt / WALK.EASE);
     if (this.level) {

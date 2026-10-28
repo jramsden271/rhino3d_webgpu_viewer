@@ -5,11 +5,11 @@
 //   if (await Dialog.confirm('Revert?', 'Everything goes back…', 'Revert')) …
 //
 // body: text, an HTML string (html: true) or a DOM node. buttons: [{ label, value, primary,
-// danger }] in display order; the result is the clicked button's value, or null when the dialog is
+// danger }] in display order; help: a function for a ? button next to the ×, if any; the result is the clicked button's value, or null when the dialog is
 // dismissed (Esc, the × button or a click on the backdrop). dialog.close(value) closes it from code.
 
 class Dialog {
-  constructor({ title = '', body = '', html = false, buttons = [{ label: 'OK', value: true, primary: true }], width = 380, onOpen = null } = {}) {
+  constructor({ title = '', body = '', html = false, buttons = [{ label: 'OK', value: true, primary: true }], width = 380, onOpen = null, help = null } = {}) {
     this.result = new Promise((resolve) => { this.resolve = resolve; });
     const back = (this.back = document.createElement('div'));
     back.className = 'dlg-backdrop';
@@ -33,7 +33,17 @@ class Dialog {
       el.addEventListener('click', () => this.close(b.value));
       actions.appendChild(el);
     }
-    box.querySelector('.x').addEventListener('click', () => this.close(null));
+    const x = box.querySelector('.x');
+    x.addEventListener('click', () => this.close(null));
+    if (help) {
+      const acts = document.createElement('span'), q = document.createElement('button');
+      acts.className = 'panel-actions';
+      Object.assign(q, { className: 'x q', textContent: '?', title: `About ${title}` });
+      q.setAttribute('aria-label', `About ${title}`);
+      q.addEventListener('click', help);
+      x.replaceWith(acts);
+      acts.append(q, x);
+    }
     back.addEventListener('pointerdown', (e) => { if (e.target === back) this.close(null); });
     this.onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(null); }

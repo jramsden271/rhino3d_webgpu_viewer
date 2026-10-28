@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -15,6 +15,8 @@ const state = {
   lamps: [],
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
+  // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
+  comfort: { panel: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 1 },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -44,6 +46,7 @@ const walker = new Walker({
 });
 if (prefs.walk) {
   walker.settings.collide = prefs.walk.collide !== false;
+  walker.settings.fly = prefs.walk.fly === true;
   if (prefs.walk.speed > 0) walker.settings.speed = Math.min(WALK.MAX_SPEED, Math.max(WALK.MIN_SPEED, prefs.walk.speed));
 }
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
@@ -157,7 +160,10 @@ function loop() {
     renderer.dirty = true; lastInput = performance.now();
     if (!$('walkPanel').hidden) checkSunlight();
   }
-  if (renderer.dirty) { renderer.dirty = false; renderer.draw(frameState()); positionInspector(); }
+  if (renderer.dirty) {
+    renderer.dirty = false; renderer.draw(frameState()); positionInspector();
+    if (state.comfort.panel) checkSunlight();
+  }
   requestAnimationFrame(loop);
 }
 
@@ -254,6 +260,7 @@ async function openBytes(name, bytes, handle = null) {
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
     if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
+    viewNow = 'perspective'; viewCams = {};
     setView('perspective', true);
     leaveHome();
     $('fileName').textContent = name;
@@ -1326,6 +1333,7 @@ function syncSunPanel() {
   $('sunDateOut').textContent = `${day} ${MONTHS[month - 1]}`;
   $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
   syncWeather(month, day);
+  syncComfortPanel();
   if (!activeLocation()) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
@@ -1569,6 +1577,14 @@ function openWeatherDialog() {
 // Set location dialog: the three sources, each marked "In use" or offering "Use this location".
 // Changes apply as they are made.
 let locationDialog = null;
+function showLocationHelp() {
+  Dialog.open({ title: 'Location', html: true, width: 400, body: `<p>The site location places the sun and sets the clock's UTC offset. It can come from three sources; <b>Use this location</b> picks which one is used.</p>
+    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather also shows in the Sun panel and drives the UTCI.</p>
+    <p><b>Custom location</b>: type a latitude and longitude, or search for a city or country. The UTC offset follows the longitude until you type one.</p>
+    <p><b>Rhino file</b>: the location saved in the .3dm file, if it has one.</p>
+    <p>The sun needs a location. The choice, the custom location and the weather file belong to the open model, and come back with it when you reopen it from Recent files.</p>` });
+}
+
 function openLocationDialog() {
   if (locationDialog) return;
   const wrap = document.createElement('div');
@@ -1658,7 +1674,7 @@ function openLocationDialog() {
   };
   refresh();
   locationDialog = { refresh };
-  Dialog.open({ title: 'Set location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460 })
+  Dialog.open({ title: 'Set location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460, help: showLocationHelp })
     .then(() => { locationDialog = null; });
 }
 
@@ -1729,6 +1745,7 @@ function bindPointer() {
     else if (drag.mode === 'orbit') {
       camera.orbit(dx, dy, pivot);
       state.lastView = null;
+      if (camera.ortho) viewNow = null;
       syncToolbar();
     } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
     redraw();
@@ -1911,15 +1928,16 @@ function onKey(e) {
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
+    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; viewNow = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
     g: toggleLightsPanel,
+    u: toggleComfortPanel,
   };
   if (actions[k] && (model || ['?', 'escape', 'l'].includes(k))) { e.preventDefault(); actions[k](); }
 }
@@ -1927,7 +1945,22 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-function pickView(name) { state.lastView = name; setView(name, true); }
+// Top, Front, Right and Perspective each keep their own camera: leaving one remembers it, and
+// coming back restores it (the first visit, or picking the view you are in, zooms to extents).
+// viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
+// walking and orbiting in perspective. Orbiting Top, Front or Right, or P, makes it a free view
+// that belongs to none.
+let viewNow = 'perspective', viewCams = {};
+function pickView(name) {
+  walker.exit();
+  if (viewNow && viewNow !== name) viewCams[viewNow] = camera.snapshot();
+  const saved = viewNow !== name && viewCams[name];
+  viewNow = name; state.lastView = name;
+  if (!saved) { setView(name, true); return; }
+  camera.restore(saved);
+  syncToolbar();
+  redraw();
+}
 function toggleWalk() {
   if (walker.active) { walker.exit(); return; }
   if (!model || camera.ortho) return;
@@ -1941,6 +1974,13 @@ function toggleWalk() {
 }
 // The Walk panel ------------------------------------------------------------------------------
 
+function showWalkHelp() {
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> on the toolbar (perspective views only) drops you onto the surface below the camera, with your eyes 1.5 m above it.</p>
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</p>
+    <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
+    <p><b>Walking speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
+}
+
 function syncWalkPanel() {
   const S = walker.settings;
   $('walkSpeed').value = S.speed;
@@ -1948,34 +1988,36 @@ function syncWalkPanel() {
   $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
   $('walkSpeedOut').classList.toggle('running', shiftDown);
   $('walkCollide').checked = S.collide;
+  $('walkFly').checked = S.fly;
 }
 
 function bindWalkPanel() {
   const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
   $('walkSpeed').addEventListener('input', () => { S.speed = +$('walkSpeed').value; changed(); });
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
+  $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
+  $('walkHelp').addEventListener('click', showWalkHelp);
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   $('walkStop').addEventListener('click', () => walker.exit());
   $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
   syncWalkPanel();
 }
 
-// Is the walker standing in sunlight? A ray from the eye towards the sun, drawn with the pick
-// pass (so trees and every visible object cast shade), a few times a second.
-let sunlightAt = 0, sunlightBusy = false;
+// Is the camera in sunlight? A ray from the eye towards the sun, drawn with the pick pass (so
+// trees and every visible object cast shade), a few times a second while the Walk or Thermal
+// comfort panel shows. It works with the sun's lighting off too, as long as there is a location.
+// sunlight: null (no model or location), { night: true }, or { lit, by (layer name), dist (m) }.
+let sunlight = null, sunlightAt = 0, sunlightBusy = false, sunlightLater = 0;
 function checkSunlight() {
   const now = performance.now();
-  if (sunlightBusy || now - sunlightAt < 250) return;
+  if (sunlightBusy || now - sunlightAt < 250) {
+    // Check again shortly, so the last camera move or time change is not missed.
+    if (!sunlightLater) sunlightLater = setTimeout(() => { sunlightLater = 0; checkSunlight(); }, 260);
+    return;
+  }
   sunlightAt = now;
-  // show() only touches the DOM when the text changes, so the Turn on button stays clickable.
-  const el = $('walkSun'), show = (cls, html, extra = '') => {
-    const k = cls + html + extra;
-    if (el.dataset.k === k) return;
-    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
-  };
-  if (!state.sun.on) { show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>'); return; }
-  const pos = sunPosition();
-  if (pos.altitude <= 0) { show('shade', '<b>Night</b> · the sun is below the horizon'); return; }
+  const pos = model && activeLocation() ? sunPosition() : null;
+  if (!pos || pos.altitude <= 0) { setSunlight(pos && { night: true }); return; }
   const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = camera.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
   // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
@@ -1983,13 +2025,112 @@ function checkSunlight() {
   const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
   sunlightBusy = true;
   renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
-    if (!walker.active) return;
-    if (!h) show('lit', '<b>In sunlight</b>');
-    else {
-      const layer = model.layers[model.objects[h.id]?.layer], dist = V3.len(V3.sub(h.p, eye)) / u;
-      show('shade', `<b>In shade</b> · cast by ${layer ? escapeHtml(layer.name) : 'an object'}, ${dist < 1 ? "less than 1" : Math.round(dist)} m away`);
-    }
+    if (!model) return;
+    const layer = h && model.layers[model.objects[h.id]?.layer];
+    setSunlight(h ? { lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { lit: true });
   }).finally(() => { sunlightBusy = false; });
+}
+
+function setSunlight(s) {
+  sunlight = s;
+  if (walker.active) showWalkSun();
+  syncComfortPanel();
+}
+
+// The Walk panel's sunlight line. show() only touches the DOM when the text changes, so the Turn
+// on button stays clickable.
+function showWalkSun() {
+  const el = $('walkSun'), show = (cls, html, extra = '') => {
+    const k = cls + html + extra;
+    if (el.dataset.k === k) return;
+    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
+  };
+  const s = sunlight;
+  if (!state.sun.on) show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>');
+  else if (!s) show('', 'Checking for sunlight…');
+  else if (s.night) show('shade', '<b>Night</b> · the sun is below the horizon');
+  else if (s.lit) show('lit', '<b>In sunlight</b>');
+  else show('shade', `<b>In shade</b> · ${shadeText(s)}`);
+}
+const shadeText = (s) => `cast by ${s.by ? escapeHtml(s.by) : 'an object'}, ${s.dist < 1 ? 'less than 1' : Math.round(s.dist)} m away`;
+
+// The Thermal comfort panel ---------------------------------------------------------------------
+// UTCI at the camera from the weather file at the Sun panel's date and time: air temperature and
+// humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
+// mean radiant temperature equal to the air temperature, raised by direct sun (SolarCal) when the
+// camera is in sunlight.
+
+function toggleComfortPanel() {
+  const C = state.comfort;
+  C.panel = !C.panel;
+  $('comfortPanel').hidden = !C.panel;
+  document.querySelector('[data-act="comfort"]').setAttribute('aria-pressed', String(C.panel));
+  if (C.panel) { syncComfortPanel(); checkSunlight(); }
+}
+
+// The inputs and result, or { missing: reason }.
+function comfortNow() {
+  const e = site.epw;
+  if (!e) return { missing: 'epw' };
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy);
+  const w = e.at(month, day, state.sun.hour);
+  if (w.dryBulb === null || w.relativeHumidity === null || w.windSpeed === null) return { missing: 'data', w };
+  const pos = activeLocation() ? sunPosition() : null;
+  const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
+  const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
+  const dMrt = sun ? solarMrtDelta(w.directNormal, pos.altitude) : 0, tr = ta + dMrt;
+  return { w, pos, sun, ta, rh, va, tr, dMrt, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, va, rh) };
+}
+
+function syncComfortPanel() {
+  if (!state.comfort.panel) return;
+  const C = state.comfort, f = (x, d = 1) => x.toFixed(d);
+  $('comfortWind').value = C.wind;
+  $('comfortWindOut').value = f(C.wind, 2);
+  $('comfortWhen').value = `${$('sunDateOut').textContent} · ${fmtHour(state.sun.hour)}`;
+  const r = comfortNow();
+  if (r.missing) {
+    $('comfortRead').style.removeProperty('--cat');
+    setHtml($('comfortRead'), r.missing === 'epw'
+      ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
+      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortInputs'), '');
+    return;
+  }
+  const cat = utciCategory(r.value);
+  $('comfortRead').style.setProperty('--cat', cat.color);
+  setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
+    <div class="utci-scale">${UTCI_CATEGORIES.map((c) => `<span style="background:${c.color}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
+    ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}`);
+  const s = sunlight, pos = r.pos;
+  const sunRow = !pos ? 'No location: shade assumed' : pos.altitude <= 0 || s?.night ? 'Night' : !s ? 'Checking…'
+    : s.lit ? (r.w.directNormal > 0 ? `<b>In sunlight</b> · ${f(r.w.directNormal, 0)} W/m² direct, ${f(pos.altitude, 0)}° up` : '<b>In sunlight</b> · no direct sun in the weather file')
+      : `<b>In shade</b> · ${shadeText(s)}`;
+  const vaNote = r.va < UTCI_WIND_MIN ? ` <span class="fine">(the UTCI uses at least ${UTCI_WIND_MIN})</span>` : '';
+  setHtml($('comfortInputs'), `<dl class="wx">
+    <dt>Air temperature</dt><dd><b>${f(r.ta)}</b> °C</dd>
+    <dt>Relative humidity</dt><dd><b>${f(r.rh, 0)}</b>%</dd>
+    <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s${vaNote}</dd>
+    <dt>Sun</dt><dd>${sunRow}</dd>
+    <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C${r.sun ? ` <span class="fine">(air + ${f(r.dMrt)} from the sun)</span>` : ' <span class="fine">(= air)</span>'}</dd></dl>
+    ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
+}
+
+// Replaces an element's content only when it changes (the panel refreshes several times a second).
+function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
+
+function showComfortHelp() {
+  Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
+    <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered.</p>
+    <p>The <b>mean radiant temperature</b> is taken to be the air temperature, plus the warmth of direct sun when the camera is in sunlight (the SolarCal method, for a standing person turned side-on to the sun). Strong sun typically adds 4 to 9 °C to the UTCI. Hot or cold surfaces, the sky and reflected light are not counted.</p>` });
+}
+
+function bindComfortPanel() {
+  document.querySelector('[data-act="comfort"]').addEventListener('click', toggleComfortPanel);
+  $('comfortClose').addEventListener('click', () => state.comfort.panel && toggleComfortPanel());
+  $('comfortHelp').addEventListener('click', showComfortHelp);
+  $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
+  $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
 }
 
 function setMode(m) {
@@ -2009,7 +2150,12 @@ function toggle(key) {
   syncToolbar();
   redraw();
 }
-function toggleHelp() { $('help').hidden = !$('help').hidden; }
+let helpDialog = null;
+function toggleHelp() {
+  if (helpDialog) { helpDialog.close(null); return; }
+  helpDialog = new Dialog({ title: 'Controls', body: $('helpBody').content.cloneNode(true), width: 600, buttons: [{ label: 'Close', value: true, primary: true }] });
+  helpDialog.result.then(() => { helpDialog = null; });
+}
 
 // Home: the welcome screen, with recent files. An open model stays loaded underneath, and
 // "Back to …" (or Esc) returns to it.
@@ -2114,7 +2260,7 @@ function bindUi() {
   });
   bindSunPanel();
   bindLightsPanel();
-  $('help').addEventListener('click', (e) => { if (e.target === $('help')) toggleHelp(); });
+  bindComfortPanel();
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;
     layerOn = model.layers.map(() => b.dataset.layers === 'all');

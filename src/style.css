@@ -59,7 +59,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
-@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 7px; } }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 6px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { margin-right: 3px; } }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -251,12 +251,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .bar { height: 4px; border-radius: 2px; background: var(--hover); margin-top: 10px; overflow: hidden; }
 #busyBar { height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
 
-.help { background: rgba(0, 0, 0, 0.2); }
-.help-card { position: relative; padding: 18px 22px; max-width: min(560px, calc(100% - 32px)); }
-.help-card h2 { margin: 0 0 10px; font-size: 16px; }
-.help-card dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0 0 14px; }
-.help-card dt { font-weight: 600; }
-.help-card dd { margin: 0; color: var(--muted); }
+.help-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; line-height: 1.45; }
+.help-list dt { font-weight: 600; }
+.help-list dd { margin: 0; color: var(--muted); }
 
 .fatal { background: linear-gradient(#eef0f3, #c8ced6); }
 
@@ -346,3 +343,12 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .btn.icon:disabled:hover { background: transparent; }
 .notice.brief { border-left-color: var(--accent); }
 .btn.outline { border: 1px solid var(--border); }
+/* Thermal comfort panel */
+.utci-read { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border-left: 4px solid var(--cat, var(--border)); display: flex; flex-direction: column; gap: 6px; }
+.utci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.utci-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.utci-val small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.utci-cat { font-weight: 600; text-align: right; }
+.utci-scale { display: flex; gap: 2px; }
+.utci-scale span { flex: 1; height: 6px; border-radius: 2px; opacity: 0.45; }
+.utci-scale span.on { opacity: 1; outline: 2px solid var(--text); outline-offset: 1px; }

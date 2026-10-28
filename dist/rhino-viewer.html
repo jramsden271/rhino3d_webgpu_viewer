@@ -67,7 +67,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
-@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 7px; } }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 6px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { margin-right: 3px; } }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -259,12 +259,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .bar { height: 4px; border-radius: 2px; background: var(--hover); margin-top: 10px; overflow: hidden; }
 #busyBar { height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
 
-.help { background: rgba(0, 0, 0, 0.2); }
-.help-card { position: relative; padding: 18px 22px; max-width: min(560px, calc(100% - 32px)); }
-.help-card h2 { margin: 0 0 10px; font-size: 16px; }
-.help-card dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0 0 14px; }
-.help-card dt { font-weight: 600; }
-.help-card dd { margin: 0; color: var(--muted); }
+.help-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; line-height: 1.45; }
+.help-list dt { font-weight: 600; }
+.help-list dd { margin: 0; color: var(--muted); }
 
 .fatal { background: linear-gradient(#eef0f3, #c8ced6); }
 
@@ -354,6 +351,15 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .btn.icon:disabled:hover { background: transparent; }
 .notice.brief { border-left-color: var(--accent); }
 .btn.outline { border: 1px solid var(--border); }
+/* Thermal comfort panel */
+.utci-read { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border-left: 4px solid var(--cat, var(--border)); display: flex; flex-direction: column; gap: 6px; }
+.utci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.utci-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.utci-val small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.utci-cat { font-weight: 600; text-align: right; }
+.utci-scale { display: flex; gap: 2px; }
+.utci-scale span { flex: 1; height: 6px; border-radius: 2px; opacity: 0.45; }
+.utci-scale span.on { opacity: 1; outline: 2px solid var(--text); outline-offset: 1px; }
 </style>
 </head>
 <body>
@@ -396,6 +402,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     <button class="btn toggle" data-toggle="xray" title="X-ray (X)">X-ray</button>
     <span class="sep"></span>
     <button class="btn toggle" data-act="sun" title="Sun and shadows panel (S)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Sun</button>
+    <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <button class="btn toggle" data-act="lights" title="Lights panel (G)"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>Lights</button>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)">Layers</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
@@ -432,6 +439,23 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
       </div>
     </div>
   </section>
+  <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort">
+    <div class="panel-head">
+      <span>Thermal comfort</span>
+      <span class="panel-actions"><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div id="comfortRead" class="utci-read"></div>
+      <div class="field">
+        <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
+        <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Inputs</span><output id="comfortWhen" title="Date and time from the Sun panel"></output></div>
+        <div id="comfortInputs" class="sun-weather"></div>
+      </div>
+    </div>
+  </section>
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
     <div class="panel-head">
       <span>Lights</span>
@@ -442,7 +466,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
       <span>Walk</span>
-      <span class="panel-actions"><button class="link" id="walkStop">Stop walking</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close (walking carries on)">×</button></span>
+      <span class="panel-actions"><button class="link" id="walkStop">Stop walking</button><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close (walking carries on)">×</button></span>
     </div>
     <div class="sun-body">
       <div class="walk-sun" id="walkSun"></div>
@@ -451,6 +475,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">
       </div>
       <label class="check" title="Off: walk through walls and objects; you still follow the ground and climb steps"><input type="checkbox" id="walkCollide" checked> Collision detection</label>
+      <label class="check" title="No gravity: hover where E and Q leave you and stay level off edges. Space does not jump while flying."><input type="checkbox" id="walkFly"> Fly</label>
     </div>
   </section>
   </div>
@@ -504,7 +529,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
   <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
@@ -528,25 +553,23 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     </div>
   </div>
 
-  <div id="help" class="overlay help" hidden>
-    <div class="help-card chrome">
-      <h2>Controls</h2>
-      <dl>
+  <!-- The Controls dialog's content (toolbar ? button or the ? key) -->
+  <template id="helpBody">
+      <dl class="help-list">
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
-        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) puts you in the model at eye height · <b>?</b> in the Walk panel lists the controls</dd>
+        <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
-        <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · the sun-and-cloud button next to it loads the weather file, or drop an .epw file onto the window · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
+        <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file · <b>?</b> in Set location explains the choices</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>B</kbd> add a lamp at the cursor</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
-      <button class="btn" data-act="help">Close</button>
-    </div>
-  </div>
+  </template>
 
   <div id="fatal" class="overlay fatal" hidden><div class="drop-card"><h1 id="fatalTitle"></h1><p id="fatalText"></p></div></div>
 </div>
@@ -1353,11 +1376,11 @@ function readLocation(doc) {
 //   if (await Dialog.confirm('Revert?', 'Everything goes back…', 'Revert')) …
 //
 // body: text, an HTML string (html: true) or a DOM node. buttons: [{ label, value, primary,
-// danger }] in display order; the result is the clicked button's value, or null when the dialog is
+// danger }] in display order; help: a function for a ? button next to the ×, if any; the result is the clicked button's value, or null when the dialog is
 // dismissed (Esc, the × button or a click on the backdrop). dialog.close(value) closes it from code.
 
 class Dialog {
-  constructor({ title = '', body = '', html = false, buttons = [{ label: 'OK', value: true, primary: true }], width = 380, onOpen = null } = {}) {
+  constructor({ title = '', body = '', html = false, buttons = [{ label: 'OK', value: true, primary: true }], width = 380, onOpen = null, help = null } = {}) {
     this.result = new Promise((resolve) => { this.resolve = resolve; });
     const back = (this.back = document.createElement('div'));
     back.className = 'dlg-backdrop';
@@ -1381,7 +1404,17 @@ class Dialog {
       el.addEventListener('click', () => this.close(b.value));
       actions.appendChild(el);
     }
-    box.querySelector('.x').addEventListener('click', () => this.close(null));
+    const x = box.querySelector('.x');
+    x.addEventListener('click', () => this.close(null));
+    if (help) {
+      const acts = document.createElement('span'), q = document.createElement('button');
+      acts.className = 'panel-actions';
+      Object.assign(q, { className: 'x q', textContent: '?', title: `About ${title}` });
+      q.setAttribute('aria-label', `About ${title}`);
+      q.addEventListener('click', help);
+      x.replaceWith(acts);
+      acts.append(q, x);
+    }
     back.addEventListener('pointerdown', (e) => { if (e.target === back) this.close(null); });
     this.onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(null); }
@@ -2163,6 +2196,38 @@ function utciCategory(value) {
   return UTCI_CATEGORIES.find((c) => value < c.below);
 }
 
+// Direct sun on a person (SolarCal: Arens et al. 2015, ASHRAE 55 Appendix C, as in
+// ladybug-comfort's solarcal module). Returns how much direct sunlight raises the mean radiant
+// temperature, °C, for a standing person in full sun. dnr: direct normal irradiance, W/m²;
+// altitude: sun altitude, degrees; sharp: sun angle from the person's front, degrees (0 in the
+// face, 180 on the back; 135, side-on and turned away from the glare, is SolarCal's default).
+// Shade, sky and ground reflections are left out: in shade the radiant temperature is taken to be
+// the air temperature.
+function solarMrtDelta(dnr, altitude, sharp = 135) {
+  if (!(dnr > 0) || !(altitude > 0)) return 0;
+  const absorptivity = 0.7, emissivity = 0.95, exposedFraction = 0.725, radiantCoeff = 6.012;
+  const flux = solarProjectionFactor(Math.min(altitude, 90), sharp) * dnr;
+  return (flux * absorptivity) / emissivity / (exposedFraction * radiantCoeff);
+}
+
+// Fraction of a standing body's surface that faces the sun (Ap/Ad), interpolated from SolarCal's
+// table by sun altitude (0, 15 ... 90°) and SHARP (0, 15 ... 180°): ladybug-comfort's
+// get_projection_factor_simple.
+const SOLARCAL_STANDING = [
+  [0.254, 0.254, 0.228, 0.187, 0.149, 0.104, 0.059], [0.248, 0.248, 0.225, 0.183, 0.145, 0.102, 0.059],
+  [0.239, 0.239, 0.218, 0.177, 0.138, 0.096, 0.059], [0.225, 0.225, 0.199, 0.165, 0.127, 0.09, 0.059],
+  [0.205, 0.205, 0.182, 0.151, 0.116, 0.083, 0.059], [0.183, 0.183, 0.165, 0.136, 0.109, 0.078, 0.059],
+  [0.167, 0.167, 0.155, 0.131, 0.107, 0.078, 0.059], [0.175, 0.175, 0.161, 0.131, 0.111, 0.081, 0.059],
+  [0.199, 0.199, 0.178, 0.147, 0.12, 0.084, 0.059], [0.22, 0.22, 0.196, 0.16, 0.126, 0.088, 0.059],
+  [0.238, 0.238, 0.21, 0.17, 0.133, 0.091, 0.059], [0.249, 0.249, 0.22, 0.177, 0.138, 0.093, 0.059],
+  [0.252, 0.252, 0.223, 0.178, 0.138, 0.093, 0.059],
+];
+function solarProjectionFactor(altitude, sharp = 135) {
+  const a = Math.min(Math.max(altitude, 0), 90) / 15, s = Math.min(Math.max(sharp, 0), 180) / 15;
+  const i = Math.min(Math.floor(s), 11), j = Math.min(Math.floor(a), 5), fs = s - i, fa = a - j, T = SOLARCAL_STANDING;
+  return (T[i][j] * (1 - fa) + T[i][j + 1] * fa) * (1 - fs) + (T[i + 1][j] * (1 - fa) + T[i + 1][j + 1] * fa) * fs;
+}
+
 </script>
 <script>
 // Z-up orbit camera (Rhino convention). The camera is a target point, a distance, and yaw/pitch
@@ -2295,6 +2360,10 @@ class Camera {
 // seconds (gaps between floors in imperfect models) and then falls under gravity. A fall with
 // nothing below, or below the model, returns the walker to its last stable position.
 //
+// Space jumps (an upward kick, then gravity). E and Q rise and sink at a steady speed, ignoring
+// gravity while held; sinking stops on the ground. With Fly on there is no gravity: the walker
+// hovers wherever E and Q leave it, stays level off edges, and lands when ground comes up to it.
+//
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
 const WALK = {
@@ -2314,6 +2383,8 @@ const WALK = {
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
   SUBSTEP: 0.1,     // longest single move, so thin walls cannot be stepped over
   GRAVITY: 9.81,
+  JUMP: 3.5,        // take-off speed (m/s) of a jump: about 0.6 m high
+  CLIMB: 2,         // rising and sinking speed (m/s) with E and Q; Shift multiplies it by RUN
   GROUND_HALF: 1.5, // the ground map covers ±this around the walker
   REACH: 0.6,       // the wall views look this far out
   LOST: 3,          // seconds falling with nothing below before returning
@@ -2322,6 +2393,7 @@ const WALK = {
 };
 
 const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
+const CLIMB_KEYS = { e: 1, q: -1 };
 
 class Walker {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
@@ -2330,8 +2402,8 @@ class Walker {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
-    // Set from the Walk panel: walking speed in m/s, walls block.
-    this.settings = { speed: 1.4, collide: true };
+    // Set from the Walk panel: walking speed in m/s, walls block, no gravity.
+    this.settings = { speed: 1.4, collide: true, fly: false };
   }
 
   // Current target speed in m/s.
@@ -2383,15 +2455,24 @@ class Walker {
   // Keyboard: returns true when the key was used for walking.
   key(e, down) {
     const k = e.key.toLowerCase();
-    if (!MOVE_KEYS[k]) return false;
-    if (down) { this.keys.add(k); this.skipFall(); } else this.keys.delete(k);
+    if (k === ' ') { if (down && !e.repeat) this.jump(); return true; }
+    if (!MOVE_KEYS[k] && !CLIMB_KEYS[k]) return false;
+    if (!down) this.keys.delete(k);
+    else { this.keys.add(k); if (MOVE_KEYS[k]) this.skipFall(); }
     return true;
   }
   blur() { this.keys.clear(); }
 
-  // A long fall on entry ends as soon as the person moves or clicks.
+  // Jumps from the ground (not while flying, where E rises instead).
+  jump() {
+    if (!this.grounded || this.settings.fly || performance.now() < this.lockUntil) return;
+    Object.assign(this, { grounded: false, vz: WALK.JUMP * this.u, air: 0, fallFrom: this.foot });
+  }
+
+  // A long fall on entry ends as soon as the person moves or clicks (unless flying: then the
+  // walker stays where the camera was).
   skipFall() {
-    if (!this.entryFall || !this.map) return;
+    if (!this.entryFall || !this.map || this.settings.fly) return;
     const g = this.groundAt(this.pos, WALK.FOOT * this.u, this.foot + WALK.HEAD * this.u);
     if (g != null) this.land(g);
   }
@@ -2489,7 +2570,7 @@ class Walker {
     // Horizontal movement: the velocity (m/s) eases towards what the keys ask for.
     const f = camera.forward, fl = Math.hypot(f[0], f[1]) || 1, fwd = [f[0] / fl, f[1] / fl], right = [fwd[1], -fwd[0]];
     let mf = 0, mr = 0;
-    if (now >= this.lockUntil) for (const k of this.keys) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
+    if (now >= this.lockUntil) for (const k of this.keys) if (MOVE_KEYS[k]) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
     const ml = Math.hypot(mf, mr), sp = ml > 0 ? this.speed() / ml : 0, k = 1 - Math.exp(-dt / WALK.ACCEL);
     const want = [(fwd[0] * mf + right[0] * mr) * sp, (fwd[1] * mf + right[1] * mr) * sp];
     this.vel = now < this.lockUntil ? [0, 0] : [this.vel[0] + (want[0] - this.vel[0]) * k, this.vel[1] + (want[1] - this.vel[1]) * k];
@@ -2497,7 +2578,15 @@ class Walker {
     if (this.vel[0] || this.vel[1]) this.move([this.vel[0] * dt * u, this.vel[1] * dt * u]);
     const p = this.pos;
 
-    // Vertical: follow the ground, climb steps, fall where it drops away.
+    // Vertical: follow the ground, climb steps, fall where it drops away. E and Q rise and sink
+    // at a steady speed (Q only off the ground).
+    const fly = this.settings.fly;
+    let climb = 0;
+    if (now >= this.lockUntil) for (const k of this.keys) climb += CLIMB_KEYS[k] || 0;
+    if (climb < 0 && this.grounded) climb = 0;
+    if (climb) Object.assign(this, { grounded: false, entryFall: false, air: 0, vz: climb * WALK.CLIMB * (this.ctx.shift() ? WALK.RUN : 1) * u });
+    else if (this.climbing) this.vz = 0; // let go: stop, then fall from rest
+    this.climbing = climb !== 0;
     const g = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
     if (this.grounded) {
       if (g != null && g >= this.foot - WALK.DROP * u) {
@@ -2509,20 +2598,23 @@ class Walker {
           this.stable.push([...p, g]);
           if (this.stable.length > 3) this.stable.shift();
         }
-      } else if ((this.air += dt) > WALK.LEDGE) {
-        this.grounded = false;
-        this.fallFrom = this.foot;
-        this.air = 0;
+      } else if (fly || (this.air += dt) > WALK.LEDGE) {
+        // Off an edge: fall, or with Fly on, hover at this height.
+        Object.assign(this, { grounded: false, fallFrom: this.foot, air: 0, vz: 0 });
       }
     } else {
       this.air += dt;
-      this.vz -= WALK.GRAVITY * u * dt;
+      // Only a fall under gravity counts towards levelling the view on landing.
+      if (climb || fly) this.fallFrom = this.foot;
+      if (fly && !climb) this.vz = 0;
+      else if (!climb) this.vz -= WALK.GRAVITY * u * dt;
       const z = this.foot + this.vz * dt;
-      if (g != null && z <= g) this.land(g);
+      // Rising passes through ledges; coming down (or hovering) lands on them.
+      if (g != null && z <= g && this.vz <= 0) this.land(g);
       else this.foot = z;
       const [mn] = this.ctx.bounds();
       const below = this.groundAt(p, WALK.FOOT * u, this.foot + WALK.STEP * u);
-      if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST))) this.lost(now);
+      if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST && !fly))) this.lost(now);
     }
     this.lag *= Math.exp(-dt / WALK.EASE);
     if (this.level) {
@@ -3847,7 +3939,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -3858,6 +3950,8 @@ const state = {
   lamps: [],
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
+  // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
+  comfort: { panel: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 1 },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -3887,6 +3981,7 @@ const walker = new Walker({
 });
 if (prefs.walk) {
   walker.settings.collide = prefs.walk.collide !== false;
+  walker.settings.fly = prefs.walk.fly === true;
   if (prefs.walk.speed > 0) walker.settings.speed = Math.min(WALK.MAX_SPEED, Math.max(WALK.MIN_SPEED, prefs.walk.speed));
 }
 const BIG_FILE = 150e6; // above this, go straight to the 64-bit reader
@@ -4000,7 +4095,10 @@ function loop() {
     renderer.dirty = true; lastInput = performance.now();
     if (!$('walkPanel').hidden) checkSunlight();
   }
-  if (renderer.dirty) { renderer.dirty = false; renderer.draw(frameState()); positionInspector(); }
+  if (renderer.dirty) {
+    renderer.dirty = false; renderer.draw(frameState()); positionInspector();
+    if (state.comfort.panel) checkSunlight();
+  }
   requestAnimationFrame(loop);
 }
 
@@ -4097,6 +4195,7 @@ async function openBytes(name, bytes, handle = null) {
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
     if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
+    viewNow = 'perspective'; viewCams = {};
     setView('perspective', true);
     leaveHome();
     $('fileName').textContent = name;
@@ -5169,6 +5268,7 @@ function syncSunPanel() {
   $('sunDateOut').textContent = `${day} ${MONTHS[month - 1]}`;
   $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
   syncWeather(month, day);
+  syncComfortPanel();
   if (!activeLocation()) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
@@ -5412,6 +5512,14 @@ function openWeatherDialog() {
 // Set location dialog: the three sources, each marked "In use" or offering "Use this location".
 // Changes apply as they are made.
 let locationDialog = null;
+function showLocationHelp() {
+  Dialog.open({ title: 'Location', html: true, width: 400, body: `<p>The site location places the sun and sets the clock's UTC offset. It can come from three sources; <b>Use this location</b> picks which one is used.</p>
+    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather also shows in the Sun panel and drives the UTCI.</p>
+    <p><b>Custom location</b>: type a latitude and longitude, or search for a city or country. The UTC offset follows the longitude until you type one.</p>
+    <p><b>Rhino file</b>: the location saved in the .3dm file, if it has one.</p>
+    <p>The sun needs a location. The choice, the custom location and the weather file belong to the open model, and come back with it when you reopen it from Recent files.</p>` });
+}
+
 function openLocationDialog() {
   if (locationDialog) return;
   const wrap = document.createElement('div');
@@ -5501,7 +5609,7 @@ function openLocationDialog() {
   };
   refresh();
   locationDialog = { refresh };
-  Dialog.open({ title: 'Set location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460 })
+  Dialog.open({ title: 'Set location', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460, help: showLocationHelp })
     .then(() => { locationDialog = null; });
 }
 
@@ -5572,6 +5680,7 @@ function bindPointer() {
     else if (drag.mode === 'orbit') {
       camera.orbit(dx, dy, pivot);
       state.lastView = null;
+      if (camera.ortho) viewNow = null;
       syncToolbar();
     } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
     redraw();
@@ -5754,15 +5863,16 @@ function onKey(e) {
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; syncToolbar(); redraw(); },
+    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; viewNow = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
     g: toggleLightsPanel,
+    u: toggleComfortPanel,
   };
   if (actions[k] && (model || ['?', 'escape', 'l'].includes(k))) { e.preventDefault(); actions[k](); }
 }
@@ -5770,7 +5880,22 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-function pickView(name) { state.lastView = name; setView(name, true); }
+// Top, Front, Right and Perspective each keep their own camera: leaving one remembers it, and
+// coming back restores it (the first visit, or picking the view you are in, zooms to extents).
+// viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
+// walking and orbiting in perspective. Orbiting Top, Front or Right, or P, makes it a free view
+// that belongs to none.
+let viewNow = 'perspective', viewCams = {};
+function pickView(name) {
+  walker.exit();
+  if (viewNow && viewNow !== name) viewCams[viewNow] = camera.snapshot();
+  const saved = viewNow !== name && viewCams[name];
+  viewNow = name; state.lastView = name;
+  if (!saved) { setView(name, true); return; }
+  camera.restore(saved);
+  syncToolbar();
+  redraw();
+}
 function toggleWalk() {
   if (walker.active) { walker.exit(); return; }
   if (!model || camera.ortho) return;
@@ -5784,6 +5909,13 @@ function toggleWalk() {
 }
 // The Walk panel ------------------------------------------------------------------------------
 
+function showWalkHelp() {
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> on the toolbar (perspective views only) drops you onto the surface below the camera, with your eyes 1.5 m above it.</p>
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</p>
+    <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
+    <p><b>Walking speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
+}
+
 function syncWalkPanel() {
   const S = walker.settings;
   $('walkSpeed').value = S.speed;
@@ -5791,34 +5923,36 @@ function syncWalkPanel() {
   $('walkSpeedOut').value = shiftDown ? `Running ${(S.speed * WALK.RUN).toFixed(1)} m/s` : S.speed.toFixed(1) + ' m/s';
   $('walkSpeedOut').classList.toggle('running', shiftDown);
   $('walkCollide').checked = S.collide;
+  $('walkFly').checked = S.fly;
 }
 
 function bindWalkPanel() {
   const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
   $('walkSpeed').addEventListener('input', () => { S.speed = +$('walkSpeed').value; changed(); });
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
+  $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
+  $('walkHelp').addEventListener('click', showWalkHelp);
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   $('walkStop').addEventListener('click', () => walker.exit());
   $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
   syncWalkPanel();
 }
 
-// Is the walker standing in sunlight? A ray from the eye towards the sun, drawn with the pick
-// pass (so trees and every visible object cast shade), a few times a second.
-let sunlightAt = 0, sunlightBusy = false;
+// Is the camera in sunlight? A ray from the eye towards the sun, drawn with the pick pass (so
+// trees and every visible object cast shade), a few times a second while the Walk or Thermal
+// comfort panel shows. It works with the sun's lighting off too, as long as there is a location.
+// sunlight: null (no model or location), { night: true }, or { lit, by (layer name), dist (m) }.
+let sunlight = null, sunlightAt = 0, sunlightBusy = false, sunlightLater = 0;
 function checkSunlight() {
   const now = performance.now();
-  if (sunlightBusy || now - sunlightAt < 250) return;
+  if (sunlightBusy || now - sunlightAt < 250) {
+    // Check again shortly, so the last camera move or time change is not missed.
+    if (!sunlightLater) sunlightLater = setTimeout(() => { sunlightLater = 0; checkSunlight(); }, 260);
+    return;
+  }
   sunlightAt = now;
-  // show() only touches the DOM when the text changes, so the Turn on button stays clickable.
-  const el = $('walkSun'), show = (cls, html, extra = '') => {
-    const k = cls + html + extra;
-    if (el.dataset.k === k) return;
-    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
-  };
-  if (!state.sun.on) { show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>'); return; }
-  const pos = sunPosition();
-  if (pos.altitude <= 0) { show('shade', '<b>Night</b> · the sun is below the horizon'); return; }
+  const pos = model && activeLocation() ? sunPosition() : null;
+  if (!pos || pos.altitude <= 0) { setSunlight(pos && { night: true }); return; }
   const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = camera.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
   // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
@@ -5826,13 +5960,112 @@ function checkSunlight() {
   const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
   sunlightBusy = true;
   renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
-    if (!walker.active) return;
-    if (!h) show('lit', '<b>In sunlight</b>');
-    else {
-      const layer = model.layers[model.objects[h.id]?.layer], dist = V3.len(V3.sub(h.p, eye)) / u;
-      show('shade', `<b>In shade</b> · cast by ${layer ? escapeHtml(layer.name) : 'an object'}, ${dist < 1 ? "less than 1" : Math.round(dist)} m away`);
-    }
+    if (!model) return;
+    const layer = h && model.layers[model.objects[h.id]?.layer];
+    setSunlight(h ? { lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { lit: true });
   }).finally(() => { sunlightBusy = false; });
+}
+
+function setSunlight(s) {
+  sunlight = s;
+  if (walker.active) showWalkSun();
+  syncComfortPanel();
+}
+
+// The Walk panel's sunlight line. show() only touches the DOM when the text changes, so the Turn
+// on button stays clickable.
+function showWalkSun() {
+  const el = $('walkSun'), show = (cls, html, extra = '') => {
+    const k = cls + html + extra;
+    if (el.dataset.k === k) return;
+    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
+  };
+  const s = sunlight;
+  if (!state.sun.on) show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>');
+  else if (!s) show('', 'Checking for sunlight…');
+  else if (s.night) show('shade', '<b>Night</b> · the sun is below the horizon');
+  else if (s.lit) show('lit', '<b>In sunlight</b>');
+  else show('shade', `<b>In shade</b> · ${shadeText(s)}`);
+}
+const shadeText = (s) => `cast by ${s.by ? escapeHtml(s.by) : 'an object'}, ${s.dist < 1 ? 'less than 1' : Math.round(s.dist)} m away`;
+
+// The Thermal comfort panel ---------------------------------------------------------------------
+// UTCI at the camera from the weather file at the Sun panel's date and time: air temperature and
+// humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
+// mean radiant temperature equal to the air temperature, raised by direct sun (SolarCal) when the
+// camera is in sunlight.
+
+function toggleComfortPanel() {
+  const C = state.comfort;
+  C.panel = !C.panel;
+  $('comfortPanel').hidden = !C.panel;
+  document.querySelector('[data-act="comfort"]').setAttribute('aria-pressed', String(C.panel));
+  if (C.panel) { syncComfortPanel(); checkSunlight(); }
+}
+
+// The inputs and result, or { missing: reason }.
+function comfortNow() {
+  const e = site.epw;
+  if (!e) return { missing: 'epw' };
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy);
+  const w = e.at(month, day, state.sun.hour);
+  if (w.dryBulb === null || w.relativeHumidity === null || w.windSpeed === null) return { missing: 'data', w };
+  const pos = activeLocation() ? sunPosition() : null;
+  const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
+  const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
+  const dMrt = sun ? solarMrtDelta(w.directNormal, pos.altitude) : 0, tr = ta + dMrt;
+  return { w, pos, sun, ta, rh, va, tr, dMrt, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, va, rh) };
+}
+
+function syncComfortPanel() {
+  if (!state.comfort.panel) return;
+  const C = state.comfort, f = (x, d = 1) => x.toFixed(d);
+  $('comfortWind').value = C.wind;
+  $('comfortWindOut').value = f(C.wind, 2);
+  $('comfortWhen').value = `${$('sunDateOut').textContent} · ${fmtHour(state.sun.hour)}`;
+  const r = comfortNow();
+  if (r.missing) {
+    $('comfortRead').style.removeProperty('--cat');
+    setHtml($('comfortRead'), r.missing === 'epw'
+      ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
+      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortInputs'), '');
+    return;
+  }
+  const cat = utciCategory(r.value);
+  $('comfortRead').style.setProperty('--cat', cat.color);
+  setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
+    <div class="utci-scale">${UTCI_CATEGORIES.map((c) => `<span style="background:${c.color}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
+    ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}`);
+  const s = sunlight, pos = r.pos;
+  const sunRow = !pos ? 'No location: shade assumed' : pos.altitude <= 0 || s?.night ? 'Night' : !s ? 'Checking…'
+    : s.lit ? (r.w.directNormal > 0 ? `<b>In sunlight</b> · ${f(r.w.directNormal, 0)} W/m² direct, ${f(pos.altitude, 0)}° up` : '<b>In sunlight</b> · no direct sun in the weather file')
+      : `<b>In shade</b> · ${shadeText(s)}`;
+  const vaNote = r.va < UTCI_WIND_MIN ? ` <span class="fine">(the UTCI uses at least ${UTCI_WIND_MIN})</span>` : '';
+  setHtml($('comfortInputs'), `<dl class="wx">
+    <dt>Air temperature</dt><dd><b>${f(r.ta)}</b> °C</dd>
+    <dt>Relative humidity</dt><dd><b>${f(r.rh, 0)}</b>%</dd>
+    <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s${vaNote}</dd>
+    <dt>Sun</dt><dd>${sunRow}</dd>
+    <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C${r.sun ? ` <span class="fine">(air + ${f(r.dMrt)} from the sun)</span>` : ' <span class="fine">(= air)</span>'}</dd></dl>
+    ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
+}
+
+// Replaces an element's content only when it changes (the panel refreshes several times a second).
+function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
+
+function showComfortHelp() {
+  Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
+    <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered.</p>
+    <p>The <b>mean radiant temperature</b> is taken to be the air temperature, plus the warmth of direct sun when the camera is in sunlight (the SolarCal method, for a standing person turned side-on to the sun). Strong sun typically adds 4 to 9 °C to the UTCI. Hot or cold surfaces, the sky and reflected light are not counted.</p>` });
+}
+
+function bindComfortPanel() {
+  document.querySelector('[data-act="comfort"]').addEventListener('click', toggleComfortPanel);
+  $('comfortClose').addEventListener('click', () => state.comfort.panel && toggleComfortPanel());
+  $('comfortHelp').addEventListener('click', showComfortHelp);
+  $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
+  $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
 }
 
 function setMode(m) {
@@ -5852,7 +6085,12 @@ function toggle(key) {
   syncToolbar();
   redraw();
 }
-function toggleHelp() { $('help').hidden = !$('help').hidden; }
+let helpDialog = null;
+function toggleHelp() {
+  if (helpDialog) { helpDialog.close(null); return; }
+  helpDialog = new Dialog({ title: 'Controls', body: $('helpBody').content.cloneNode(true), width: 600, buttons: [{ label: 'Close', value: true, primary: true }] });
+  helpDialog.result.then(() => { helpDialog = null; });
+}
 
 // Home: the welcome screen, with recent files. An open model stays loaded underneath, and
 // "Back to …" (or Esc) returns to it.
@@ -5957,7 +6195,7 @@ function bindUi() {
   });
   bindSunPanel();
   bindLightsPanel();
-  $('help').addEventListener('click', (e) => { if (e.target === $('help')) toggleHelp(); });
+  bindComfortPanel();
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;
     layerOn = model.layers.map(() => b.dataset.layers === 'all');

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'utci.js'), 'utf8');
-const { utci, utciMany, utciInRange, utciCategory } = new Function(`${src}\nreturn { utci, utciMany, utciInRange, utciCategory };`)();
+const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta } = new Function(`${src}\nreturn { utci, utciMany, utciInRange, utciCategory, solarMrtDelta };`)();
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [
@@ -53,6 +53,15 @@ for (const [v, name] of [[-41, 'Extreme cold stress'], [-40, 'Very strong cold s
   [25.9, 'No thermal stress'], [26, 'Moderate heat stress'], [46, 'Extreme heat stress']]) {
   check(utciCategory(v).name === name, `category of ${v} is ${utciCategory(v).name}, expected ${name}`);
 }
+
+// Direct-sun MRT rise against ladybug-comfort's solarcal (get_projection_factor_simple):
+// [direct normal W/m², altitude °, SHARP °, MRT rise °C]
+for (const [dnr, alt, sharp, want] of [[800, 60, 135, 17.04033], [800, 30, 135, 26.507179], [500, 45, 90, 11.072833],
+  [300, 15, 10, 12.678817], [650, 7.5, 170, 27.470769], [900, 90, 135, 8.976602]]) {
+  const got = solarMrtDelta(dnr, alt, sharp);
+  check(Math.abs(got - want) < 1e-5, `solarMrtDelta(${dnr}, ${alt}, ${sharp}) = ${got}, expected ${want}`);
+}
+check(solarMrtDelta(800, -2) === 0 && solarMrtDelta(0, 40) === 0, 'no sun, no rise');
 
 const t0 = performance.now();
 let sink = 0;

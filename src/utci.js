@@ -150,3 +150,35 @@ const UTCI_CATEGORIES = [
 function utciCategory(value) {
   return UTCI_CATEGORIES.find((c) => value < c.below);
 }
+
+// Direct sun on a person (SolarCal: Arens et al. 2015, ASHRAE 55 Appendix C, as in
+// ladybug-comfort's solarcal module). Returns how much direct sunlight raises the mean radiant
+// temperature, °C, for a standing person in full sun. dnr: direct normal irradiance, W/m²;
+// altitude: sun altitude, degrees; sharp: sun angle from the person's front, degrees (0 in the
+// face, 180 on the back; 135, side-on and turned away from the glare, is SolarCal's default).
+// Shade, sky and ground reflections are left out: in shade the radiant temperature is taken to be
+// the air temperature.
+function solarMrtDelta(dnr, altitude, sharp = 135) {
+  if (!(dnr > 0) || !(altitude > 0)) return 0;
+  const absorptivity = 0.7, emissivity = 0.95, exposedFraction = 0.725, radiantCoeff = 6.012;
+  const flux = solarProjectionFactor(Math.min(altitude, 90), sharp) * dnr;
+  return (flux * absorptivity) / emissivity / (exposedFraction * radiantCoeff);
+}
+
+// Fraction of a standing body's surface that faces the sun (Ap/Ad), interpolated from SolarCal's
+// table by sun altitude (0, 15 ... 90°) and SHARP (0, 15 ... 180°): ladybug-comfort's
+// get_projection_factor_simple.
+const SOLARCAL_STANDING = [
+  [0.254, 0.254, 0.228, 0.187, 0.149, 0.104, 0.059], [0.248, 0.248, 0.225, 0.183, 0.145, 0.102, 0.059],
+  [0.239, 0.239, 0.218, 0.177, 0.138, 0.096, 0.059], [0.225, 0.225, 0.199, 0.165, 0.127, 0.09, 0.059],
+  [0.205, 0.205, 0.182, 0.151, 0.116, 0.083, 0.059], [0.183, 0.183, 0.165, 0.136, 0.109, 0.078, 0.059],
+  [0.167, 0.167, 0.155, 0.131, 0.107, 0.078, 0.059], [0.175, 0.175, 0.161, 0.131, 0.111, 0.081, 0.059],
+  [0.199, 0.199, 0.178, 0.147, 0.12, 0.084, 0.059], [0.22, 0.22, 0.196, 0.16, 0.126, 0.088, 0.059],
+  [0.238, 0.238, 0.21, 0.17, 0.133, 0.091, 0.059], [0.249, 0.249, 0.22, 0.177, 0.138, 0.093, 0.059],
+  [0.252, 0.252, 0.223, 0.178, 0.138, 0.093, 0.059],
+];
+function solarProjectionFactor(altitude, sharp = 135) {
+  const a = Math.min(Math.max(altitude, 0), 90) / 15, s = Math.min(Math.max(sharp, 0), 180) / 15;
+  const i = Math.min(Math.floor(s), 11), j = Math.min(Math.floor(a), 5), fs = s - i, fa = a - j, T = SOLARCAL_STANDING;
+  return (T[i][j] * (1 - fa) + T[i][j + 1] * fa) * (1 - fs) + (T[i + 1][j] * (1 - fa) + T[i + 1][j + 1] * fa) * fs;
+}

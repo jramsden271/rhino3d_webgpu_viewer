@@ -26,8 +26,9 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel zooms (field of view) | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `T` torch · `Esc` to stop |
+| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel zooms (field of view) | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
+| Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
@@ -35,7 +36,10 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Select all visible objects | | `Ctrl+A` |
 
 Top, Front and Right are parallel (no perspective) views, as in Rhino; orbiting one turns it
-into a free view.
+into a free view. Each of the four views remembers its camera: leave one and come back, and
+it is where you left it (including after walking, for Perspective). The first visit to a
+view, or picking the view you are already in, zooms to the extents. Opening another model
+starts afresh.
 
 **Pedestrian mode** walks round the model at eye height (1.5 m). Move the camera over the
 model in a perspective view and press Walk: the camera drops at the speed of gravity onto the
@@ -48,13 +52,19 @@ shown counts: hidden objects and layers are walked through, and so is vegetation
 the Vegetation magic material). The mouse wheel zooms by narrowing or widening the field of
 view, from 10° to 75°; it goes back to normal when you stop walking.
 
+`Space` jumps (about 0.6 m, then gravity brings you down). Holding `E` rises and `Q` sinks
+at a steady 2 m/s (6 m/s with `Shift`), ignoring gravity while held; letting go of `E` drops
+you again, and `Q` stops on the ground.
+
 The **Walk panel** opens with pedestrian mode. It sets the walking speed, 0.5 to 15 m/s
 (1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
-climb steps). With the sun on, it shows whether you are standing in sunlight, checked a few
+climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
+when you walk off an edge, and land when the ground rises to meet you (`Space` does nothing
+while flying). With the sun on, it shows whether you are standing in sunlight, checked a few
 times a second along a line from your eye to the sun; in shade it names the layer of whatever
 casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
-The settings are remembered in this browser. Walking is not recorded in the undo history; pressing Esc, a
+The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, a
 view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
@@ -183,7 +193,7 @@ smooth shading of foliage does not darken the outlines of tree canopies.
 
 The pin at the top left shows the site location: grey **Set location** when nothing sets
 one, or a red pin and the place name (or coordinates) when something does. Click it to open
-**Set location**, which has three sources:
+**Set location** (its **?** button explains the choices), which has three sources:
 
 - **Weather file (EPW)**: the location from the weather file, named from the file (e.g.
   "Riyadh Khalid, Saudi Arabia"). **Choose EPW file…** or **Replace…** opens the Weather
@@ -243,6 +253,27 @@ validated daylight or solar analysis. Shadows fall only on the model's own geome
 there is no ground modelled, there is nothing to receive them. They are cast by surfaces and
 meshes only (not curves); materials more than 40% transparent do not cast shadows. Shadows use four
 cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
+
+## Thermal comfort
+
+Click **UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
+Universal Thermal Climate Index (UTCI) at the camera, at the Sun panel's date and time, and
+shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
+file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
+
+- **Air temperature** and **relative humidity** come from the weather file.
+- **Wind speed** is the weather file's (10 m, open ground) times the panel's **wind factor**,
+  0-1, which stands in for shelter until the viewer can estimate it. The UTCI uses at least
+  0.5 m/s.
+- **Mean radiant temperature** is the air temperature, plus the warmth of direct sun when the
+  camera is in sunlight (the same sunlight test as the Walk panel, run whether or not the sun
+  lighting is on). The sun's share uses SolarCal (Arens et al. 2015, as in ladybug-comfort)
+  for a standing person turned side-on to the sun, from the direct normal radiation and the
+  sun's altitude: strong sun raises the radiant temperature by 10-25 °C, which typically adds
+  4-9 °C to the UTCI. Hot or cold surfaces, the sky and reflected light are not counted.
+
+This is an estimate for comparing places and times, not a substitute for a full outdoor
+comfort study.
 
 ## Lights
 
@@ -320,7 +351,7 @@ src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
-src/utci.js              UTCI (Universal Thermal Climate Index) and its thermal stress categories
+src/utci.js              UTCI (Universal Thermal Climate Index), its stress categories, SolarCal sun on a person
 src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
@@ -339,5 +370,6 @@ model straight away.
 from the BHoM LadybugTools Toolkit (`external_comfort/utci.py`). `utci(ta, tr, va, rh)` takes
 air and mean radiant temperature in °C, 10 m wind speed in m/s (clamped to 0.5-17, as
 ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays, and
-`utciCategory` gives the stress band and its colour. `node tools/test-utci.js` checks it
+`utciCategory` gives the stress band and its colour. `solarMrtDelta` gives the rise in mean
+radiant temperature from direct sun (SolarCal). `node tools/test-utci.js` checks it
 against values from ladybug-comfort.
