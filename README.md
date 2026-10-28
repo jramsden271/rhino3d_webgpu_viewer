@@ -26,7 +26,8 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the walking speed | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Esc` to stop |
+| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel sets the walking speed | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `T` torch · `Esc` to stop |
+| Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
@@ -53,7 +54,9 @@ climb steps). With the sun on, it shows whether you are standing in sunlight, ch
 times a second along a line from your eye to the sun; in shade it names the layer of whatever
 casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
 The settings are remembered in this browser. Walking is not recorded in the undo history; pressing Esc, a
-view button or `P` stops it and leaves you orbiting a point just ahead.
+view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
+walking for a torch: a spot light held at chest height that points where you look and casts
+shadows (see [Lights](#lights)).
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
 materials, object colour and material sources, exploded blocks, the north angle and Revert.
@@ -235,6 +238,30 @@ validated daylight or solar analysis. Shadows are cast by surfaces and meshes on
 curves); materials more than 40% transparent do not cast shadows. Shadows use four
 cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
 
+## Lights
+
+Point and spot lights light the model in any shading mode; they show best at night. Click
+**Lights** (or press `G`) to open the Lights panel, which lists:
+
+- **Torch**: the walker's torch, on and off with the checkbox or `T` in pedestrian mode.
+- **From the Rhino file**: the file's point and spot lights, with their position, colour,
+  intensity and, for spots, direction and cone. Rhino's intensity 1 is about as bright as a
+  street light. Disabled lights are left out; directional, linear and rectangular lights are
+  not used.
+- **Added here**: lamps added with `B`, which puts a warm lamp just off the surface under the
+  cursor (towards you). × removes one, `Shift+B` all of them. They are not saved with the file.
+
+Each light has a checkbox, and **All on** / **All off** switch the file's and added lights
+together. Up to 8 lights shine at once (the torch first, then the list in order); the panel
+marks the others "not shown". Light falls off with the square of the distance and fades out
+by 30 m (40 m for the torch). A lamp in view is drawn as a small glowing bulb.
+
+The first lights also cast shadows, from 512² shadow maps: one map for a spot light and six
+(a cube) for a point light, 25 maps in all, e.g. the torch and four point lights. The panel
+says which lights have shadows. A lamp's maps are drawn again only when it moves or what is
+shown changes, so fixed lamps cost little after the first frame; the torch is redrawn as
+you walk.
+
 ## What is shown
 
 - Meshes, polysurfaces/Breps, extrusions, curves, points and block instances (nested,
@@ -244,7 +271,8 @@ cascaded 2048² shadow maps, so they stay sharp from site scale down to street l
 - Brep edges, mesh creases and boundaries are drawn as edges.
 - Analysis meshes with vertex colours keep their colours.
 - Hidden objects, layout (page space) objects and block definitions themselves are skipped.
-- Not shown: annotations, text, dimensions, hatches, lights, textures.
+- Point and spot lights light the model (see [Lights](#lights)).
+- Not shown: annotations, text, dimensions, hatches, other light types, textures.
 
 ### Polysurfaces need render meshes
 

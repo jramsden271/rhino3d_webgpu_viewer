@@ -371,6 +371,25 @@ async function extractScene(rhino, doc, onProgress) {
   // origin-relative coordinates (xf null), or in block coordinates with a transform `xf`.
   const items = [];
   const total = objects.count;
+  // Rhino's own lights. Point and spot lights become lamps; directional, linear and rectangular
+  // lights are counted in the stats but not used.
+  const lights = [];
+  const readLight = (g, ai) => {
+    let style = '';
+    try { style = enumName(g.lightStyle); } catch (e) { /* older rhino3dm */ }
+    stats.lights = stats.lights || {};
+    stats.lights[style || 'Light'] = (stats.lights[style || 'Light'] || 0) + 1;
+    if (!g.isEnabled || !(g.isPointLight || g.isSpotLight)) return;
+    const c = g.diffuse || { r: 255, g: 255, b: 255 };
+    const l = { name: ai.name || g.name || '', p: V3.sub(g.location, origin),
+      rgb: [c.r, c.g, c.b].map((v) => (v / 255) ** 2.2), intensity: g.intensity ?? 1 };
+    if (g.isSpotLight) {
+      // Rhino: spot angle is the cone's half angle; the hot spot is the share of it at full strength.
+      const outer = ((g.spotAngleRadians || Math.PI / 4) * 180) / Math.PI;
+      Object.assign(l, { dir: V3.norm(g.direction), outer, inner: outer * Math.min(0.95, g.hotSpot ?? 0.5) });
+    }
+    lights.push(l);
+  };
   for (let i = 0; i < total; i++) {
     if (i % 150 === 0) { onProgress?.(i / total, `Converting geometry ${i.toLocaleString()} / ${total.toLocaleString()}`); await tick(); }
     const o = objects.get(i), a = o.attributes();
@@ -391,6 +410,9 @@ async function extractScene(rhino, doc, onProgress) {
       Object.assign(it, { k: 'point', p: Float32Array.from(V3.sub(g.location, origin)) });
     } else if (MESH_TYPES.includes(tn)) {
       Object.assign(it, { k: 'mesh', parts: meshParts(g, tn, true) });
+    } else if (tn === 'Light') {
+      readLight(g, ai);
+      continue;
     } else {
       skip('unsupported', tn);
       continue;
@@ -398,7 +420,7 @@ async function extractScene(rhino, doc, onProgress) {
     items.push(it);
   }
   return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items, fileItems: items.length,
-    stats, location: readLocation(doc), objects: items };
+    stats, location: readLocation(doc), objects: items, lights };
 }
 
 const TYPE_LABEL = { Brep: 'Polysurface', Extrusion: 'Extrusion', Mesh: 'Mesh', SubD: 'SubD', InstanceReference: 'Block instance', Curve: 'Curve', Point: 'Point' };

@@ -3,6 +3,43 @@
 
 const CASCADES = 4;
 const SHADOW_SIZE = 2048;
+const MAX_LAMPS = 8;
+const LAMP_SHADOW_SIZE = 512;
+const LAMP_SHADOW_LAYERS = 25;   // e.g. a torch (1) and four point lights (6 each)
+const LAMP_NEAR = 0.05;          // metres
+
+// Unit vectors across a lamp shadow view looking along d (matches lampBasis in the shader).
+function lampBasis(d) {
+  const up = Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1];
+  const r = V3.norm(V3.cross(d, up));
+  return [r, V3.cross(r, d)];
+}
+const CUBE_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+// Which lamps get shadows, in order, while layers last: a narrow spot takes one layer, a point
+// light (or a spot wider than 60 degrees) six. Returns per lamp { layer, t, dirs } or null.
+function lampShadowPlan(lamps) {
+  let next = 0;
+  return lamps.map((l) => {
+    const cube = !l.dir || l.outer > 60, need = cube ? 6 : 1;
+    if (next + need > LAMP_SHADOW_LAYERS) return null;
+    const plan = { layer: next, t: cube ? 1 : Math.tan((l.outer * Math.PI) / 180), dirs: cube ? CUBE_DIRS : [V3.norm(l.dir)] };
+    next += need;
+    return plan;
+  });
+}
+
+// Clip transform (column-major) for one lamp shadow view: from p along d, half angle atan(t),
+// reversed depth near / distance.
+function lampShadowMatrix(p, d, t, near) {
+  const [r, u] = lampBasis(d), m = new Float32Array(16);
+  const row = (k, a, w) => { m[k] = a[0]; m[4 + k] = a[1]; m[8 + k] = a[2]; m[12 + k] = w; };
+  row(0, V3.scale(r, 1 / t), -V3.dot(r, p) / t);
+  row(1, V3.scale(u, 1 / t), -V3.dot(u, p) / t);
+  row(2, [0, 0, 0], near);
+  row(3, d, -V3.dot(d, p));
+  return m;
+}
 
 const SHADER = /* wgsl */ `
 struct Frame {
@@ -29,6 +66,12 @@ struct Frame {
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
   shadow: array<mat4x4f, ${CASCADES}>,
+  lampCount: vec4f, // x = number of lamps in use
+  // Per lamp: xyz position, w = range (m); rgb = colour x power, w = cos of the spot's inner cone;
+  // xyz = spot direction, w = cos of the outer cone (-2 for a point light shining all round);
+  // shadow: x = first layer in lampShadowMap (-1 none), y = near plane (model units),
+  // z = tan of the shadow view's half angle, w = number of views (1 along the spot, 6 cube faces).
+  lamps: array<vec4f, ${MAX_LAMPS * 4}>,
 };
 // flags.x vertex colours, flags.y edge, flags.z material type (see materials.js), resolved on the
 // CPU from the rule mode and any layer settings made in the viewer; flags.w gloss (0..1).
@@ -39,6 +82,7 @@ struct Batch { color: vec4f, mat: vec4f, flags: vec4f };
 @group(0) @binding(2) var shadowCmp: sampler_comparison;
 @group(0) @binding(3) var aoTex: texture_2d<f32>;
 @group(0) @binding(4) var<storage, read> objFlags: array<u32>; // per object: bit 0 hidden, bit 1 selected
+@group(0) @binding(5) var lampShadowMap: texture_depth_2d_array;
 @group(1) @binding(0) var<uniform> B: Batch;
 
 fn objFlag(oid: u32, bit: u32) -> bool { return oid < arrayLength(&objFlags) && (objFlags[oid] & bit) != 0u; }
@@ -184,6 +228,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   let disc = smoothstep(0.99985, 0.99993, d);                          // ~0.7 deg across
   col = mix(col + warm * glow * above, discCol, disc * above);
   col = moonDisc(dir, col, sky, night);
+  col = toSrgb(tonemap(toLinear(clamp(col, vec3f(0.0), vec3f(1.0))) + lampGlow(dir, 1e30)));
   return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)), 1.0);
 }
 
@@ -258,7 +303,94 @@ fn lighting(wp: vec3f, n: vec3f, wrap: f32) -> Light {
     o.direct = vec3f(0.62) * max((dot(n, o.L) + wrap) / (1.0 + wrap), 0.0);
     o.ambient = mix(vec3f(0.30, 0.29, 0.28), vec3f(0.58, 0.60, 0.64), n.z * 0.5 + 0.5);
   }
+  o.direct += lampLight(wp, n, wrap);
   return o;
+}
+
+// Lamps (point and spot lights): inverse-square falloff, eased to zero at each lamp's range,
+// with shadows for the first few (see lampShadowPlan).
+//
+// A lamp's shadow views look along a direction d with a square frustum of half angle atan(t):
+// one view along a spot's axis, or six cube faces (+x, -x, +y, -y, +z, -z) for a point light.
+// Depth is reversed (near / distance along d), as for the sun. lampBasis matches the JS one.
+fn lampBasis(d: vec3f) -> mat2x3f {
+  var up = vec3f(0.0, 0.0, 1.0);
+  if (abs(d.z) > 0.99) { up = vec3f(0.0, 1.0, 0.0); }
+  let r = normalize(cross(d, up));
+  return mat2x3f(r, cross(r, d));
+}
+fn lampShadow(i: u32, wp: vec3f, n: vec3f) -> f32 {
+  let sh = F.lamps[i * 4u + 3u];
+  if (sh.x < 0.0) { return 1.0; }
+  let a = F.lamps[i * 4u].xyz;
+  let s = F.lamps[i * 4u + 2u];
+  var d = s.xyz;
+  var layer = sh.x;
+  let v0 = wp - a;
+  if (sh.w > 1.5) {                                 // six cube faces
+    let av = abs(v0);
+    if (av.x >= av.y && av.x >= av.z) { d = vec3f(sign(v0.x), 0.0, 0.0); layer += select(1.0, 0.0, v0.x > 0.0); }
+    else if (av.y >= av.z) { d = vec3f(0.0, sign(v0.y), 0.0); layer += select(3.0, 2.0, v0.y > 0.0); }
+    else { d = vec3f(0.0, 0.0, sign(v0.z)); layer += select(5.0, 4.0, v0.z > 0.0); }
+  }
+  let t = sh.z;
+  // Normal offset of ~1.5 shadow texels against acne (a texel grows with distance).
+  let texel = 2.0 * t * max(dot(v0, d), sh.y) / ${LAMP_SHADOW_SIZE}.0;
+  let v = v0 + n * texel * 1.5;
+  let z = dot(v, d);
+  if (z <= sh.y) { return 1.0; }
+  let b = lampBasis(d);
+  let uv = vec2f(dot(v, b[0]), -dot(v, b[1])) / (t * z) * 0.5 + 0.5;
+  if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { return 1.0; }
+  let depthRef = sh.y / max(z - texel, sh.y);
+  let px = 1.0 / ${LAMP_SHADOW_SIZE}.0;
+  var sum = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      sum += textureSampleCompareLevel(lampShadowMap, shadowCmp, uv + vec2f(f32(x), f32(y)) * px, i32(layer), depthRef);
+    }
+  }
+  return sum / 9.0;
+}
+fn spotFactor(i: u32, fromLamp: vec3f) -> f32 {
+  let s = F.lamps[i * 4u + 2u];
+  if (s.w < -1.5) { return 1.0; }
+  return smoothstep(s.w, F.lamps[i * 4u + 1u].w, dot(fromLamp, s.xyz));
+}
+fn lampLight(wp: vec3f, n: vec3f, wrap: f32) -> vec3f {
+  var sum = vec3f(0.0);
+  for (var i = 0u; i < u32(F.lampCount.x); i++) {
+    let a = F.lamps[i * 4u];
+    let v = a.xyz - wp;
+    let L = normalize(v);
+    let d = length(v) * F.misc.y;                                  // metres
+    let ndl = max((dot(n, L) + wrap) / (1.0 + wrap), 0.0);
+    let win = clamp(1.0 - pow(d / a.w, 4.0), 0.0, 1.0);
+    let e = ndl * win * win * spotFactor(i, -L) / (d * d + 1.0);
+    if (e <= 0.0) { continue; }
+    sum += F.lamps[i * 4u + 1u].rgb * e * lampShadow(i, wp, n);
+  }
+  return sum;
+}
+
+// The lamps themselves, seen along a view ray from the eye up to maxDist (model units): a bright
+// bulb and a soft halo, hidden behind anything nearer than the lamp. Linear RGB.
+fn lampGlow(dir: vec3f, maxDist: f32) -> vec3f {
+  var sum = vec3f(0.0);
+  for (var i = 0u; i < u32(F.lampCount.x); i++) {
+    let a = F.lamps[i * 4u];
+    let c = F.lamps[i * 4u + 1u].rgb * spotFactor(i, normalize(F.eye.xyz - a.xyz));  // a spot seen from behind is dark
+    let t = dot(a.xyz - F.eye.xyz, dir);
+    if (t <= 0.0 || t > maxDist) { continue; }
+    let h = length(F.eye.xyz + dir * t - a.xyz) * F.misc.y;      // miss distance, metres
+    let tm = t * F.misc.y;
+    let tint = c / max(max(c.r, c.g), max(c.b, 1e-6));
+    let core = 1.0 - smoothstep(0.07, 0.1 + 0.0015 * tm, h);       // a ~0.15 m bulb
+    let r = h / (0.04 + 0.004 * tm);
+    let halo = 0.6 / (1.0 + r * r);
+    sum += tint * (core * 6.0 + halo) * min(length(c) / 20.0, 2.0);
+  }
+  return sum;
 }
 
 // Water: wind ripples (analytic wave normals), sky reflection with Fresnel, sun glint.
@@ -353,6 +485,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   // the scene's light like any other surface (so they darken at dusk and night).
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
+  if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
   return vec4f(highlight(finish(lit, in.wp), in.oid), alpha);
 }
 
@@ -507,7 +640,7 @@ const SHADOW_SHADER = /* wgsl */ `
 }
 `;
 
-const FRAME_SIZE = 768;
+const FRAME_SIZE = 1280;
 // How far each surface type yields to others where surfaces nearly coincide (see meshClip).
 const SURFACE_PRIORITY = { 1: 0.5, 4: 1, 5: 0.5, 6: 0, 7: 2 }; // water, grass, road, paving, ground
 const BATCH_STRIDE = 256;
@@ -604,6 +737,7 @@ class Renderer {
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
       { binding: 4, visibility: VF, buffer: { type: 'read-only-storage' } },
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d-array' } },
     ] });
     this.objFlagsBuf = device.createBuffer({ size: 4, usage: U.STORAGE | U.COPY_DST });
     this.batchLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: VF, buffer: { hasDynamicOffset: true, minBindingSize: 48 } }] });
@@ -614,6 +748,15 @@ class Renderer {
     this.shadowLayers = [...Array(CASCADES).keys()].map((c) => this.shadowTex.createView({ dimension: '2d', baseArrayLayer: c, arrayLayerCount: 1 }));
     this.shadowView = this.shadowTex.createView({ dimension: '2d-array' });
     this.shadowCmp = device.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
+    // Lamp shadow maps: one layer per spot light, six per point light (see lampShadowPlan). Each
+    // layer is kept until its lamp moves or what is shown changes (lampShadowKeys).
+    this.lampShadowTex = device.createTexture({ size: [LAMP_SHADOW_SIZE, LAMP_SHADOW_SIZE, LAMP_SHADOW_LAYERS], format: DEPTH,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    this.lampShadowLayers = [...Array(LAMP_SHADOW_LAYERS).keys()].map((c) => this.lampShadowTex.createView({ dimension: '2d', baseArrayLayer: c, arrayLayerCount: 1 }));
+    this.lampShadowView = this.lampShadowTex.createView({ dimension: '2d-array' });
+    this.lampShadowBuf = device.createBuffer({ size: LAMP_SHADOW_LAYERS * 256, usage: U.UNIFORM | U.COPY_DST });
+    this.lampShadowKeys = [];
+    this.geomVersion = 0;
     // frameBG / pickFrameBG also bind the screen-sized AO texture, so they are built in resize().
 
     // Ambient occlusion: one layout, two bind groups (the AO pass and the blur pass read
@@ -728,12 +871,15 @@ class Renderer {
     const dev = this.device;
     if (this.aoTex) {
       const entries = (buffer) => [{ binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView },
-        { binding: 2, resource: this.shadowCmp }, { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }];
+        { binding: 2, resource: this.shadowCmp }, { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+        { binding: 5, resource: this.lampShadowView }];
       this.frameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.frameBuf) });
       this.pickFrameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.pickFrameBuf) });
     }
     this.shadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
       { binding: 0, resource: { buffer: this.shadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
+    this.lampShadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
+      { binding: 0, resource: { buffer: this.lampShadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
   }
 
   // flags: Uint32Array with one entry per object (bit 0 hidden, bit 1 selected).
@@ -745,6 +891,7 @@ class Renderer {
       this.makeFrameBindGroups();
     }
     if (flags.byteLength) this.device.queue.writeBuffer(this.objFlagsBuf, 0, flags);
+    this.geomVersion++;   // hidden objects stop casting lamp shadows
     this.dirty = true;
   }
 
@@ -791,6 +938,7 @@ class Renderer {
   // batches: output of extractModel()
   setModel(batches) {
     this.clearModel();
+    this.geomVersion++;
     const dev = this.device, U = GPUBufferUsage;
     const upload = (arr, usage) => {
       const size = Math.ceil(arr.byteLength / 4) * 4;
@@ -881,6 +1029,17 @@ class Renderer {
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
     f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
     if (sh) sh.mats.forEach((m, c) => f.set(m, 100 + c * 16));
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 100 + CASCADES * 16;
+    const plan = s.xray ? [] : lampShadowPlan(lamps), near = LAMP_NEAR / (s.metresPerUnit || 1);
+    f.fill(0, L0, L0 + 4 + MAX_LAMPS * 16);
+    f[L0] = lamps.length;
+    lamps.forEach((l, i) => {
+      const o = L0 + 4 + i * 16, cos = (deg) => Math.cos((deg * Math.PI) / 180), sp = plan[i];
+      f.set([...l.p, l.range], o);
+      f.set([...l.rgb.map((v) => v * l.power), l.dir ? cos(l.inner) : 1], o + 4);
+      f.set(l.dir ? [...l.dir, cos(l.outer)] : [0, 0, -1, -2], o + 8);
+      f.set(sp ? [sp.layer, near, sp.t, sp.dirs.length] : [-1, 0, 1, 0], o + 12);
+    });
     this.device.queue.writeBuffer(buf, 0, f);
   }
 
@@ -904,6 +1063,47 @@ class Renderer {
     }
   }
 
+  // Depth maps from the lamps that have shadows. A layer is redrawn only when its lamp has moved,
+  // or the shown geometry has changed, since it was last drawn; only meshes within the lamp's
+  // range are drawn into it.
+  renderLampShadows(enc, s) {
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS);
+    if (s.xray || !lamps.length) return;
+    const mpu = s.metresPerUnit || 1, near = LAMP_NEAR / mpu;
+    const casters = this.batches.filter((b) => b.visible && b.kind === 'mesh' && !(b.mat && b.mat[3] < 0.6));
+    let geom = this.geomVersion;
+    for (const b of casters) geom = (geom * 31 + b.offset + 1) | 0;
+    const plan = lampShadowPlan(lamps), jobs = [];
+    plan.forEach((sp, i) => {
+      if (!sp) return;
+      const l = lamps[i], R = l.range / mpu;
+      sp.dirs.forEach((d, k) => {
+        const layer = sp.layer + k, key = `${geom}|${l.p}|${d}|${sp.t}|${R}`;
+        if (this.lampShadowKeys[layer] === key) return;
+        this.lampShadowKeys[layer] = key;
+        jobs.push({ layer, m: lampShadowMatrix(l.p, d, sp.t, near), p: l.p, R });
+      });
+    });
+    if (!jobs.length) return;
+    const data = new Float32Array(LAMP_SHADOW_LAYERS * 64);
+    jobs.forEach((j) => data.set(j.m, j.layer * 64));
+    this.device.queue.writeBuffer(this.lampShadowBuf, 0, data);
+    for (const j of jobs) {
+      const pass = enc.beginRenderPass({ colorAttachments: [],
+        depthStencilAttachment: { view: this.lampShadowLayers[j.layer], depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+      pass.setPipeline(this.shadowPipe);
+      pass.setBindGroup(0, this.lampShadowBG, [j.layer * 256]);
+      const [x, y, z] = j.p;
+      for (const b of casters) {
+        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R) continue;
+        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+        pass.setIndexBuffer(b.gpu.idx, 'uint32');
+        pass.drawIndexed(b.count);
+      }
+      pass.end();
+    }
+  }
+
   // s: { viewProj, eye, viewDir, light, ortho, mode, xray, showEdges, showCurves, showPoints,
   //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades(), ground?: [cx, cy, z, half] }
   draw(s) {
@@ -912,6 +1112,7 @@ class Renderer {
     this.writeFrame(this.frameBuf, s.viewProj, s);
     const enc = this.device.createCommandEncoder();
     if (s.shadows) this.renderShadows(enc, s.shadows);
+    this.renderLampShadows(enc, s);
     if (s.aoActive) this.renderAO(enc, s);
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(),
@@ -1026,7 +1227,8 @@ class Renderer {
       this.probeFlagsBuf = this.objFlagsBuf;
       this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
         { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }] }));
+        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+        { binding: 5, resource: this.lampShadowView }] }));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;

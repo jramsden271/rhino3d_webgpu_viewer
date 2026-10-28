@@ -45,6 +45,7 @@
     <button class="btn toggle" data-toggle="xray" title="X-ray (X)">X-ray</button>
     <span class="sep"></span>
     <button class="btn toggle" data-act="sun" title="Sun and shadows panel (S)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Sun</button>
+    <button class="btn toggle" data-act="lights" title="Lights panel (G)"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>Lights</button>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)">Layers</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
@@ -83,6 +84,14 @@
         <div id="sunWeather" class="sun-weather"></div>
       </div>
     </div>
+  </section>
+  <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
+    <div class="panel-head">
+      <span>Lights</span>
+      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
+    </div>
+    <div id="lightsList" class="lights-list"></div>
+    <div class="panel-foot" id="lightsFoot"></div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
@@ -151,7 +160,7 @@
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
   <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
@@ -182,14 +191,14 @@
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
-        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
       <button class="btn" data-act="help">Close</button>
     </div>

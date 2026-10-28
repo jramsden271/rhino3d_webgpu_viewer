@@ -10,6 +10,11 @@ const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
+  // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
+  // power, range (m) }, and for a spot light dir, inner and outer (cone half angles, degrees).
+  lamps: [],
+  torch: false,  // the walker's torch (T in pedestrian mode)
+  lightsPanel: false,
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -33,7 +38,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); redraw(); },
+  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); syncLightsPanel(); redraw(); },
   onSettings: () => { syncWalkPanel(); savePrefs(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
@@ -121,6 +126,7 @@ function frameState() {
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
+  s.lamps = shownLamps();
   if (state.sun.on) {
     const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
     s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
@@ -223,6 +229,11 @@ async function openBytes(name, bytes, handle = null) {
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
+    // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
+    // intensity (1) gives a lamp about as bright as a street light.
+    state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: true,
+      p: l.p, rgb: l.rgb, power: 25 * l.intensity, range: 30, dir: l.dir, inner: l.inner, outer: l.outer }));
+    syncLightsPanel();
     if (loadEdits()) {
       showBusy('Applying your changes', 0.92);
       await new Promise((r) => setTimeout(r, 20));
@@ -1652,6 +1663,7 @@ function bindPointer() {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    hoverAt = { clientX: e.clientX, clientY: e.clientY };
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -1737,6 +1749,99 @@ function animateFocus(q) {
   requestAnimationFrame(step);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Lights: the file's point and spot lights, lamps added here (B puts one just off the surface
+// under the cursor, towards the eye; Shift+B removes the added ones) and the walker's torch.
+
+let hoverAt = null;
+function placeLamp() {
+  if (!hoverAt) return;
+  pickAt(hoverAt).then((h) => {
+    if (!h) return;
+    const mpu = METRES_PER_UNIT[model.units] || 1, back = V3.norm(V3.sub(camera.eye, h.p));
+    const p = V3.add(h.p, V3.scale(back, 0.4 / mpu));
+    const n = state.lamps.filter((l) => l.src === 'added').length + 1;
+    state.lamps = [...state.lamps, { name: `Lamp ${n}`, src: 'added', on: true, p, rgb: [1, 0.62, 0.32], power: 25, range: 30 }];
+    syncLightsPanel();
+    redraw();
+  });
+}
+function clearLamps() { state.lamps = state.lamps.filter((l) => l.src !== 'added'); syncLightsPanel(); redraw(); }
+
+function setTorch(on) { state.torch = on; syncLightsPanel(); redraw(); }
+
+// The lamps that light the scene this frame: the torch first (held at chest height, a little to
+// the right, pointing where the walker looks), then the lights that are on. The renderer uses the
+// first MAX_LAMPS; lampShadowPlan decides which of those cast shadows.
+function shownLamps() {
+  const on = state.lamps.filter((l) => l.on);
+  if (!state.torch || !walker.active || !model) return on;
+  const u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  const hand = V3.add(camera.eye, V3.add(V3.scale(camera.right, 0.2 * u), V3.scale(camera.up, -0.3 * u)));
+  return [{ name: 'Torch', p: hand, dir: camera.forward, inner: 9, outer: 20, rgb: [1, 0.94, 0.84], power: 20, range: 40 }, ...on];
+}
+
+function toggleLightsPanel() {
+  state.lightsPanel = !state.lightsPanel;
+  $('lightsPanel').hidden = !state.lightsPanel;
+  document.querySelector('[data-act="lights"]').setAttribute('aria-pressed', String(state.lightsPanel));
+  syncLightsPanel();
+}
+
+function syncLightsPanel() {
+  if (!state.lightsPanel) return;
+  // Which lights the renderer uses and which cast shadows, as it will see them.
+  const shown = shownLamps().slice(0, MAX_LAMPS), plan = lampShadowPlan(shown);
+  const status = (l) => {
+    const i = shown.indexOf(l);
+    if (!l.on) return 'off';
+    if (i < 0) return `not shown (${MAX_LAMPS} at most)`;
+    return plan[i] ? 'shadows' : 'no shadows';
+  };
+  const hex = (rgb) => `#${rgb.map((v) => Math.round(255 * Math.min(1, v) ** (1 / 2.2)).toString(16).padStart(2, '0')).join('')}`;
+  const row = (l, i) => `<div class="light-row${l.on ? '' : ' off'}" data-i="${i}">
+      <input type="checkbox" ${l.on ? 'checked' : ''} aria-label="${escapeHtml(l.name)} on">
+      <span class="swatch" style="background:${hex(l.rgb)}"></span>
+      <span class="light-name" title="${escapeHtml(l.name)}">${escapeHtml(l.name)}</span>
+      <span class="light-meta">${l.dir ? 'Spot' : 'Point'} · ${status(l)}</span>
+      ${l.src === 'added' ? '<button class="x" title="Remove this lamp" aria-label="Remove">×</button>' : ''}</div>`;
+  const group = (title, src) => {
+    const rows = state.lamps.map((l, i) => (l.src === src ? row(l, i) : '')).join('');
+    return rows ? `<div class="lights-group">${title}</div>${rows}` : '';
+  };
+  const torchMeta = !walker.active ? 'in walk mode' : state.torch ? (plan[0] ? 'shadows' : 'on') : 'off';
+  $('lightsList').innerHTML = `<div class="light-row${state.torch ? '' : ' off'}" data-torch>
+      <input type="checkbox" ${state.torch ? 'checked' : ''} aria-label="Torch on">
+      <span class="swatch" style="background:#fff4e0"></span>
+      <span class="light-name">Torch (T)</span><span class="light-meta">Spot · ${torchMeta}</span></div>`
+    + (group('From the Rhino file', 'file') || '<div class="lights-empty">The Rhino file has no point or spot lights.</div>')
+    + group('Added here', 'added');
+  $('lightsFoot').innerHTML = `<kbd>B</kbd> adds a lamp at the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes added lamps. Up to ${MAX_LAMPS} lights at once; shadows for the torch and about four lamps.`;
+}
+
+function bindLightsPanel() {
+  document.querySelector('[data-act="lights"]').addEventListener('click', toggleLightsPanel);
+  $('lightsClose').addEventListener('click', () => state.lightsPanel && toggleLightsPanel());
+  const setAll = (on) => { state.lamps.forEach((l) => { l.on = on; }); syncLightsPanel(); redraw(); };
+  $('lightsAllOn').addEventListener('click', () => setAll(true));
+  $('lightsAllOff').addEventListener('click', () => setAll(false));
+  $('lightsList').addEventListener('change', (e) => {
+    const r = e.target.closest('.light-row');
+    if (!r) return;
+    if (r.hasAttribute('data-torch')) { setTorch(e.target.checked); return; }
+    state.lamps[+r.dataset.i].on = e.target.checked;
+    syncLightsPanel();
+    redraw();
+  });
+  $('lightsList').addEventListener('click', (e) => {
+    const r = e.target.closest('.light-row');
+    if (!r || !e.target.closest('.x')) return;
+    state.lamps.splice(+r.dataset.i, 1);
+    syncLightsPanel();
+    redraw();
+  });
+}
+
 function onKey(e) {
   const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && model) {
@@ -1760,6 +1865,9 @@ function onKey(e) {
     '?': toggleHelp, escape: () => {
       if (atHome) { leaveHome(); return; } closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
+    b: () => (e.shiftKey ? clearLamps() : placeLamp()),
+    t: () => { if (walker.active) setTorch(!state.torch); },
+    g: toggleLightsPanel,
   };
   if (actions[k] && (model || ['?', 'escape', 'l'].includes(k))) { e.preventDefault(); actions[k](); }
 }
@@ -1775,7 +1883,7 @@ function toggleWalk() {
   $('walkHint').hidden = false;
   $('walkPanel').hidden = false;
   syncWalkPanel();
-  walker.enter().then(() => syncToolbar());
+  walker.enter().then(() => { syncToolbar(); syncLightsPanel(); });
   syncToolbar();
   canvas.focus();
 }
@@ -1953,6 +2061,7 @@ function bindUi() {
     syncToolbar();
   });
   bindSunPanel();
+  bindLightsPanel();
   $('help').addEventListener('click', (e) => { if (e.target === $('help')) toggleHelp(); });
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;

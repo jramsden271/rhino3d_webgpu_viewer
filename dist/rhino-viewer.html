@@ -67,6 +67,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 7px; } }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -97,6 +98,17 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 button.swatch { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
 button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent-soft); outline: none; }
 button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
+.lights-list { padding: 4px 0; }
+.light-row { display: flex; align-items: center; gap: 7px; padding: 4px 12px; font-size: 12.5px; }
+.light-row:hover { background: var(--hover); }
+.light-row input { margin: 0; accent-color: var(--accent); }
+.light-row .swatch { border-radius: 50%; }
+.light-row .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.light-row .light-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.light-row.off .light-name { color: var(--muted); }
+.light-row .x { font-size: 15px; padding: 0 4px; }
+.lights-group { padding: 8px 12px 3px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.lights-empty { padding: 8px 12px; font-size: 12px; color: var(--muted); }
 .layer-row.flash { animation: flash 1.2s ease-out; }
 @keyframes flash { 0%, 30% { background: var(--accent-soft); } 100% { background: transparent; } }
 
@@ -376,6 +388,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     <button class="btn toggle" data-toggle="xray" title="X-ray (X)">X-ray</button>
     <span class="sep"></span>
     <button class="btn toggle" data-act="sun" title="Sun and shadows panel (S)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Sun</button>
+    <button class="btn toggle" data-act="lights" title="Lights panel (G)"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>Lights</button>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)">Layers</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
@@ -414,6 +427,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <div id="sunWeather" class="sun-weather"></div>
       </div>
     </div>
+  </section>
+  <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
+    <div class="panel-head">
+      <span>Lights</span>
+      <span class="panel-actions"><button class="link" id="lightsAllOn">All on</button><button class="link" id="lightsAllOff">All off</button><button class="x" id="lightsClose" aria-label="Close lights panel" title="Close (G)">×</button></span>
+    </div>
+    <div id="lightsList" class="lights-list"></div>
+    <div class="panel-foot" id="lightsFoot"></div>
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
@@ -482,7 +503,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
   <div id="walkFade" class="walk-fade"></div>
 
   <div id="drop" class="overlay drop">
@@ -513,14 +534,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
-        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
+        <dt>Walk</dt><dd><b>Walk</b> on the toolbar (perspective only) drops you onto the surface below the camera · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · wheel for speed · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop · the Walk panel sets the speed, turns collisions off and shows whether you are in sunlight</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location: from a weather file (EPW), a custom location (typed in or a city) or the Rhino file; <b>Use this location</b> switches between them · drop an .epw file onto the window to load it · the sun needs a location · the choice, custom location and weather file belong to the open model, and come back with it when you reopen it from Recent files</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
       <button class="btn" data-act="help">Close</button>
     </div>
@@ -1047,6 +1068,25 @@ async function extractScene(rhino, doc, onProgress) {
   // origin-relative coordinates (xf null), or in block coordinates with a transform `xf`.
   const items = [];
   const total = objects.count;
+  // Rhino's own lights. Point and spot lights become lamps; directional, linear and rectangular
+  // lights are counted in the stats but not used.
+  const lights = [];
+  const readLight = (g, ai) => {
+    let style = '';
+    try { style = enumName(g.lightStyle); } catch (e) { /* older rhino3dm */ }
+    stats.lights = stats.lights || {};
+    stats.lights[style || 'Light'] = (stats.lights[style || 'Light'] || 0) + 1;
+    if (!g.isEnabled || !(g.isPointLight || g.isSpotLight)) return;
+    const c = g.diffuse || { r: 255, g: 255, b: 255 };
+    const l = { name: ai.name || g.name || '', p: V3.sub(g.location, origin),
+      rgb: [c.r, c.g, c.b].map((v) => (v / 255) ** 2.2), intensity: g.intensity ?? 1 };
+    if (g.isSpotLight) {
+      // Rhino: spot angle is the cone's half angle; the hot spot is the share of it at full strength.
+      const outer = ((g.spotAngleRadians || Math.PI / 4) * 180) / Math.PI;
+      Object.assign(l, { dir: V3.norm(g.direction), outer, inner: outer * Math.min(0.95, g.hotSpot ?? 0.5) });
+    }
+    lights.push(l);
+  };
   for (let i = 0; i < total; i++) {
     if (i % 150 === 0) { onProgress?.(i / total, `Converting geometry ${i.toLocaleString()} / ${total.toLocaleString()}`); await tick(); }
     const o = objects.get(i), a = o.attributes();
@@ -1067,6 +1107,9 @@ async function extractScene(rhino, doc, onProgress) {
       Object.assign(it, { k: 'point', p: Float32Array.from(V3.sub(g.location, origin)) });
     } else if (MESH_TYPES.includes(tn)) {
       Object.assign(it, { k: 'mesh', parts: meshParts(g, tn, true) });
+    } else if (tn === 'Light') {
+      readLight(g, ai);
+      continue;
     } else {
       skip('unsupported', tn);
       continue;
@@ -1074,7 +1117,7 @@ async function extractScene(rhino, doc, onProgress) {
     items.push(it);
   }
   return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items, fileItems: items.length,
-    stats, location: readLocation(doc), objects: items };
+    stats, location: readLocation(doc), objects: items, lights };
 }
 
 const TYPE_LABEL = { Brep: 'Polysurface', Extrusion: 'Extrusion', Mesh: 'Mesh', SubD: 'SubD', InstanceReference: 'Block instance', Curve: 'Curve', Point: 'Point' };
@@ -2380,6 +2423,43 @@ class Walker {
 
 const CASCADES = 4;
 const SHADOW_SIZE = 2048;
+const MAX_LAMPS = 8;
+const LAMP_SHADOW_SIZE = 512;
+const LAMP_SHADOW_LAYERS = 25;   // e.g. a torch (1) and four point lights (6 each)
+const LAMP_NEAR = 0.05;          // metres
+
+// Unit vectors across a lamp shadow view looking along d (matches lampBasis in the shader).
+function lampBasis(d) {
+  const up = Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1];
+  const r = V3.norm(V3.cross(d, up));
+  return [r, V3.cross(r, d)];
+}
+const CUBE_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+// Which lamps get shadows, in order, while layers last: a narrow spot takes one layer, a point
+// light (or a spot wider than 60 degrees) six. Returns per lamp { layer, t, dirs } or null.
+function lampShadowPlan(lamps) {
+  let next = 0;
+  return lamps.map((l) => {
+    const cube = !l.dir || l.outer > 60, need = cube ? 6 : 1;
+    if (next + need > LAMP_SHADOW_LAYERS) return null;
+    const plan = { layer: next, t: cube ? 1 : Math.tan((l.outer * Math.PI) / 180), dirs: cube ? CUBE_DIRS : [V3.norm(l.dir)] };
+    next += need;
+    return plan;
+  });
+}
+
+// Clip transform (column-major) for one lamp shadow view: from p along d, half angle atan(t),
+// reversed depth near / distance.
+function lampShadowMatrix(p, d, t, near) {
+  const [r, u] = lampBasis(d), m = new Float32Array(16);
+  const row = (k, a, w) => { m[k] = a[0]; m[4 + k] = a[1]; m[8 + k] = a[2]; m[12 + k] = w; };
+  row(0, V3.scale(r, 1 / t), -V3.dot(r, p) / t);
+  row(1, V3.scale(u, 1 / t), -V3.dot(u, p) / t);
+  row(2, [0, 0, 0], near);
+  row(3, d, -V3.dot(d, p));
+  return m;
+}
 
 const SHADER = /* wgsl */ `
 struct Frame {
@@ -2406,6 +2486,12 @@ struct Frame {
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
   shadow: array<mat4x4f, ${CASCADES}>,
+  lampCount: vec4f, // x = number of lamps in use
+  // Per lamp: xyz position, w = range (m); rgb = colour x power, w = cos of the spot's inner cone;
+  // xyz = spot direction, w = cos of the outer cone (-2 for a point light shining all round);
+  // shadow: x = first layer in lampShadowMap (-1 none), y = near plane (model units),
+  // z = tan of the shadow view's half angle, w = number of views (1 along the spot, 6 cube faces).
+  lamps: array<vec4f, ${MAX_LAMPS * 4}>,
 };
 // flags.x vertex colours, flags.y edge, flags.z material type (see materials.js), resolved on the
 // CPU from the rule mode and any layer settings made in the viewer; flags.w gloss (0..1).
@@ -2416,6 +2502,7 @@ struct Batch { color: vec4f, mat: vec4f, flags: vec4f };
 @group(0) @binding(2) var shadowCmp: sampler_comparison;
 @group(0) @binding(3) var aoTex: texture_2d<f32>;
 @group(0) @binding(4) var<storage, read> objFlags: array<u32>; // per object: bit 0 hidden, bit 1 selected
+@group(0) @binding(5) var lampShadowMap: texture_depth_2d_array;
 @group(1) @binding(0) var<uniform> B: Batch;
 
 fn objFlag(oid: u32, bit: u32) -> bool { return oid < arrayLength(&objFlags) && (objFlags[oid] & bit) != 0u; }
@@ -2561,6 +2648,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   let disc = smoothstep(0.99985, 0.99993, d);                          // ~0.7 deg across
   col = mix(col + warm * glow * above, discCol, disc * above);
   col = moonDisc(dir, col, sky, night);
+  col = toSrgb(tonemap(toLinear(clamp(col, vec3f(0.0), vec3f(1.0))) + lampGlow(dir, 1e30)));
   return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)), 1.0);
 }
 
@@ -2635,7 +2723,94 @@ fn lighting(wp: vec3f, n: vec3f, wrap: f32) -> Light {
     o.direct = vec3f(0.62) * max((dot(n, o.L) + wrap) / (1.0 + wrap), 0.0);
     o.ambient = mix(vec3f(0.30, 0.29, 0.28), vec3f(0.58, 0.60, 0.64), n.z * 0.5 + 0.5);
   }
+  o.direct += lampLight(wp, n, wrap);
   return o;
+}
+
+// Lamps (point and spot lights): inverse-square falloff, eased to zero at each lamp's range,
+// with shadows for the first few (see lampShadowPlan).
+//
+// A lamp's shadow views look along a direction d with a square frustum of half angle atan(t):
+// one view along a spot's axis, or six cube faces (+x, -x, +y, -y, +z, -z) for a point light.
+// Depth is reversed (near / distance along d), as for the sun. lampBasis matches the JS one.
+fn lampBasis(d: vec3f) -> mat2x3f {
+  var up = vec3f(0.0, 0.0, 1.0);
+  if (abs(d.z) > 0.99) { up = vec3f(0.0, 1.0, 0.0); }
+  let r = normalize(cross(d, up));
+  return mat2x3f(r, cross(r, d));
+}
+fn lampShadow(i: u32, wp: vec3f, n: vec3f) -> f32 {
+  let sh = F.lamps[i * 4u + 3u];
+  if (sh.x < 0.0) { return 1.0; }
+  let a = F.lamps[i * 4u].xyz;
+  let s = F.lamps[i * 4u + 2u];
+  var d = s.xyz;
+  var layer = sh.x;
+  let v0 = wp - a;
+  if (sh.w > 1.5) {                                 // six cube faces
+    let av = abs(v0);
+    if (av.x >= av.y && av.x >= av.z) { d = vec3f(sign(v0.x), 0.0, 0.0); layer += select(1.0, 0.0, v0.x > 0.0); }
+    else if (av.y >= av.z) { d = vec3f(0.0, sign(v0.y), 0.0); layer += select(3.0, 2.0, v0.y > 0.0); }
+    else { d = vec3f(0.0, 0.0, sign(v0.z)); layer += select(5.0, 4.0, v0.z > 0.0); }
+  }
+  let t = sh.z;
+  // Normal offset of ~1.5 shadow texels against acne (a texel grows with distance).
+  let texel = 2.0 * t * max(dot(v0, d), sh.y) / ${LAMP_SHADOW_SIZE}.0;
+  let v = v0 + n * texel * 1.5;
+  let z = dot(v, d);
+  if (z <= sh.y) { return 1.0; }
+  let b = lampBasis(d);
+  let uv = vec2f(dot(v, b[0]), -dot(v, b[1])) / (t * z) * 0.5 + 0.5;
+  if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { return 1.0; }
+  let depthRef = sh.y / max(z - texel, sh.y);
+  let px = 1.0 / ${LAMP_SHADOW_SIZE}.0;
+  var sum = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      sum += textureSampleCompareLevel(lampShadowMap, shadowCmp, uv + vec2f(f32(x), f32(y)) * px, i32(layer), depthRef);
+    }
+  }
+  return sum / 9.0;
+}
+fn spotFactor(i: u32, fromLamp: vec3f) -> f32 {
+  let s = F.lamps[i * 4u + 2u];
+  if (s.w < -1.5) { return 1.0; }
+  return smoothstep(s.w, F.lamps[i * 4u + 1u].w, dot(fromLamp, s.xyz));
+}
+fn lampLight(wp: vec3f, n: vec3f, wrap: f32) -> vec3f {
+  var sum = vec3f(0.0);
+  for (var i = 0u; i < u32(F.lampCount.x); i++) {
+    let a = F.lamps[i * 4u];
+    let v = a.xyz - wp;
+    let L = normalize(v);
+    let d = length(v) * F.misc.y;                                  // metres
+    let ndl = max((dot(n, L) + wrap) / (1.0 + wrap), 0.0);
+    let win = clamp(1.0 - pow(d / a.w, 4.0), 0.0, 1.0);
+    let e = ndl * win * win * spotFactor(i, -L) / (d * d + 1.0);
+    if (e <= 0.0) { continue; }
+    sum += F.lamps[i * 4u + 1u].rgb * e * lampShadow(i, wp, n);
+  }
+  return sum;
+}
+
+// The lamps themselves, seen along a view ray from the eye up to maxDist (model units): a bright
+// bulb and a soft halo, hidden behind anything nearer than the lamp. Linear RGB.
+fn lampGlow(dir: vec3f, maxDist: f32) -> vec3f {
+  var sum = vec3f(0.0);
+  for (var i = 0u; i < u32(F.lampCount.x); i++) {
+    let a = F.lamps[i * 4u];
+    let c = F.lamps[i * 4u + 1u].rgb * spotFactor(i, normalize(F.eye.xyz - a.xyz));  // a spot seen from behind is dark
+    let t = dot(a.xyz - F.eye.xyz, dir);
+    if (t <= 0.0 || t > maxDist) { continue; }
+    let h = length(F.eye.xyz + dir * t - a.xyz) * F.misc.y;      // miss distance, metres
+    let tm = t * F.misc.y;
+    let tint = c / max(max(c.r, c.g), max(c.b, 1e-6));
+    let core = 1.0 - smoothstep(0.07, 0.1 + 0.0015 * tm, h);       // a ~0.15 m bulb
+    let r = h / (0.04 + 0.004 * tm);
+    let halo = 0.6 / (1.0 + r * r);
+    sum += tint * (core * 6.0 + halo) * min(length(c) / 20.0, 2.0);
+  }
+  return sum;
 }
 
 // Water: wind ripples (analytic wave normals), sky reflection with Fresnel, sun glint.
@@ -2730,6 +2905,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   // the scene's light like any other surface (so they darken at dusk and night).
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
+  if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
   return vec4f(highlight(finish(lit, in.wp), in.oid), alpha);
 }
 
@@ -2884,7 +3060,7 @@ const SHADOW_SHADER = /* wgsl */ `
 }
 `;
 
-const FRAME_SIZE = 768;
+const FRAME_SIZE = 1280;
 // How far each surface type yields to others where surfaces nearly coincide (see meshClip).
 const SURFACE_PRIORITY = { 1: 0.5, 4: 1, 5: 0.5, 6: 0, 7: 2 }; // water, grass, road, paving, ground
 const BATCH_STRIDE = 256;
@@ -2981,6 +3157,7 @@ class Renderer {
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
       { binding: 4, visibility: VF, buffer: { type: 'read-only-storage' } },
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d-array' } },
     ] });
     this.objFlagsBuf = device.createBuffer({ size: 4, usage: U.STORAGE | U.COPY_DST });
     this.batchLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: VF, buffer: { hasDynamicOffset: true, minBindingSize: 48 } }] });
@@ -2991,6 +3168,15 @@ class Renderer {
     this.shadowLayers = [...Array(CASCADES).keys()].map((c) => this.shadowTex.createView({ dimension: '2d', baseArrayLayer: c, arrayLayerCount: 1 }));
     this.shadowView = this.shadowTex.createView({ dimension: '2d-array' });
     this.shadowCmp = device.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
+    // Lamp shadow maps: one layer per spot light, six per point light (see lampShadowPlan). Each
+    // layer is kept until its lamp moves or what is shown changes (lampShadowKeys).
+    this.lampShadowTex = device.createTexture({ size: [LAMP_SHADOW_SIZE, LAMP_SHADOW_SIZE, LAMP_SHADOW_LAYERS], format: DEPTH,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    this.lampShadowLayers = [...Array(LAMP_SHADOW_LAYERS).keys()].map((c) => this.lampShadowTex.createView({ dimension: '2d', baseArrayLayer: c, arrayLayerCount: 1 }));
+    this.lampShadowView = this.lampShadowTex.createView({ dimension: '2d-array' });
+    this.lampShadowBuf = device.createBuffer({ size: LAMP_SHADOW_LAYERS * 256, usage: U.UNIFORM | U.COPY_DST });
+    this.lampShadowKeys = [];
+    this.geomVersion = 0;
     // frameBG / pickFrameBG also bind the screen-sized AO texture, so they are built in resize().
 
     // Ambient occlusion: one layout, two bind groups (the AO pass and the blur pass read
@@ -3105,12 +3291,15 @@ class Renderer {
     const dev = this.device;
     if (this.aoTex) {
       const entries = (buffer) => [{ binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView },
-        { binding: 2, resource: this.shadowCmp }, { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }];
+        { binding: 2, resource: this.shadowCmp }, { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+        { binding: 5, resource: this.lampShadowView }];
       this.frameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.frameBuf) });
       this.pickFrameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.pickFrameBuf) });
     }
     this.shadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
       { binding: 0, resource: { buffer: this.shadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
+    this.lampShadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
+      { binding: 0, resource: { buffer: this.lampShadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
   }
 
   // flags: Uint32Array with one entry per object (bit 0 hidden, bit 1 selected).
@@ -3122,6 +3311,7 @@ class Renderer {
       this.makeFrameBindGroups();
     }
     if (flags.byteLength) this.device.queue.writeBuffer(this.objFlagsBuf, 0, flags);
+    this.geomVersion++;   // hidden objects stop casting lamp shadows
     this.dirty = true;
   }
 
@@ -3168,6 +3358,7 @@ class Renderer {
   // batches: output of extractModel()
   setModel(batches) {
     this.clearModel();
+    this.geomVersion++;
     const dev = this.device, U = GPUBufferUsage;
     const upload = (arr, usage) => {
       const size = Math.ceil(arr.byteLength / 4) * 4;
@@ -3258,6 +3449,17 @@ class Renderer {
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
     f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
     if (sh) sh.mats.forEach((m, c) => f.set(m, 100 + c * 16));
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 100 + CASCADES * 16;
+    const plan = s.xray ? [] : lampShadowPlan(lamps), near = LAMP_NEAR / (s.metresPerUnit || 1);
+    f.fill(0, L0, L0 + 4 + MAX_LAMPS * 16);
+    f[L0] = lamps.length;
+    lamps.forEach((l, i) => {
+      const o = L0 + 4 + i * 16, cos = (deg) => Math.cos((deg * Math.PI) / 180), sp = plan[i];
+      f.set([...l.p, l.range], o);
+      f.set([...l.rgb.map((v) => v * l.power), l.dir ? cos(l.inner) : 1], o + 4);
+      f.set(l.dir ? [...l.dir, cos(l.outer)] : [0, 0, -1, -2], o + 8);
+      f.set(sp ? [sp.layer, near, sp.t, sp.dirs.length] : [-1, 0, 1, 0], o + 12);
+    });
     this.device.queue.writeBuffer(buf, 0, f);
   }
 
@@ -3281,6 +3483,47 @@ class Renderer {
     }
   }
 
+  // Depth maps from the lamps that have shadows. A layer is redrawn only when its lamp has moved,
+  // or the shown geometry has changed, since it was last drawn; only meshes within the lamp's
+  // range are drawn into it.
+  renderLampShadows(enc, s) {
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS);
+    if (s.xray || !lamps.length) return;
+    const mpu = s.metresPerUnit || 1, near = LAMP_NEAR / mpu;
+    const casters = this.batches.filter((b) => b.visible && b.kind === 'mesh' && !(b.mat && b.mat[3] < 0.6));
+    let geom = this.geomVersion;
+    for (const b of casters) geom = (geom * 31 + b.offset + 1) | 0;
+    const plan = lampShadowPlan(lamps), jobs = [];
+    plan.forEach((sp, i) => {
+      if (!sp) return;
+      const l = lamps[i], R = l.range / mpu;
+      sp.dirs.forEach((d, k) => {
+        const layer = sp.layer + k, key = `${geom}|${l.p}|${d}|${sp.t}|${R}`;
+        if (this.lampShadowKeys[layer] === key) return;
+        this.lampShadowKeys[layer] = key;
+        jobs.push({ layer, m: lampShadowMatrix(l.p, d, sp.t, near), p: l.p, R });
+      });
+    });
+    if (!jobs.length) return;
+    const data = new Float32Array(LAMP_SHADOW_LAYERS * 64);
+    jobs.forEach((j) => data.set(j.m, j.layer * 64));
+    this.device.queue.writeBuffer(this.lampShadowBuf, 0, data);
+    for (const j of jobs) {
+      const pass = enc.beginRenderPass({ colorAttachments: [],
+        depthStencilAttachment: { view: this.lampShadowLayers[j.layer], depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+      pass.setPipeline(this.shadowPipe);
+      pass.setBindGroup(0, this.lampShadowBG, [j.layer * 256]);
+      const [x, y, z] = j.p;
+      for (const b of casters) {
+        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R) continue;
+        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+        pass.setIndexBuffer(b.gpu.idx, 'uint32');
+        pass.drawIndexed(b.count);
+      }
+      pass.end();
+    }
+  }
+
   // s: { viewProj, eye, viewDir, light, ortho, mode, xray, showEdges, showCurves, showPoints,
   //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades(), ground?: [cx, cy, z, half] }
   draw(s) {
@@ -3289,6 +3532,7 @@ class Renderer {
     this.writeFrame(this.frameBuf, s.viewProj, s);
     const enc = this.device.createCommandEncoder();
     if (s.shadows) this.renderShadows(enc, s.shadows);
+    this.renderLampShadows(enc, s);
     if (s.aoActive) this.renderAO(enc, s);
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(),
@@ -3403,7 +3647,8 @@ class Renderer {
       this.probeFlagsBuf = this.objFlagsBuf;
       this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
         { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } }] }));
+        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+        { binding: 5, resource: this.lampShadowView }] }));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
@@ -3465,6 +3710,11 @@ const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
+  // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
+  // power, range (m) }, and for a spot light dir, inner and outer (cone half angles, degrees).
+  lamps: [],
+  torch: false,  // the walker's torch (T in pedestrian mode)
+  lightsPanel: false,
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -3488,7 +3738,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); redraw(); },
+  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); syncLightsPanel(); redraw(); },
   onSettings: () => { syncWalkPanel(); savePrefs(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
@@ -3576,6 +3826,7 @@ function frameState() {
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
+  s.lamps = shownLamps();
   if (state.sun.on) {
     const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
     s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
@@ -3678,6 +3929,11 @@ async function openBytes(name, bytes, handle = null) {
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
+    // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
+    // intensity (1) gives a lamp about as bright as a street light.
+    state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: true,
+      p: l.p, rgb: l.rgb, power: 25 * l.intensity, range: 30, dir: l.dir, inner: l.inner, outer: l.outer }));
+    syncLightsPanel();
     if (loadEdits()) {
       showBusy('Applying your changes', 0.92);
       await new Promise((r) => setTimeout(r, 20));
@@ -5107,6 +5363,7 @@ function bindPointer() {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    hoverAt = { clientX: e.clientX, clientY: e.clientY };
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -5192,6 +5449,99 @@ function animateFocus(q) {
   requestAnimationFrame(step);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Lights: the file's point and spot lights, lamps added here (B puts one just off the surface
+// under the cursor, towards the eye; Shift+B removes the added ones) and the walker's torch.
+
+let hoverAt = null;
+function placeLamp() {
+  if (!hoverAt) return;
+  pickAt(hoverAt).then((h) => {
+    if (!h) return;
+    const mpu = METRES_PER_UNIT[model.units] || 1, back = V3.norm(V3.sub(camera.eye, h.p));
+    const p = V3.add(h.p, V3.scale(back, 0.4 / mpu));
+    const n = state.lamps.filter((l) => l.src === 'added').length + 1;
+    state.lamps = [...state.lamps, { name: `Lamp ${n}`, src: 'added', on: true, p, rgb: [1, 0.62, 0.32], power: 25, range: 30 }];
+    syncLightsPanel();
+    redraw();
+  });
+}
+function clearLamps() { state.lamps = state.lamps.filter((l) => l.src !== 'added'); syncLightsPanel(); redraw(); }
+
+function setTorch(on) { state.torch = on; syncLightsPanel(); redraw(); }
+
+// The lamps that light the scene this frame: the torch first (held at chest height, a little to
+// the right, pointing where the walker looks), then the lights that are on. The renderer uses the
+// first MAX_LAMPS; lampShadowPlan decides which of those cast shadows.
+function shownLamps() {
+  const on = state.lamps.filter((l) => l.on);
+  if (!state.torch || !walker.active || !model) return on;
+  const u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  const hand = V3.add(camera.eye, V3.add(V3.scale(camera.right, 0.2 * u), V3.scale(camera.up, -0.3 * u)));
+  return [{ name: 'Torch', p: hand, dir: camera.forward, inner: 9, outer: 20, rgb: [1, 0.94, 0.84], power: 20, range: 40 }, ...on];
+}
+
+function toggleLightsPanel() {
+  state.lightsPanel = !state.lightsPanel;
+  $('lightsPanel').hidden = !state.lightsPanel;
+  document.querySelector('[data-act="lights"]').setAttribute('aria-pressed', String(state.lightsPanel));
+  syncLightsPanel();
+}
+
+function syncLightsPanel() {
+  if (!state.lightsPanel) return;
+  // Which lights the renderer uses and which cast shadows, as it will see them.
+  const shown = shownLamps().slice(0, MAX_LAMPS), plan = lampShadowPlan(shown);
+  const status = (l) => {
+    const i = shown.indexOf(l);
+    if (!l.on) return 'off';
+    if (i < 0) return `not shown (${MAX_LAMPS} at most)`;
+    return plan[i] ? 'shadows' : 'no shadows';
+  };
+  const hex = (rgb) => `#${rgb.map((v) => Math.round(255 * Math.min(1, v) ** (1 / 2.2)).toString(16).padStart(2, '0')).join('')}`;
+  const row = (l, i) => `<div class="light-row${l.on ? '' : ' off'}" data-i="${i}">
+      <input type="checkbox" ${l.on ? 'checked' : ''} aria-label="${escapeHtml(l.name)} on">
+      <span class="swatch" style="background:${hex(l.rgb)}"></span>
+      <span class="light-name" title="${escapeHtml(l.name)}">${escapeHtml(l.name)}</span>
+      <span class="light-meta">${l.dir ? 'Spot' : 'Point'} · ${status(l)}</span>
+      ${l.src === 'added' ? '<button class="x" title="Remove this lamp" aria-label="Remove">×</button>' : ''}</div>`;
+  const group = (title, src) => {
+    const rows = state.lamps.map((l, i) => (l.src === src ? row(l, i) : '')).join('');
+    return rows ? `<div class="lights-group">${title}</div>${rows}` : '';
+  };
+  const torchMeta = !walker.active ? 'in walk mode' : state.torch ? (plan[0] ? 'shadows' : 'on') : 'off';
+  $('lightsList').innerHTML = `<div class="light-row${state.torch ? '' : ' off'}" data-torch>
+      <input type="checkbox" ${state.torch ? 'checked' : ''} aria-label="Torch on">
+      <span class="swatch" style="background:#fff4e0"></span>
+      <span class="light-name">Torch (T)</span><span class="light-meta">Spot · ${torchMeta}</span></div>`
+    + (group('From the Rhino file', 'file') || '<div class="lights-empty">The Rhino file has no point or spot lights.</div>')
+    + group('Added here', 'added');
+  $('lightsFoot').innerHTML = `<kbd>B</kbd> adds a lamp at the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes added lamps. Up to ${MAX_LAMPS} lights at once; shadows for the torch and about four lamps.`;
+}
+
+function bindLightsPanel() {
+  document.querySelector('[data-act="lights"]').addEventListener('click', toggleLightsPanel);
+  $('lightsClose').addEventListener('click', () => state.lightsPanel && toggleLightsPanel());
+  const setAll = (on) => { state.lamps.forEach((l) => { l.on = on; }); syncLightsPanel(); redraw(); };
+  $('lightsAllOn').addEventListener('click', () => setAll(true));
+  $('lightsAllOff').addEventListener('click', () => setAll(false));
+  $('lightsList').addEventListener('change', (e) => {
+    const r = e.target.closest('.light-row');
+    if (!r) return;
+    if (r.hasAttribute('data-torch')) { setTorch(e.target.checked); return; }
+    state.lamps[+r.dataset.i].on = e.target.checked;
+    syncLightsPanel();
+    redraw();
+  });
+  $('lightsList').addEventListener('click', (e) => {
+    const r = e.target.closest('.light-row');
+    if (!r || !e.target.closest('.x')) return;
+    state.lamps.splice(+r.dataset.i, 1);
+    syncLightsPanel();
+    redraw();
+  });
+}
+
 function onKey(e) {
   const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && model) {
@@ -5215,6 +5565,9 @@ function onKey(e) {
     '?': toggleHelp, escape: () => {
       if (atHome) { leaveHome(); return; } closeLayerMenu(); $('help').hidden = true; $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
+    b: () => (e.shiftKey ? clearLamps() : placeLamp()),
+    t: () => { if (walker.active) setTorch(!state.torch); },
+    g: toggleLightsPanel,
   };
   if (actions[k] && (model || ['?', 'escape', 'l'].includes(k))) { e.preventDefault(); actions[k](); }
 }
@@ -5230,7 +5583,7 @@ function toggleWalk() {
   $('walkHint').hidden = false;
   $('walkPanel').hidden = false;
   syncWalkPanel();
-  walker.enter().then(() => syncToolbar());
+  walker.enter().then(() => { syncToolbar(); syncLightsPanel(); });
   syncToolbar();
   canvas.focus();
 }
@@ -5408,6 +5761,7 @@ function bindUi() {
     syncToolbar();
   });
   bindSunPanel();
+  bindLightsPanel();
   $('help').addEventListener('click', (e) => { if (e.target === $('help')) toggleHelp(); });
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;
