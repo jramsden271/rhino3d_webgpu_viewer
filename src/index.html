@@ -119,12 +119,12 @@
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
       <span>Walk</span>
-      <span class="panel-actions"><button class="link" id="walkStop">Stop walking</button><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close (walking carries on)">×</button></span>
+      <span class="panel-actions"><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Stop walking">×</button></span>
     </div>
     <div class="sun-body">
       <div class="walk-sun" id="walkSun"></div>
       <div class="field">
-        <div class="field-label"><span>Walking speed</span><output id="walkSpeedOut"></output></div>
+        <div class="field-label"><span>Speed</span><output id="walkSpeedOut"></output></div>
         <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">
       </div>
       <div class="check-row">

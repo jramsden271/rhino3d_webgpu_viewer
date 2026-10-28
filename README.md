@@ -57,7 +57,7 @@ view, from 10° to 75°; it goes back to normal when you stop walking.
 at a steady 2 m/s (6 m/s with `Shift`), ignoring gravity while held; letting go of `E` drops
 you again, and `Q` stops on the ground.
 
-The **Walk panel** opens with pedestrian mode. It sets the walking speed, 0.5 to 15 m/s
+The **Walk panel** opens with pedestrian mode, and closing it stops walking. Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
 (1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
@@ -65,8 +65,8 @@ when you walk off an edge, and land when the ground rises to meet you (`Space` d
 while flying). With the sun on, it shows whether you are standing in sunlight, checked a few
 times a second along a line from your eye to the sun; in shade it names the layer of whatever
 casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
-The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, a
-view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
+The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, closing
+the Walk panel, a view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
 

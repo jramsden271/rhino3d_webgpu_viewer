@@ -1990,9 +1990,9 @@ function toggleWalk() {
 
 function showWalkHelp() {
   Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> on the toolbar (perspective views only) drops you onto the surface below the camera, with your eyes 1.5 m above it.</p>
-    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</p>
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or closing this panel to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
-    <p><b>Walking speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
+    <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
 }
 
 function syncWalkPanel() {
@@ -2011,8 +2011,7 @@ function bindWalkPanel() {
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
   $('walkHelp').addEventListener('click', showWalkHelp);
-  $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
-  $('walkStop').addEventListener('click', () => walker.exit());
+  $('walkClose').addEventListener('click', () => { walker.exit(); canvas.focus(); });
   $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
   syncWalkPanel();
 }
