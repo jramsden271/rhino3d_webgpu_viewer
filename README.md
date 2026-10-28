@@ -320,6 +320,7 @@ src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
+src/utci.js              UTCI (Universal Thermal Climate Index) and its thermal stress categories
 src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
@@ -333,3 +334,10 @@ tools/                   development helpers (local server, Node test scripts)
 During development, `node tools/serve.js` serves the project on http://localhost:8123/.
 `src/index.html` runs unbuilt, and `dist/rhino-viewer.html?model=/samples/x.3dm` opens a
 model straight away.
+
+`src/utci.js` is the UTCI_approx polynomial (Bröde et al. 2009), with its coefficients taken
+from the BHoM LadybugTools Toolkit (`external_comfort/utci.py`). `utci(ta, tr, va, rh)` takes
+air and mean radiant temperature in °C, 10 m wind speed in m/s (clamped to 0.5-17, as
+ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays, and
+`utciCategory` gives the stress band and its colour. `node tools/test-utci.js` checks it
+against values from ladybug-comfort.
