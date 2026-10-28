@@ -248,6 +248,7 @@ src/index.html, style.css  page and UI
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
+src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
 src/cities.js            city list for the Select location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
