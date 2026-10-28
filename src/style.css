@@ -59,7 +59,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
-@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 6px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { margin-right: 3px; } }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 6px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; } }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -352,3 +352,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .utci-scale { display: flex; gap: 2px; }
 .utci-scale span { flex: 1; height: 6px; border-radius: 2px; opacity: 0.45; }
 .utci-scale span.on { opacity: 1; outline: 2px solid var(--text); outline-offset: 1px; }
+.field-toggle { display: inline-flex; align-items: center; gap: 3px; border: 0; background: none; padding: 0; margin-left: -3px; font: inherit; color: inherit; cursor: pointer; }
+.field-toggle:hover .caret { color: var(--text); }
+.check-row { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.panel-title { display: inline-flex; align-items: center; gap: 7px; }
+.panel-title svg { width: 15px; height: 15px; flex: none; }
+.utci-read .link { align-self: flex-start; }

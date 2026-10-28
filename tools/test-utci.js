@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'utci.js'), 'utf8');
-const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta } = new Function(`${src}\nreturn { utci, utciMany, utciInRange, utciCategory, solarMrtDelta };`)();
+const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta } = new Function(`${src}\nreturn { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta };`)();
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [
@@ -62,6 +62,7 @@ for (const [dnr, alt, sharp, want] of [[800, 60, 135, 17.04033], [800, 30, 135, 
   check(Math.abs(got - want) < 1e-5, `solarMrtDelta(${dnr}, ${alt}, ${sharp}) = ${got}, expected ${want}`);
 }
 check(solarMrtDelta(800, -2) === 0 && solarMrtDelta(0, 40) === 0, 'no sun, no rise');
+check(Math.abs(surroundingsMrtDelta(600, 90) - 10) < 1e-9 && Math.abs(surroundingsMrtDelta(600, 30) - 5) < 1e-9 && surroundingsMrtDelta(600, -1) === 0, 'sun-warmed surroundings');
 
 const t0 = performance.now();
 let sink = 0;

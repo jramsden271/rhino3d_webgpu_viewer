@@ -182,3 +182,16 @@ function solarProjectionFactor(altitude, sharp = 135) {
   const i = Math.min(Math.floor(s), 11), j = Math.min(Math.floor(a), 5), fs = s - i, fa = a - j, T = SOLARCAL_STANDING;
   return (T[i][j] * (1 - fa) + T[i][j + 1] * fa) * (1 - fs) + (T[i + 1][j] * (1 - fa) + T[i + 1][j + 1] * fa) * fs;
 }
+
+// Sun-warmed surroundings: a placeholder for the extra mean radiant temperature of a sunlit
+// street over a shaded one, from ground and walls heated by the sun, °C. Sunlit paving runs
+// roughly 20-30 °C hotter than shaded paving in summer (about absorbed sun / 24 W/m²K, with
+// absorptivity 0.8), and the ground fills about half of a standing person's view, so the radiant
+// temperature rises by about half that: dnr × sin(altitude) / 60, or 10 °C for 600 W/m² of direct
+// sun on the ground. Field studies put the whole sun-shade difference in mean radiant temperature
+// at about 20-30 °C, which this and solarMrtDelta together match. It ignores how long surfaces
+// take to heat up and cool down, and what the surfaces are made of.
+function surroundingsMrtDelta(dnr, altitude) {
+  if (!(dnr > 0) || !(altitude > 0)) return 0;
+  return (dnr * Math.sin((Math.min(altitude, 90) * Math.PI) / 180)) / 60;
+}

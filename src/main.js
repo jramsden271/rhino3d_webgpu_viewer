@@ -15,8 +15,10 @@ const state = {
   lamps: [],
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
+  weatherPanel: false,
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
-  comfort: { panel: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 1 },
+  // inputs: the Inputs section is open.
+  comfort: { panel: false, inputs: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5 },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -1406,16 +1408,28 @@ function bindSunPanel() {
       [e.clientX, e.clientY]);
   });
   $('sunPlay').addEventListener('click', toggleSunPlay);
-  $('sunWeather').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
+  document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
+  $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
+  $('weatherFile').addEventListener('click', openWeatherDialog);
+  $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   syncSunPanel();
 }
 
-// Weather at the panel's date and time, interpolated from the weather file.
+// The Weather panel: the weather file at the Sun panel's date and time (interpolated).
+function toggleWeatherPanel() {
+  state.weatherPanel = !state.weatherPanel;
+  $('weatherPanel').hidden = !state.weatherPanel;
+  document.querySelector('[data-act="weather"]').setAttribute('aria-pressed', String(state.weatherPanel));
+  syncSunPanel();
+}
+
 function syncWeather(month, day) {
-  const el = $('sunWeather'), e = site.epw;
-  $('sunWeatherSrc').textContent = e ? e.location.name || e.fileName : '';
-  $('sunWeatherSrc').title = e ? e.fileName : '';
+  if (!state.weatherPanel) return;
+  const el = $('weatherBody'), e = site.epw;
+  $('weatherSrc').textContent = e ? e.location.name || e.fileName : 'No weather file';
+  $('weatherSrc').title = e ? e.fileName : '';
+  $('weatherWhen').value = `${day} ${MONTHS[month - 1]} · ${fmtHour(state.sun.hour)}`;
   if (!e) {
     el.innerHTML = '<span class="fine">Add a weather file (EPW) to see the weather at this date and time.</span> <button class="link">Add one…</button>';
     return;
@@ -1563,7 +1577,7 @@ function openWeatherDialog() {
     el('epw').innerHTML = epwStatusHtml();
     el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
     el('remove').hidden = !e;
-    el('note').textContent = `The weather file gives the weather in the Sun panel at its date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
+    el('note').textContent = `The weather file gives the weather in the Weather panel at the Sun panel's date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
       ? 'It belongs to the open model; with none open, it is cleared when one is opened.'
       : model.handle ? `It belongs to ${model.name} and comes back when you reopen it from Recent files.`
         : `It belongs to ${model.name} while it is open.`}`;
@@ -1579,7 +1593,7 @@ function openWeatherDialog() {
 let locationDialog = null;
 function showLocationHelp() {
   Dialog.open({ title: 'Location', html: true, width: 400, body: `<p>The site location places the sun and sets the clock's UTC offset. It can come from three sources; <b>Use this location</b> picks which one is used.</p>
-    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather also shows in the Sun panel and drives the UTCI.</p>
+    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather shows in the Weather panel and drives the UTCI.</p>
     <p><b>Custom location</b>: type a latitude and longitude, or search for a city or country. The UTC offset follows the longitude until you type one.</p>
     <p><b>Rhino file</b>: the location saved in the .3dm file, if it has one.</p>
     <p>The sun needs a location. The choice, the custom location and the weather file belong to the open model, and come back with it when you reopen it from Recent files.</p>` });
@@ -2057,8 +2071,8 @@ const shadeText = (s) => `cast by ${s.by ? escapeHtml(s.by) : 'an object'}, ${s.
 // The Thermal comfort panel ---------------------------------------------------------------------
 // UTCI at the camera from the weather file at the Sun panel's date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
-// mean radiant temperature equal to the air temperature, raised by direct sun (SolarCal) when the
-// camera is in sunlight.
+// mean radiant temperature equal to the air temperature, raised when the camera is in sunlight by
+// the direct sun on the person (SolarCal) and by sun-warmed surroundings (a placeholder).
 
 function toggleComfortPanel() {
   const C = state.comfort;
@@ -2078,8 +2092,10 @@ function comfortNow() {
   const pos = activeLocation() ? sunPosition() : null;
   const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
   const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
-  const dMrt = sun ? solarMrtDelta(w.directNormal, pos.altitude) : 0, tr = ta + dMrt;
-  return { w, pos, sun, ta, rh, va, tr, dMrt, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, va, rh) };
+  const dSun = sun ? solarMrtDelta(w.directNormal, pos.altitude) : 0, dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
+  const tr = ta + dSun + dSurr;
+  // Wind below the UTCI's 0.5 m/s is raised to it (utci does), so it is not counted as out of range.
+  return { w, pos, sun, ta, rh, va, tr, dSun, dSurr, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
 }
 
 function syncComfortPanel() {
@@ -2088,6 +2104,9 @@ function syncComfortPanel() {
   $('comfortWind').value = C.wind;
   $('comfortWindOut').value = f(C.wind, 2);
   $('comfortWhen').value = `${$('sunDateOut').textContent} · ${fmtHour(state.sun.hour)}`;
+  $('comfortToggle').setAttribute('aria-expanded', String(C.inputs));
+  $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.inputs);
+  $('comfortInputs').hidden = !C.inputs;
   const r = comfortNow();
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
@@ -2106,13 +2125,12 @@ function syncComfortPanel() {
   const sunRow = !pos ? 'No location: shade assumed' : pos.altitude <= 0 || s?.night ? 'Night' : !s ? 'Checking…'
     : s.lit ? (r.w.directNormal > 0 ? `<b>In sunlight</b> · ${f(r.w.directNormal, 0)} W/m² direct, ${f(pos.altitude, 0)}° up` : '<b>In sunlight</b> · no direct sun in the weather file')
       : `<b>In shade</b> · ${shadeText(s)}`;
-  const vaNote = r.va < UTCI_WIND_MIN ? ` <span class="fine">(the UTCI uses at least ${UTCI_WIND_MIN})</span>` : '';
   setHtml($('comfortInputs'), `<dl class="wx">
     <dt>Air temperature</dt><dd><b>${f(r.ta)}</b> °C</dd>
     <dt>Relative humidity</dt><dd><b>${f(r.rh, 0)}</b>%</dd>
-    <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s${vaNote}</dd>
+    <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s</dd>
     <dt>Sun</dt><dd>${sunRow}</dd>
-    <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C${r.sun ? ` <span class="fine">(air + ${f(r.dMrt)} from the sun)</span>` : ' <span class="fine">(= air)</span>'}</dd></dl>
+    <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C${r.sun ? ` <span class="fine">(air + ${f(r.dSun)} sun on you + ${f(r.dSurr)} sunlit surroundings)</span>` : ' <span class="fine">(= air)</span>'}</dd></dl>
     ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
 }
 
@@ -2121,14 +2139,15 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
-    <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered.</p>
-    <p>The <b>mean radiant temperature</b> is taken to be the air temperature, plus the warmth of direct sun when the camera is in sunlight (the SolarCal method, for a standing person turned side-on to the sun). Strong sun typically adds 4 to 9 °C to the UTCI. Hot or cold surfaces, the sky and reflected light are not counted.</p>` });
+    <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
+    <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>` });
 }
 
 function bindComfortPanel() {
   document.querySelector('[data-act="comfort"]').addEventListener('click', toggleComfortPanel);
   $('comfortClose').addEventListener('click', () => state.comfort.panel && toggleComfortPanel());
   $('comfortHelp').addEventListener('click', showComfortHelp);
+  $('comfortToggle').addEventListener('click', () => { state.comfort.inputs = !state.comfort.inputs; syncComfortPanel(); });
   $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
   $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
 }
@@ -2259,6 +2278,13 @@ function bindUi() {
     syncToolbar();
   });
   bindSunPanel();
+  // Each tool panel's title carries its toolbar button's icon.
+  for (const [btn, panel] of [['[data-act="sun"]', 'sunPanel'], ['[data-act="weather"]', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
+    ['[data-act="lights"]', 'lightsPanel'], ['#btnWalk', 'walkPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+    const title = $(panel).querySelector('.panel-head > span');
+    title.classList.add('panel-title');
+    title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
+  }
   bindLightsPanel();
   bindComfortPanel();
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {

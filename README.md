@@ -32,6 +32,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
+| Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
 
@@ -214,7 +215,13 @@ The **weather button** next to the pin (a sun behind a cloud) opens the **Weathe
 dialog. The icon is in colour when a weather file is loaded, with the file's name in its
 tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`.epw`), or
 drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
-the weather in the Sun panel and, when it has a latitude and longitude, the location.
+the weather in the Weather panel and, when it has a latitude and longitude, the location.
+
+Click **Weather** on the toolbar for the **Weather panel**: the air temperature, relative
+humidity, wind speed and direction, and global horizontal, direct normal and diffuse
+horizontal irradiance at the Sun panel's date and time. Values are interpolated between the
+file's hourly records, each taken as the middle of its hour. **Weather file…** in its header
+opens the Weather file dialog.
 
 **The custom location, the weather file and your choice belong to one model.** Setting any
 of them links it to the open model's entry in **Recent files** (shown there as "custom
@@ -240,11 +247,8 @@ sunrise and sunset. The date has no year: sun positions change too little from y
 year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
 starting date and time.
 
-- **Weather**: with a weather file loaded, the panel shows the air temperature, relative
-  humidity, wind speed and direction, and global horizontal, direct normal and diffuse
-  horizontal irradiance at the panel's date and time. Values are interpolated between the
-  file's hourly records, each taken as the middle of its hour. The date and time sliders work
-  with the sun off too.
+- **Date and time** also set the Weather and Thermal comfort panels, and work with the sun
+  off too.
 - **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
 
 Sun positions use the NOAA solar position equations (with refraction), which match
@@ -263,14 +267,25 @@ file. Walk to measure at head height; in orbit views it is measured wherever the
 
 - **Air temperature** and **relative humidity** come from the weather file.
 - **Wind speed** is the weather file's (10 m, open ground) times the panel's **wind factor**,
-  0-1, which stands in for shelter until the viewer can estimate it. The UTCI uses at least
-  0.5 m/s.
-- **Mean radiant temperature** is the air temperature, plus the warmth of direct sun when the
-  camera is in sunlight (the same sunlight test as the Walk panel, run whether or not the sun
-  lighting is on). The sun's share uses SolarCal (Arens et al. 2015, as in ladybug-comfort)
-  for a standing person turned side-on to the sun, from the direct normal radiation and the
-  sun's altitude: strong sun raises the radiant temperature by 10-25 °C, which typically adds
-  4-9 °C to the UTCI. Hot or cold surfaces, the sky and reflected light are not counted.
+  0-1, which stands in for shelter until the viewer can estimate it. It starts at 0.5, a
+  typical allowance for streets and buildings; the UTCI itself expects 10 m wind speeds. Wind
+  below 0.5 m/s (including calm) is counted as 0.5 m/s, the lowest speed the UTCI was fitted for.
+- **Mean radiant temperature** is the air temperature in shade. In sunlight (the same sunlight
+  test as the Walk panel, run whether or not the sun lighting is on) two things are added:
+  - the direct sun on the person, by SolarCal (Arens et al. 2015, as in ladybug-comfort) for a
+    standing person turned side-on to the sun, from the direct normal radiation and the sun's
+    altitude: typically 10-25 °C;
+  - a placeholder for sun-warmed ground and walls nearby: direct normal × sin(altitude) / 60,
+    about 10 °C for 600 W/m² of direct sun on the ground. Sunlit paving is roughly 20-30 °C
+    hotter than shaded paving in summer, and the ground fills about half of a person's view.
+
+  Together a sunlit spot comes out about 15-27 °C warmer in radiant temperature than a shaded
+  one, in line with field measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI.
+  Surfaces heating up and cooling down over the day, their materials, the sky and reflected
+  light are not counted.
+
+The value, its category and the wind factor show first; **Inputs** opens to show the air
+temperature, humidity, wind, sun and radiant temperature that went into it.
 
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.
@@ -371,5 +386,6 @@ from the BHoM LadybugTools Toolkit (`external_comfort/utci.py`). `utci(ta, tr, v
 air and mean radiant temperature in °C, 10 m wind speed in m/s (clamped to 0.5-17, as
 ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays, and
 `utciCategory` gives the stress band and its colour. `solarMrtDelta` gives the rise in mean
-radiant temperature from direct sun (SolarCal). `node tools/test-utci.js` checks it
+radiant temperature from direct sun (SolarCal), and `surroundingsMrtDelta` the placeholder for
+sun-warmed surroundings. `node tools/test-utci.js` checks it
 against values from ladybug-comfort.
