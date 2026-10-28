@@ -1502,7 +1502,7 @@ function openLocationDialog() {
   if (locationDialog) return;
   const wrap = document.createElement('div');
   wrap.className = 'loc-dlg';
-  const head = (kind, title) => `<div class="loc-head"><b>${title}</b><span class="loc-use">In use</span><button class="btn small primary" data-use="${kind}">Use this location</button></div>`;
+  const head = (kind, title) => `<div class="loc-head"><b>${title}</b><button class="btn small" data-use="${kind}"></button></div>`;
   wrap.innerHTML = `
     <section class="loc-src" data-kind="epw">
       ${head('epw', 'Weather file (EPW)')}
@@ -1566,7 +1566,15 @@ function openLocationDialog() {
   const refresh = () => {
     const A = activeLocation(), e = site.epw, c = site.custom, f = model?.location;
     wrap.querySelectorAll('.loc-src').forEach((s) => s.classList.toggle('active', A?.kind === s.dataset.kind));
-    wrap.querySelectorAll('[data-use]').forEach((b) => { b.hidden = !locationOf(b.dataset.use) || A?.kind === b.dataset.use; });
+    // Each source with a location has a button: "Use this location", or "In use" (not clickable).
+    // Both look alike; the outline round the source shows which is in use.
+    wrap.querySelectorAll('[data-use]').forEach((b) => {
+      const inUse = A?.kind === b.dataset.use;
+      b.hidden = !locationOf(b.dataset.use);
+      b.disabled = inUse;
+      b.classList.toggle('in-use', inUse);
+      b.textContent = inUse ? 'In use' : 'Use this location';
+    });
     el('epw').innerHTML = e
       ? `<div>${escapeHtml(e.location.name || 'Unnamed location')}</div><div class="fine">${escapeHtml(e.fileName)} · ${e.location.known ? `${fmtCoords(e.location.lat, e.location.lon)} · ${fmtUtc(e.location.utcOffset ?? 0)}` : 'no usable latitude and longitude; its weather is still shown'}</div>`
       : '<div class="fine">None. Choose one, or drop an .epw file onto the window. It also gives the weather in the Sun panel.</div>';

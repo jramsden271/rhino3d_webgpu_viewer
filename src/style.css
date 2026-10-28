@@ -288,9 +288,10 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .loc-src { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
 .loc-src.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .loc-head { display: flex; align-items: center; gap: 8px; }
-.loc-head .btn { margin-left: auto; padding: 3px 9px; }
-.loc-use { display: none; font-size: 10.5px; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 0 6px; line-height: 16px; }
-.loc-src.active .loc-use { display: inline-block; }
+.loc-head .btn { margin-left: auto; padding: 3px 9px; border: 0; background: var(--accent-soft); color: var(--accent); }
+.loc-head .btn:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.loc-head .btn.in-use { opacity: 1; cursor: default; }
+.loc-head .btn.in-use:hover { background: var(--accent-soft); }
 .loc-status .fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .loc-actions { display: flex; align-items: center; gap: 12px; }
 .loc-actions .link { font-size: 12px; }
