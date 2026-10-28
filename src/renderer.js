@@ -15,8 +15,8 @@ struct Frame {
   bgBot: vec4f,
   opts: vec4f,      // x = x-ray alpha (0 = off), y = shadows on, z = ambient occlusion on, w = 1 / shadow depth range
   viewDir: vec4f,   // camera forward
-  sunDir: vec4f,    // xyz towards the sun, w = 1 when sun lighting is on
-  sunColor: vec4f,  // rgb = linear sun colour x intensity, w = sky brightness
+  sunDir: vec4f,    // xyz towards the key light (the sun, or the moon at night), w = 1 when sun lighting is on
+  sunColor: vec4f,  // rgb = linear key light colour x intensity, w = sky brightness
   splits: vec4f,    // far view depth of each shadow cascade
   texel: vec4f,     // world size of one shadow texel, per cascade
   ground: vec4f,    // shadow-catcher plane: centre x, centre y, z, half size
@@ -24,6 +24,10 @@ struct Frame {
   sel: vec4f,       // yzw = highlight colour for selected objects (see objFlags)
   camRight: vec4f,  // xyz camera right, w = tan(fov / 2)
   camUp: vec4f,     // xyz camera up, w = aspect ratio
+  skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
+  stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
+  moon: vec4f,      // xyz towards the moon, w = illuminated fraction
+  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
   shadow: array<mat4x4f, ${CASCADES}>,
 };
 // flags.x vertex colours, flags.y edge, flags.z material type (see materials.js), resolved on the
@@ -109,6 +113,43 @@ fn sunVisibility(wp: vec3f, n: vec3f) -> f32 {
   return mix(v, sampleCascade(wp, n, c + 1u), w);
 }
 
+// Night sky: stars fixed on the celestial sphere, so they turn with the time of day, and a faint
+// Milky Way. View directions go to local east / north / up, then to equatorial coordinates.
+fn starField(dir: vec3f) -> vec3f {
+  let na = F.stars.z;
+  let enu = vec3f(dot(dir.xy, vec2f(sin(na), -cos(na))), dot(dir.xy, vec2f(cos(na), sin(na))), dir.z);
+  let sl = sin(F.stars.x);
+  let cl = cos(F.stars.x);
+  let x = dot(enu, vec3f(0.0, -sl, cl));           // towards the celestial equator on the meridian
+  let z = dot(enu, vec3f(0.0, cl, sl));            // towards the celestial pole
+  let ra = F.stars.y - atan2(-enu.x, x);           // sidereal time minus hour angle
+  let rxy = sqrt(max(1.0 - z * z, 0.0));
+  let q = vec3f(rxy * cos(ra), rxy * sin(ra), z);  // fixed among the stars
+  // One candidate star per cell of a grid on each cube face.
+  let a = abs(q);
+  var uv: vec2f;
+  var face: f32;
+  if (a.x >= a.y && a.x >= a.z) { uv = q.yz / a.x; face = sign(q.x); }
+  else if (a.y >= a.z) { uv = q.xz / a.y; face = 2.0 + sign(q.y); }
+  else { uv = q.xy / a.z; face = 4.0 + sign(q.z); }
+  let N = 140.0;
+  let cell = floor((uv * 0.5 + 0.5) * N);
+  let seed = cell + vec2f(face * 157.0, face * 311.0);
+  let h = hash2(seed);
+  let p = (cell + 0.2 + 0.6 * vec2f(hash2(seed + 17.3), hash2(seed + 41.9))) / N * 2.0 - 1.0;
+  var sd: vec3f;
+  if (a.x >= a.y && a.x >= a.z) { sd = vec3f(sign(q.x), p); }
+  else if (a.y >= a.z) { sd = vec3f(p.x, sign(q.y), p.y); }
+  else { sd = vec3f(p, sign(q.z)); }
+  let px = length(q - normalize(sd)) * F.viewport.y / (2.0 * F.camRight.w);   // distance in pixels
+  let star = select(0.0, (0.07 + 2.0 * pow(fract(h * 7.31), 7.0)) * exp(-px * px * 1.4), h < 0.32);
+  let tint = mix(vec3f(0.75, 0.83, 1.0), vec3f(1.0, 0.86, 0.7), fract(h * 13.7));
+  // Milky Way: a soft band along the galactic plane (north galactic pole at RA 192.9 deg, dec 27.1 deg).
+  let g = dot(q, vec3f(-0.8677, -0.1981, 0.4560));
+  let band = exp(-g * g * 18.0) * (0.45 + 0.55 * noise2(uv * 9.0 + face * 13.0)) * noise2(uv * 3.0 - face * 7.0);
+  return tint * star + vec3f(0.07, 0.075, 0.09) * band;
+}
+
 // Background ---------------------------------------------------------------------------------
 struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
 @vertex fn vsBg(@builtin(vertex_index) i: u32) -> BgOut {
@@ -122,15 +163,58 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   let t = F.camRight.w;
   let dir = normalize(F.viewDir.xyz + F.camRight.xyz * in.ndc.x * t * F.camUp.w + F.camUp.xyz * in.ndc.y * t);
   var col = mix(F.bgBot.rgb, F.bgTop.rgb, pow(clamp(dir.z, 0.0, 1.0), 0.55));
+  let L = F.skySun.xyz;
+  let night = F.skyGlow.w;
+  let Mv = F.moon.xyz;
+  let moonUp = smoothstep(-0.02, 0.05, Mv.z);
+  // Sunset and twilight: a warm glow low in the sky, strongest on the sun's side.
+  let side = dot(normalize(dir.xy + vec2f(1e-5)), normalize(L.xy + vec2f(1e-5))) * 0.5 + 0.5;
+  col += F.skyGlow.rgb * (0.2 + 0.8 * pow(side, 3.0)) * exp(-max(dir.z, 0.0) * 7.0);
+  // A bright moon washes out the fainter stars.
+  col += starField(dir) * night * (1.0 - 0.6 * F.moon.w * moonUp) * smoothstep(0.0, 0.12, dir.z);
   col = mix(col, F.bgBot.rgb * 0.94, smoothstep(0.0, -0.08, dir.z));   // below the horizon
-  let L = F.sunDir.xyz;
-  let above = smoothstep(-0.02, 0.02, L.z);
+  let sky = col;
+  let above = smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);
   let d = max(dot(dir, L), 0.0);
-  let warm = toSrgb(normalize(F.sunColor.rgb + vec3f(1e-4)) * 1.6);
+  // A low sun is orange-red, and so is the glow around it.
+  let high = smoothstep(0.0, 0.25, L.z);
+  let discCol = mix(vec3f(1.0, 0.42, 0.16), vec3f(1.0, 0.98, 0.92), high);
+  let warm = mix(vec3f(1.0, 0.5, 0.2), vec3f(0.96, 0.95, 0.91), high);
   let glow = pow(d, 900.0) * 0.55 + pow(d, 80.0) * 0.14 + pow(d, 10.0) * 0.035;
   let disc = smoothstep(0.99985, 0.99993, d);                          // ~0.7 deg across
-  col = mix(col + warm * glow * above, vec3f(1.0, 0.98, 0.92), disc * above);
+  col = mix(col + warm * glow * above, discCol, disc * above);
+  col = moonDisc(dir, col, sky, night);
   return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)), 1.0);
+}
+
+// The moon: a sphere lit from the sun's direction, so its phase and the tilt of the lit side
+// are right for the place and time. Dark side faintly lit by earthshine at night; pale by day.
+fn moonDisc(dir: vec3f, col: vec3f, sky: vec3f, night: f32) -> vec3f {
+  let Mv = F.moon.xyz;
+  let dm = dot(dir, Mv);
+  if (dm < 0.99) { return col; }
+  let clip = smoothstep(-0.0015, 0.0015, dir.z);                    // hidden below the horizon
+  let ax = normalize(cross(Mv, vec3f(0.0, 0.0, 1.0)) + vec3f(1e-5, 0.0, 0.0));
+  let ay = cross(ax, Mv);
+  let r = 0.0062;                                                  // ~0.7 deg across, like the sun
+  let p = vec2f(dot(dir, ax), dot(dir, ay)) / r;
+  let rr = dot(p, p);
+  let edge = 2.0 * F.camRight.w / F.viewport.y / r;               // one pixel, in disc radii
+  let mask = clamp((1.0 - sqrt(rr)) / edge + 0.5, 0.0, 1.0) * clip;
+  // Halo around a bright moon in a dark sky.
+  let halo = (pow(dm, 3000.0) * 0.12 + pow(dm, 300.0) * 0.035) * F.moon.w * night * clip;
+  var c = col + vec3f(0.62, 0.68, 0.8) * halo;
+  if (mask <= 0.0) { return c; }
+  let n = ax * p.x + ay * p.y - Mv * sqrt(max(1.0 - rr, 0.0));     // surface facing us
+  let lit = smoothstep(-0.03, 0.05, dot(n, F.skySun.xyz));
+  // Darker maria, slight limb darkening, and a warmer tint near the horizon.
+  let m = noise2(p * 1.6 + vec2f(4.2, 1.3)) * 0.7 + noise2(p * 4.3 + vec2f(9.1, 2.7)) * 0.3;
+  let albedo = mix(1.0, 0.68, smoothstep(0.42, 0.62, m)) * (0.86 + 0.14 * sqrt(max(1.0 - rr, 0.0)));
+  let tint = mix(vec3f(1.0, 0.72, 0.5), vec3f(0.97, 0.96, 0.92), smoothstep(0.0, 0.2, Mv.z));
+  let surface = tint * albedo;
+  let bright = mix(sky + surface * 0.45, surface, night);
+  let dark = sky + vec3f(0.02, 0.024, 0.03) * night;              // earthshine
+  return mix(c, mix(dark, bright, lit), mask);
 }
 
 // Meshes -------------------------------------------------------------------------------------
@@ -167,6 +251,7 @@ fn lighting(wp: vec3f, n: vec3f, wrap: f32) -> Light {
     if (dot(n, o.L) > -wrap) { o.vis = sunVisibility(wp, n); }
     o.direct = F.sunColor.rgb * ndl * o.vis;
     o.ambient = mix(vec3f(0.13, 0.125, 0.12), vec3f(0.31, 0.35, 0.43), n.z * 0.5 + 0.5) * F.sunColor.w;
+    o.ambient = mix(o.ambient, o.ambient * vec3f(0.62, 0.78, 1.25), F.skyGlow.w);   // blue night light
   } else {
     o.L = normalize(F.light.xyz);
     o.vis = 1.0;
@@ -264,7 +349,9 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
     let fres = 0.08 + 0.92 * pow(1.0 - max(dot(n, V), 0.0), 4.0);
     lit = mix(lit, sky(reflect(-V, n)) * 0.9, fres * 0.8);
   }
-  if (vc) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
+  // Vertex colours keep an even, readable shading under the headlight; with the sun on they take
+  // the scene's light like any other surface (so they darken at dusk and night).
+  if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
   return vec4f(highlight(finish(lit, in.wp), in.oid), alpha);
 }
@@ -296,7 +383,7 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
 @fragment fn fsLine(in: LOut) -> @location(0) vec4f {
   let fade = 1.0 - hazeAmount(in.wp) * 1.4;        // edges and curves fade out with the haze
   if (B.flags.y > 0.5) { return vec4f(F.edge.rgb, F.edge.a * fade); }
-  return vec4f(mix(F.bgBot.rgb, B.color.rgb, fade), 1.0);
+  return vec4f(mix(F.bgBot.rgb, B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
 // Points (screen-space squares) --------------------------------------------------------------
@@ -788,7 +875,12 @@ class Renderer {
     const cam = s.cam;
     f.set(cam ? [...cam.right, Math.tan(cam.fov / 2)] : [1, 0, 0, 1], 76);
     f.set(cam ? [...cam.up, cam.aspect] : [0, 0, 1, 1], 80);
-    if (sh) sh.mats.forEach((m, c) => f.set(m, 84 + c * 16));
+    const sun = s.sun, rad = Math.PI / 180;
+    f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
+    f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
+    f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
+    f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
+    if (sh) sh.mats.forEach((m, c) => f.set(m, 100 + c * 16));
     this.device.queue.writeBuffer(buf, 0, f);
   }
 

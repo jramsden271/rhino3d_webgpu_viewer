@@ -207,7 +207,13 @@ to, so these last only while they are open.
 ## Sun and shadows
 
 Click **Sun** (or press `S`) to open the Sun panel, and switch it on there to light the model
-by the sun with cast shadows. In perspective views the sky shows the sun itself. Set the date
+by the sun with cast shadows. In perspective views the sky shows the sun itself, and both
+follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
+sky darkens through twilight, and at night the stars come out (placed for the location, date
+and time, so they turn through the night) and the model is lit by a dim blue night light.
+The moon is shown in its real position and phase (lit on the side facing the sun), and once
+the sky is dark it lights the model and casts soft shadows, brighter towards full moon. The
+panel shows the moon's phase, how much of it is lit and its altitude. Set the date
 and local time with the sliders (or the solstice/equinox buttons), and press ▶ to animate
 from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
 sunrise and sunset. The date has no year: sun positions change too little from year to

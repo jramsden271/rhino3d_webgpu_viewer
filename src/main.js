@@ -23,7 +23,6 @@ state.sun = {
 const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the toolbar's Magic button
-const SKY = { top: [0.55, 0.69, 0.86, 1], bottom: [0.87, 0.9, 0.93, 1] };
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -116,17 +115,22 @@ function frameState() {
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
-  const bg = state.sun.on ? SKY : STUDIO;
-  s.bgTop = bg.top; s.bgBot = bg.bottom;
+  s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
   s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, 0.35] : state.edgeColor;
   s.time = (performance.now() / 1000) % 3600;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
   if (state.sun.on) {
-    const pos = sunPosition(), light = sunLight(pos.altitude);
-    s.sun = { dir: sunVector(pos.azimuth, pos.altitude, state.sun.north), rgb: light.rgb, sky: light.sky };
-    if (light.up > 0 && !state.xray) {
+    const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
+    s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
+    const sunDir = sunVector(pos.azimuth, pos.altitude, S.north), moonDir = sunVector(moon.azimuth, moon.altitude, S.north);
+    // Once the sun is down, a moon above the horizon takes over as the light that casts shadows.
+    const moonRgb = moonLight(moon.altitude, moon.lit, light.night), byMoon = light.up === 0 && moonRgb[2] > 0.004;
+    s.sun = { dir: byMoon ? moonDir : sunDir, rgb: byMoon ? moonRgb : light.rgb, glow: light.glow, night: light.night,
+      sky: light.sky + 0.06 * moonRgb[2] / 0.32, sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north,
+      lst: siderealTime(sunOpts()) };
+    if ((light.up > 0 || byMoon) && !state.xray) {
       // Shadows cover the model plus a margin of ground around it for long, low-sun shadows.
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * (state.sun.ground ? 1.6 : 1.1) });
       if (state.sun.ground) s.ground = [c[0], c[1], mn[2] - R * 1e-4, R * 1.6];
@@ -135,10 +139,11 @@ function frameState() {
   return s;
 }
 
-function sunPosition() {
+function sunOpts() {
   const S = state.sun;
-  return solarPosition({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, doy: S.doy, hour: S.hour });
+  return { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, doy: S.doy, hour: S.hour };
 }
+function sunPosition() { return solarPosition(sunOpts()); }
 
 function loop() {
   // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
@@ -1321,7 +1326,10 @@ function syncSunPanel() {
     ? `Altitude <b>${p.altitude.toFixed(1)}°</b> · Azimuth <b>${p.azimuth.toFixed(1)}°</b> (${dirName})`
     : `<b>Sun below the horizon</b> (${p.altitude.toFixed(1)}°)`;
   const day2 = p.polar === 'day' ? 'Sun up all day' : p.polar === 'night' ? 'Sun down all day' : `Sunrise <b>${fmtHour(p.sunrise)}</b> · Sunset <b>${fmtHour(p.sunset)}</b>`;
-  $('sunRead').innerHTML = `${pos}<br>${day2}`;
+  const m = moonPosition(sunOpts());
+  const moon = `Moon: <b>${m.phase}</b> (${Math.round(m.lit * 100)}% lit) · `
+    + (m.altitude > -0.83 ? `altitude <b>${m.altitude.toFixed(1)}°</b>, ${COMPASS[Math.round(m.azimuth / 22.5) % 16]}` : 'below the horizon');
+  $('sunRead').innerHTML = `${pos}<br>${day2}<br>${moon}`;
   document.querySelector('.sun-body').classList.toggle('off', !S.on);
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
 }
