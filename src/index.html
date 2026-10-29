@@ -103,6 +103,7 @@
     </div>
     <div class="sun-body">
       <div id="comfortRead" class="utci-read"></div>
+      <div id="comfortSun" class="sun-state"></div>
       <div class="field">
         <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
         <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
@@ -127,7 +128,6 @@
       <span class="panel-actions"><label class="switch" title="Walking on/off (perspective views only)"><input type="checkbox" id="walkOn"><span></span></label><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
-      <div class="walk-sun" id="walkSun"></div>
       <div class="field">
         <div class="field-label"><span>Speed</span><output id="walkSpeedOut"></output></div>
         <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">

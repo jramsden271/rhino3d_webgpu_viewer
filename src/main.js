@@ -220,7 +220,6 @@ function loop() {
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
-    if (!$('walkPanel').hidden) checkSunlight();
   }
   if (renderer.dirty) {
     renderer.dirty = false; renderer.draw(frameState()); positionInspector();
@@ -2089,7 +2088,7 @@ function showWalkHelp() {
   Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p>The switch above, or the figure on the toolbar's Walk button, starts walking (perspective views only): you drop onto the surface below the camera, with your eyes 1.5 m above it. Closing this panel does not stop you.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or the switch to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
-    <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
+    <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
 }
 
 function syncWalkPanel() {
@@ -2100,7 +2099,6 @@ function syncWalkPanel() {
   $('walkSpeedOut').classList.toggle('running', shiftDown);
   $('walkCollide').checked = S.collide;
   $('walkFly').checked = S.fly;
-  showWalkSun();
 }
 
 function bindWalkPanel() {
@@ -2112,9 +2110,7 @@ function bindWalkPanel() {
   $('walkClose').addEventListener('click', () => { toggleWalkPanel(); canvas.focus(); });
   $('walkOn').addEventListener('change', toggleWalk);
   $('walkQuick').addEventListener('click', toggleWalk);
-  $('walkCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWalkPanel(); }); // the gaps round the icon
-  $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
-  syncWalkPanel();
+  $('walkCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWalkPanel(); }); // the gaps round the icon  syncWalkPanel();
 }
 
 // Is the camera in sunlight? A ray from the eye towards the sun, drawn with the pick pass (so
@@ -2147,27 +2143,28 @@ function checkSunlight() {
 
 function setSunlight(s) {
   sunlight = s;
-  if (walker.active) showWalkSun();
   syncComfortPanel();
 }
-
-// The Walk panel's sunlight line. show() only touches the DOM when the text changes, so the Turn
-// on button stays clickable.
-function showWalkSun() {
-  const el = $('walkSun'), show = (cls, html, extra = '') => {
-    const k = cls + html + extra;
-    if (el.dataset.k === k) return;
-    el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
-  };
-  const s = sunlight;
-  if (!walker.active) show('', 'Not walking: turn walking on with the switch above, or the icon on the Walk button');
-  else if (!state.sun.on) show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>');
-  else if (!s) show('', 'Checking for sunlight…');
-  else if (s.night) show('shade', '<b>Night</b> · the sun is below the horizon');
-  else if (s.lit) show('lit', '<b>In sunlight</b>');
-  else show('shade', `<b>In shade</b> · ${shadeText(s)}`);
-}
 const shadeText = (s) => `cast by ${s.by ? escapeHtml(s.by) : 'an object'}, ${s.dist < 1 ? 'less than 1' : Math.round(s.dist)} m away`;
+
+// Direct sun on the person (W/m²) below which the Thermal comfort panel calls it weak sunlight:
+// a thin or hazy sun, or one just over the horizon, adds little warmth.
+const WEAK_SUN = 100;
+
+// The Thermal comfort panel's sunlight line, for comfortNow()'s result: [class, html]. Shade from
+// the model comes first, then a simulated cloud over the sun, then how strong the sun is.
+function sunState(r) {
+  const s = sunlight, pos = activeLocation() ? sunPosition() : null;
+  if (!pos) return ['', 'No location, so no sun · <button class="link" data-location>Set location…</button>'];
+  if (pos.altitude <= 0 || s?.night) return ['shade', '<b>Night</b> · the sun is below the horizon'];
+  if (!s) return ['', 'Checking for sunlight…'];
+  if (!s.lit) return ['shade', `<b>In shade</b> · ${shadeText(s)}`];
+  if (!r || r.missing) return ['lit', '<b>In sunlight</b>'];
+  const w = `${Math.round(r.beam)} W/m² direct`;
+  if (r.sim?.shade != null && r.sim.shade < 0.55) return ['cloud', `<b>Under a simulated cloud</b> · ${w}`];
+  if (r.beam < WEAK_SUN) return ['weak', `<b>In weak sunlight</b> · ${w}`];
+  return ['lit', `<b>In sunlight</b> · ${w}${r.sim?.shade != null ? ' between simulated clouds' : ''}`];
+}
 
 // The Thermal comfort panel ---------------------------------------------------------------------
 // UTCI at the camera from the weather file at the Sun panel's date and time: air temperature and
@@ -2226,6 +2223,9 @@ function syncComfortPanel() {
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.inputs);
   $('comfortInputs').hidden = !C.inputs;
   const r = comfortNow();
+  const [sunCls, sunHtml] = sunState(r);
+  $('comfortSun').className = 'sun-state ' + sunCls;
+  setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
     setHtml($('comfortRead'), r.missing === 'epw'
@@ -2257,12 +2257,10 @@ function syncComfortPanel() {
     ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
 }
 
-// Under the UTCI: which way the sun was counted, when simulated clouds are asked for.
+// Under the UTCI: why simulated clouds, when asked for, could not be counted (the sunlight line
+// says whether a cloud is over the sun when they are).
 function comfortCloudNote(r) {
-  if (!r.sim) return '';
-  if (r.sim.off) return `<div class="fine">${r.sim.off}: using the hour's average sun.</div>`;
-  if (!r.sun) return '<div class="fine">With simulated clouds · in shade here, so they make no difference.</div>';
-  return `<div class="fine">With simulated clouds · <b>${r.sim.shade < 0.55 ? 'under a cloud' : 'in a gap'}</b> at the camera.</div>`;
+  return r.sim?.off ? `<div class="fine">${r.sim.off}: using the hour's average sun.</div>` : '';
 }
 
 // Replaces an element's content only when it changes (the panel refreshes several times a second).
@@ -2285,6 +2283,7 @@ function bindComfortPanel() {
   $('comfortClouds').checked = state.comfort.clouds;
   $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });
   $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
+  $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 
 function setMode(m) {

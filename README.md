@@ -65,10 +65,8 @@ Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
 when you walk off an edge, and land when the ground rises to meet you (`Space` does nothing
-while flying). With the sun on, it shows whether you are standing in sunlight, checked a few
-times a second along a line from your eye to the sun; in shade it names the layer of whatever
-casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
-The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, the
+while flying). Whether you are standing in sunlight shows in the
+[Thermal comfort](#thermal-comfort) panel. The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, the
 switch or the figure, a view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
@@ -307,13 +305,24 @@ Universal Thermal Climate Index (UTCI) at the camera, at the Sun panel's date an
 shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
 file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
 
+Under the UTCI a line says whether the camera is in sunlight, checked a few times a second
+along a line from the eye to the sun (whether or not the sun lighting is on). Trees cast shade
+here even though you can walk through them; glass counts as opaque. It reads:
+
+- **In sunlight**, with the direct sun on the person (W/m²);
+- **In weak sunlight** when that is below 100 W/m²: a thin or hazy sun, or one just over the
+  horizon, which adds little warmth;
+- **Under a simulated cloud** (grey) when **Include simulated clouds** is ticked and a drawn
+  cloud is over the sun;
+- **In shade**, naming the layer of whatever casts it and how far away it is; or **Night**.
+
 - **Air temperature** and **relative humidity** come from the weather file.
 - **Wind speed** is the weather file's (10 m, open ground) times the panel's **wind factor**,
   0-1, which stands in for shelter until the viewer can estimate it. It starts at 0.5, a
   typical allowance for streets and buildings; the UTCI itself expects 10 m wind speeds. Wind
   below 0.5 m/s (including calm) is counted as 0.5 m/s, the lowest speed the UTCI was fitted for.
-- **Mean radiant temperature** is the air temperature in shade. In sunlight (the same sunlight
-  test as the Walk panel, run whether or not the sun lighting is on) two things are added:
+- **Mean radiant temperature** is the air temperature in shade. In sunlight (the sunlight line
+  above, including weak sunlight) two things are added:
   - the direct sun on the person, by SolarCal (Arens et al. 2015, as in ladybug-comfort) for a
     standing person turned side-on to the sun, from the direct normal radiation and the sun's
     altitude: typically 10-25 °C;
