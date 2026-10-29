@@ -213,7 +213,11 @@ the file.
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
 view; it switches off in X-ray mode. It is computed from the true (faceted) surfaces, so the
-smooth shading of foliage does not darken the outlines of tree canopies.
+smooth shading of foliage does not darken the outlines of tree canopies. It also softens
+edges: the light rolls round each corner as though it were rounded by a few centimetres (never
+less than 2 pixels on screen), outside corners catch a little more light, and faceted curved
+surfaces look smoother. Glass and vegetation keep their sharp edges. In the Rendered view with
+the sun on, edge lines are fainter and thin out further with distance.
 
 ## Location and weather
 

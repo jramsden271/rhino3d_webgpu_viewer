@@ -84,6 +84,7 @@ struct Batch { color: vec4f, mat: vec4f, flags: vec4f };
 @group(0) @binding(3) var aoTex: texture_2d<f32>;
 @group(0) @binding(4) var<storage, read> objFlags: array<u32>; // per object: bit 0 hidden, bit 1 selected
 @group(0) @binding(5) var lampShadowMap: texture_depth_2d_array;
+@group(0) @binding(6) var gbuf: texture_2d<f32>;   // AO prepass: face normal, view depth (1x1 dummy while it is drawn)
 @group(1) @binding(0) var<uniform> B: Batch;
 
 fn objFlag(oid: u32, bit: u32) -> bool { return oid < arrayLength(&objFlags) && (objFlags[oid] & bit) != 0u; }
@@ -603,13 +604,46 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   return col;
 }
 
+// Soft edges: real corners are never knife-sharp, so the light rolls round them. The face normals a
+// few pixels around (from the AO prepass) are averaged in where they lie on this surface or on one
+// meeting it at a corner, not on something in front or behind. That rounds each corner by about
+// 6 cm, never less than 2 px on screen. conv: + near an outside corner, - near an inside one.
+struct Soft { n: vec3f, conv: f32 };
+fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
+  var o = Soft(n, 0.0);
+  let p0 = vec2i(pos);
+  let g0 = textureLoad(gbuf, p0, 0);
+  let d0 = dot(wp - F.eye.xyz, F.viewDir.xyz);
+  let pxw = max(length(dx), length(dy));   // model units per pixel
+  if (g0.w <= 0.0 || abs(g0.w - d0) > 2.0 * pxw + abs(d0) * 1e-4) { return o; }   // another surface is in the prepass here
+  let r = clamp(0.06 / F.misc.y / pxw, 2.0, 5.0);
+  let lim = vec2i(F.viewport.xy) - 1;
+  var sum = g0.xyz;
+  var cnt = 1.0;
+  for (var i = 0; i < 8; i++) {
+    let a = f32(i) * 0.7853982 + 0.39;
+    let off = vec2i(round(vec2f(cos(a), sin(a)) * r));
+    let g = textureLoad(gbuf, clamp(p0 + off, vec2i(0), lim), 0);
+    let ow = dx * f32(off.x) + dy * f32(off.y);   // the offset along this face
+    // Where the face would be there, were it flat; a corner bends away from that gradually.
+    if (g.w <= 0.0 || abs(g.w - d0 - dot(ow, F.viewDir.xyz)) > length(ow)) { continue; }
+    sum += g.xyz;
+    cnt += 1.0;
+    o.conv += dot(g.xyz, normalize(ow)) / 8.0;
+  }
+  o.n = normalize(n + sum / cnt - g0.xyz);
+  return o;
+}
+
 @fragment fn fsMesh(in: MOut) -> @location(0) vec4f {
   let mode = F.viewport.w;
   var V = normalize(F.eye.xyz - in.wp);
   if (F.eye.w > 0.5) { V = -F.viewDir.xyz; }
   // Two-sided lighting: decide which side we see from the true face orientation, not the
   // interpolated normal (which can face away near silhouettes of smooth-shaded shapes).
-  var faceN = cross(dpdx(in.wp), dpdy(in.wp));
+  let dwx = dpdx(in.wp);
+  let dwy = dpdy(in.wp);
+  var faceN = cross(dwx, dwy);
   if (dot(faceN, V) < 0.0) { faceN = -faceN; }
   var n = normalize(in.n);
   if (dot(n, faceN) < 0.0) { n = -n; }
@@ -676,11 +710,16 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   if (vc) { base = in.c.rgb; }
 
   var ao = 1.0;
-  if (F.opts.z > 0.5 && F.opts.x == 0.0 && alpha >= 1.0) { ao = textureLoad(aoTex, vec2i(in.pos.xy), 0).r; }
+  var conv = 0.0;
+  if (F.opts.z > 0.5 && F.opts.x == 0.0 && alpha >= 1.0) {
+    ao = textureLoad(aoTex, vec2i(in.pos.xy), 0).r;
+    if (cls != 2 && cls != 3) { let se = softEdge(in.pos.xy, in.wp, dwx, dwy, n); n = se.n; conv = se.conv; }
+  }
   let lt = lighting(in.wp, n, wrap);
   let h = normalize(lt.L + V);
   let specular = pow(max(dot(n, h), 0.0), gloss) * spec * lt.vis * select(0.6, 1.0, F.sunDir.w > 0.5);
   var lit = toLinear(base) * (lt.ambient * ao + lt.direct * mix(1.0, ao, 0.3));
+  lit *= 1.0 + 0.2 * max(conv, 0.0) + 0.08 * min(conv, 0.0);   // outside corners catch the light
   if (F.sunDir.w > 0.5) { lit += F.sunColor.rgb * specular; } else { lit += vec3f(specular); }
   if (cls == 2) {                                   // glass reflects the sky
     let fres = 0.08 + 0.92 * pow(1.0 - max(dot(n, V), 0.0), 4.0);
@@ -712,7 +751,15 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
 }
 @fragment fn fsLine(in: LOut) -> @location(0) vec4f {
   let fade = 1.0 - hazeAmount(in.wp) * 1.4;        // edges and curves fade out with the haze
-  if (B.flags.y > 0.5) { return vec4f(F.edge.rgb, F.edge.a * fade); }
+  if (B.flags.y > 0.5) {
+    // In the Rendered view, edges thin out further off, where they would crowd together.
+    var far = 1.0;
+    if (F.viewport.w > 0.5 && F.viewport.w < 1.5 && F.eye.w < 0.5) {
+      let mpp = dot(in.wp - F.eye.xyz, F.viewDir.xyz) * 2.0 * F.camRight.w / F.viewport.y * F.misc.y;   // metres per pixel
+      far = mix(1.0, 0.3, smoothstep(0.08, 0.4, mpp));
+    }
+    return vec4f(F.edge.rgb, F.edge.a * fade * far);
+  }
   return vec4f(mix(F.bgBot.rgb, B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
@@ -935,7 +982,10 @@ class Renderer {
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
       { binding: 4, visibility: VF, buffer: { type: 'read-only-storage' } },
       { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d-array' } },
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
     ] });
+    // Stands in for the AO prepass texture in passes that draw into it or never read it.
+    this.noGbuf = device.createTexture({ size: [1, 1], format: 'rgba32float', usage: GPUTextureUsage.TEXTURE_BINDING });
     this.objFlagsBuf = device.createBuffer({ size: 4, usage: U.STORAGE | U.COPY_DST });
     this.batchLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: VF, buffer: { hasDynamicOffset: true, minBindingSize: 48 } }] });
 
@@ -1066,11 +1116,12 @@ class Renderer {
   makeFrameBindGroups() {
     const dev = this.device;
     if (this.aoTex) {
-      const entries = (buffer) => [{ binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView },
+      const entries = (buffer, gbuf) => [{ binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView },
         { binding: 2, resource: this.shadowCmp }, { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }];
-      this.frameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.frameBuf) });
-      this.pickFrameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.pickFrameBuf) });
+        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: gbuf.createView() }];
+      this.frameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.frameBuf, this.gbufTex) });
+      this.gbufFrameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.frameBuf, this.noGbuf) }); // draws into gbufTex
+      this.pickFrameBG = dev.createBindGroup({ layout: this.frameLayout, entries: entries(this.pickFrameBuf, this.noGbuf) });
     }
     this.shadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
       { binding: 0, resource: { buffer: this.shadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
@@ -1111,7 +1162,7 @@ class Renderer {
       depthStencilAttachment: { view: this.gdepthTex.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'discard' },
     });
     pass.setPipeline(this.pipes.gbuf);
-    pass.setBindGroup(0, this.frameBG);
+    pass.setBindGroup(0, this.gbufFrameBG);
     for (const b of this.batches) {
       if (!b.visible || b.kind !== 'mesh' || (s.mode === 1 && b.transparent)) continue;
       pass.setBindGroup(1, this.batchBG, [b.offset]);
@@ -1447,7 +1498,7 @@ class Renderer {
       this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
         { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
         { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }] }));
+        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: this.noGbuf.createView() }] }));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;

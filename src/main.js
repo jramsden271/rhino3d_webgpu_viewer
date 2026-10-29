@@ -129,7 +129,7 @@ function frameState() {
   s.aoMaxRadius = R * 0.04;
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
   s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
-  s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, 0.35] : state.edgeColor;
+  s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
   s.time = (performance.now() / 1000) % 3600;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
