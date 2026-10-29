@@ -2534,15 +2534,19 @@ function showBusy(text, frac) {
 }
 function hideBusy() { $('busy').hidden = true; }
 
-// timeout: remove after this many ms (brief, informational notices). action: { label, run } adds
-// a link that runs it and dismisses the notice.
+// timeout: remove after this many ms (brief, informational notices); others, warnings and errors
+// included, go after NOTICE_MS. The countdown restarts while the pointer is over the notice.
+// action: { label, run } adds a link that runs it and dismisses the notice.
+const NOTICE_MS = 10000;
 function notice(text, error = false, timeout = 0, action = null) {
   const n = document.createElement('div');
   n.className = 'notice' + (error ? ' error' : '') + (timeout ? ' brief' : '');
-  if (timeout) {
-    $('notices').querySelectorAll('.notice.brief').forEach((b) => b.remove()); // one at a time
-    setTimeout(() => n.remove(), timeout);
-  }
+  if (timeout) $('notices').querySelectorAll('.notice.brief').forEach((b) => b.remove()); // one at a time
+  let timer = 0;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => n.remove(), timeout || NOTICE_MS); };
+  n.onmouseenter = () => clearTimeout(timer);
+  n.onmouseleave = arm;
+  arm();
   n.textContent = text;
   if (action) {
     const a = document.createElement('button');

@@ -101,7 +101,8 @@ its material dialog (click the layer's square in Rendered view):
   then its parent layers' names, then the name of its render material. The match is shown as
   a small tag after the layer name (e.g. *auto: vegetation*) and explained in the dialog.
 - **Always off**: no magic material, whatever the name.
-- **Water, Glass, Vegetation, Grass, Road, Paving, Ground**: always this one.
+- **Water, Glass, Vegetation, Grass, Road, Paving, Ground, Whitewashed concrete, Concrete,
+  Red masonry**: always this one.
 
 Like any layer material, a magic material reaches only objects whose material comes from
 that layer ("By layer", or "By parent" inside a block instance that takes it from the layer).
@@ -141,6 +142,9 @@ base colour is the magic material's default.
 | road, carriageway, asphalt, tarmac, highway, parking, rail | Dark asphalt |
 | pavement, paving, footway, footpath, walk, public realm, plaza | Light warm stone |
 | terrain, land, soil, ground, topo | Warm earth |
+| whitewash, limewash, white concrete, white render | Clean white wash, gently uneven, as when nearly new |
+| concrete, precast, in situ, cast in place, cement | Grey concrete: cloudy patches, aggregate speckle and pour lines close up |
+| brick, masonry | Red brick in stretcher bond close up, each brick a slightly different shade |
 
 Where surfaces of these types nearly coincide or cross (a road draped over terrain, say), the
 viewer gives hard surfaces display priority: water, road and paving show in front of grass,

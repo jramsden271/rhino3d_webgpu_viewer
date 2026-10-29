@@ -511,6 +511,55 @@ fn lampGlow(dir: vec3f, maxDist: f32) -> vec3f {
   return sum;
 }
 
+// Facade materials. p: position in metres (MOut.np), n: normal, c: base colour (sRGB), px: metres
+// per pixel. Fine detail fades out as it nears pixel size, leaving the average colour.
+
+// Concrete: cloudy tonal patches (stretched downwards on walls), aggregate speckle close up, and
+// faint horizontal lines on walls where each 1.2 m pour or formwork panel meets the next.
+fn concrete(p: vec3f, n: vec3f, c: vec3f, px: f32) -> vec3f {
+  let wall = 1.0 - abs(n.z);
+  let patches = surfNoise(p * vec3f(1.0, 1.0, mix(1.0, 0.4, wall)), 4.0, 4, px);
+  let speck = surfNoise(p + vec3f(13.0, 3.0, 29.0), 0.03, 2, px);
+  let joint = 1.0 - smoothstep(0.004, 0.009, abs(fract(p.z / 1.2 + 0.5) - 0.5) * 1.2);
+  let line = joint * wall * (1.0 - smoothstep(0.004, 0.015, px));
+  return c * (1.0 + 0.45 * patches + 0.3 * speck) * (1.0 - 0.12 * line);
+}
+
+// Red masonry: stretcher bond (225 x 75 mm brick modules) laid along each face, each brick a
+// slightly different shade, over larger weathering patches. Roofs and paving take the bond in plan.
+// Joints are not drawn: the mortar is blended into the colour at any distance. dx, dy: the
+// screen derivatives of p. The bricks fade out as they shrink from ~3 to ~2 pixels, measured
+// along and across the bond separately (a brick is 3x longer than tall), so walls seen at a
+// glancing angle keep them as long as walls seen face on.
+fn masonry(p: vec3f, fnrm: vec3f, c: vec3f, px: f32, dx: vec3f, dy: vec3f) -> vec3f {
+  var uv = p.xy;
+  var du = vec2f(dx.x, dy.x);
+  var dv = vec2f(dx.y, dy.y);
+  if (abs(fnrm.z) < 0.7) {
+    let t = normalize(vec2f(-fnrm.y, fnrm.x));
+    uv = vec2f(dot(p.xy, t), p.z);
+    du = vec2f(dot(dx.xy, t), dot(dy.xy, t));
+    dv = vec2f(dx.z, dy.z);
+  }
+  let row = floor(uv.y / 0.075);
+  let col = floor(uv.x / 0.225 + 0.5 * row);
+  let r = hash3(vec3f(col, row, 7.0));
+  let brick = mix(c * vec3f(0.8, 0.78, 0.78), c * vec3f(1.15, 1.18, 1.2), r);
+  let span = max(max(abs(du.x), abs(du.y)) / 0.225, max(abs(dv.x), abs(dv.y)) / 0.075);  // bricks per pixel
+  let kb = 1.0 - smoothstep(0.3, 0.6, span);
+  let weather = 1.0 + 0.3 * surfNoise(p, 6.0, 3, px);
+  return mix(mix(c, brick, kb) * weather, vec3f(0.74, 0.72, 0.68), 0.17);
+}
+
+// Whitewashed concrete, nearly new: a gently uneven wash, a touch thinner in patches where the
+// grey beneath shows faintly. No weathering streaks.
+fn whitewash(p: vec3f, n: vec3f, c: vec3f, px: f32) -> vec3f {
+  let wall = 1.0 - abs(n.z);
+  let wash = surfNoise(p * vec3f(1.0, 1.0, mix(1.0, 0.6, wall)), 3.0, 4, px);
+  let thin = smoothstep(0.08, 0.25, wash);
+  return mix(c * (1.0 - 0.07 * wash), vec3f(0.66, 0.65, 0.62), thin * 0.12);
+}
+
 // Water: wind ripples (analytic wave normals), sky reflection with Fresnel, sun glint.
 fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   let p = in.wp.xy * F.misc.y;                     // metres
@@ -564,7 +613,9 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   if (dot(faceN, V) < 0.0) { faceN = -faceN; }
   var n = normalize(in.n);
   if (dot(n, faceN) < 0.0) { n = -n; }
-  let px = max(length(dpdx(in.np)), length(dpdy(in.np)));   // metres per pixel, for surfNoise
+  let dnx = dpdx(in.np);
+  let dny = dpdy(in.np);
+  let px = max(length(dnx), length(dny));   // metres per pixel, for surfNoise
 
   // Magic materials (materials.js) apply in Rendered mode; water also keeps its look in Clay mode.
   var cls = 0;
@@ -590,7 +641,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   if (mode > 1.5) { base = vec3f(0.91, 0.91, 0.90) * (1.0 + 0.03 * v); }
   // Ground types: blotches from 25 m across down to a few metres.
   var ground = 0.5;
-  if (cls >= 4) { ground = clamp(0.5 + 1.6 * surfNoise(in.np, 25.0, 4, px), 0.0, 1.0); }
+  if (cls >= 4 && cls <= 7) { ground = clamp(0.5 + 1.6 * surfNoise(in.np, 25.0, 4, px), 0.0, 1.0); }
   // Each type varies around the layer's material colour (the factors match "tones" in materials.js),
   // so its default colour gives the standard look and any other colour keeps the same variation.
   let c = B.mat.rgb;
@@ -604,6 +655,9 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
     case 5: { base = c * (0.94 + 0.12 * ground); spec = 0.05; gloss = 12.0; }                                   // road
     case 6: { base = c * (0.95 + 0.08 * ground); }                                                               // paving
     case 7: { base = mix(c * vec3f(1.04, 1.034, 1.045), c * vec3f(0.96, 0.966, 0.955), ground); spec = 0.0; }   // ground
+    case 8: { base = concrete(in.np, n, c, px); spec = 0.06; gloss = 10.0; }
+    case 9: { base = masonry(in.np, normalize(faceN), c, px, dnx, dny); spec = 0.04; gloss = 8.0; }
+    case 10: { base = whitewash(in.np, n, c, px); spec = 0.03; gloss = 8.0; }
     default: {}
   }
   // Other surfaces, in the Rendered view with magic materials on: a faint blotchy discolouration,

@@ -21,6 +21,10 @@ const MATERIAL_RULES = [
   { id: 5, name: 'Road', rgb: [0.36, 0.36, 0.37], tones: [[0.94, 0.94, 0.94], [1.06, 1.06, 1.06]], keywords: ['road', 'carriageway', 'asphalt', 'tarmac', 'highway', 'motorway', 'parking', 'car park', 'rail$', 'railway'] },
   { id: 6, name: 'Paving', rgb: [0.74, 0.72, 0.68], tones: [[0.95, 0.95, 0.95], [1.03, 1.03, 1.03]], keywords: ['pavement', 'paving', 'footway', 'footpath', 'sidewalk', 'walk$', 'walkway', 'public realm', 'hard landscap', 'hardscape', 'plaza', 'pedestrian'] },
   { id: 7, name: 'Ground', rgb: [0.75, 0.735, 0.67], tones: [[0.96, 0.966, 0.955], [1.04, 1.034, 1.045]], keywords: ['terrain', 'land$', 'soil', 'ground', 'topo'] },
+  // Before Concrete, so "white concrete" is whitewashed.
+  { id: 10, name: 'Whitewashed concrete', rgb: [0.90, 0.89, 0.86], tones: [[0.93, 0.93, 0.92], [1.03, 1.03, 1.03]], keywords: ['whitewash', 'limewash', 'white concrete', 'white render', 'white wash'] },
+  { id: 8, name: 'Concrete', rgb: [0.64, 0.63, 0.60], tones: [[0.88, 0.88, 0.88], [1.1, 1.1, 1.1]], keywords: ['concrete', 'precast', 'pre-cast', 'in situ', 'insitu', 'cast in place', 'cement'] },
+  { id: 9, name: 'Red masonry', rgb: [0.56, 0.29, 0.21], tones: [[0.8, 0.78, 0.78], [1.15, 1.18, 1.2]], keywords: ['brick', 'masonry', 'red masonry'] },
 ];
 
 const MAT_WATER = 1, MAT_GLASS = 2, MAT_VEGETATION = 3;
