@@ -42,10 +42,15 @@ it is where you left it (including after walking, for Perspective). The first vi
 view, or picking the view you are already in, zooms to the extents. Opening another model
 starts afresh.
 
-**Pedestrian mode** walks round the model at eye height (1.5 m). Move the camera over the
-model in a perspective view and click the figure on the toolbar's **Walk** button (or the
-switch on the Walk panel): the camera drops at the speed of gravity onto the
-surface below it (click or press a movement key to land straight away). It then follows the
+**Pedestrian mode** walks round the model at eye height (1.5 m). In a perspective view, click
+the figure on the toolbar's **Walk** button (or the switch on the Walk panel). Then, as in
+Street View, the figure follows the cursor and a soft yellow circle marks the surface under
+it. Click to start there: the view fades through black and you stand on the ground at that
+spot, looking level in the same direction. Click a wall and you stand at its foot, on your side,
+as a lamp is placed with `B`. Until you click you can still orbit, pan and zoom; `Esc`, the
+figure or the switch cancel. If the camera is already within 3 m of the surface below it (back
+from a walk, say), there is no choosing: you start walking where you are. Once walking, the
+camera follows the
 ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
 1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
 (so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings a downward view back to the horizontal. A fall with nothing

@@ -65,6 +65,7 @@ struct Frame {
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
+  marker: vec4f,    // where walking would start: xyz centre, w = radius (model units, 0 = none)
   shadow: array<mat4x4f, ${CASCADES}>,
   lampCount: vec4f, // x = number of lamps in use
   // Per lamp: xyz position, w = range (m); rgb = colour x power, w = cos of the spot's inner cone;
@@ -618,7 +619,13 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
   if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
-  return vec4f(highlight(finish(lit, in.wp), in.oid), alpha);
+  var col = highlight(finish(lit, in.wp), in.oid);
+  // Choosing where to start walking: a soft-edged translucent disc on the surface under the cursor.
+  if (F.marker.w > 0.0) {
+    let d = length(in.wp - F.marker.xyz) / F.marker.w;
+    col = mix(col, vec3f(0.95, 0.69, 0.0), (1.0 - smoothstep(0.5, 1.0, d)) * 0.55);
+  }
+  return vec4f(col, alpha);
 }
 
 // Curves and edges ---------------------------------------------------------------------------
@@ -1158,8 +1165,9 @@ class Renderer {
     // far from the file's origin (map coordinates), float precision would break up fine grain.
     const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];
     f.set([...o.map((v) => Math.round(v / step) * step), s.mode === 1 && s.specials ? 1 : 0], 100);
-    if (sh) sh.mats.forEach((m, c) => f.set(m, 104 + c * 16));
-    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 104 + CASCADES * 16;
+    f.set(s.walkMarker ? [...s.walkMarker.p, s.walkMarker.r] : [0, 0, 0, 0], 104);
+    if (sh) sh.mats.forEach((m, c) => f.set(m, 108 + c * 16));
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 108 + CASCADES * 16;
     const plan = s.xray ? [] : lampShadowPlan(lamps), near = LAMP_NEAR / (s.metresPerUnit || 1);
     f.fill(0, L0, L0 + 4 + MAX_LAMPS * 16);
     f[L0] = lamps.length;

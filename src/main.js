@@ -46,7 +46,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
+  onExit: () => { $('walkHint').hidden = true; endPlacing(); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -379,9 +379,11 @@ function syncToolbar() {
   document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === (state.lastView || view))));
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
-  $('walkQuick').setAttribute('aria-pressed', String(walker.active));
-  $('walkQuick').disabled = $('walkOn').disabled = !model || (camera.ortho && !walker.active);
-  $('walkOn').checked = walker.active;
+  const walking = walker.active || !!walker.placing;
+  $('walkQuick').setAttribute('aria-pressed', String(walking));
+  $('walkQuick').disabled = $('walkOn').disabled = !model || (camera.ortho && !walking);
+  $('walkOn').checked = walking;
+  document.body.classList.toggle('walking', walker.active);
   $('btnWalk').setAttribute('aria-pressed', String(!$('walkPanel').hidden));
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
@@ -1813,6 +1815,7 @@ function bindPointer() {
 
   canvas.addEventListener('pointermove', (e) => {
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
+    if (walker.placing && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -1841,8 +1844,11 @@ function bindPointer() {
   const end = (e) => {
     pointers.delete(e.pointerId);
     // A left click or tap without dragging selects the object under the pointer.
-    if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup')
-      pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
+    // While choosing where to start walking, it starts there instead.
+    if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
+      if (walker.placing) startWalkAt(e);
+      else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
+    }
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
@@ -1851,6 +1857,7 @@ function bindPointer() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', () => { if (walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -2030,6 +2037,7 @@ function onKey(e) {
     if (walker.key(e, true)) { e.preventDefault(); return; }
     if (k === 'escape') { e.preventDefault(); walker.exit(); return; }
   }
+  if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
@@ -2066,16 +2074,94 @@ function pickView(name) {
   syncToolbar();
   redraw();
 }
-// Walking on and off: the Walk button's icon and the switch on the Walk panel.
+// Walking on and off: the Walk button's icon and the switch on the Walk panel. Turning it on
+// usually first asks where to start: the figure follows the cursor, a marker shows the spot under it,
+// and a click there starts walking (as Street View's figure is dropped). Esc, the icon or the
+// switch cancel. The start is found as a lamp's place is (B): the surface under the cursor, a
+// little towards the eye; the walker then stands on the ground below it.
+// With the camera already near the ground (back from a walk, say), walking starts where it is.
+const WALK_MARKER = 1;   // marker radius (m)
+const WALK_NEAR = 3;     // camera at most this high above the surface below it (m): no choosing
+const placing = { busy: false, next: null, checking: false };
 function toggleWalk() {
-  if (walker.active) { walker.exit(); return; }
+  if (walker.active || walker.placing) { walker.exit(); return; }
   if (!model || camera.ortho) { syncWalkPanel(); return; }
+  if (placing.checking) return;
+  placing.checking = true;
+  heightAboveGround().then((h) => {
+    placing.checking = false;
+    if (walker.active || walker.placing || !model || camera.ortho) return;
+    if (h != null && h <= WALK_NEAR) enterWalkHere(); else startPlacing();
+  });
+}
+function enterWalkHere() {
   state.lastView = null;
   $('walkHint').hidden = false;
   walker.enter().then(() => { syncToolbar(); syncWalkPanel(); syncLightsPanel(); });
   syncToolbar();
   syncWalkPanel();
   canvas.focus();
+}
+// Height (m) of the camera above the surface straight below it, or null with nothing there:
+// a one-pixel orthographic view looking down (as checkSunlight looks towards the sun).
+function heightAboveGround() {
+  const mpu = METRES_PER_UNIT[model.units] || 1, u = 1 / mpu, eye = camera.eye, [mn] = visibleBounds();
+  const far = eye[2] - mn[2] + u;
+  if (far <= 0) return Promise.resolve(null);
+  const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
+  const view = M4.lookAt(eye, V3.add(eye, [0, 0, -1]), [0, 1, 0]);
+  return renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.01 * u, far), view), frameState())
+    .then((h) => (h ? (eye[2] - h.p[2]) * mpu : null));
+}
+function startPlacing() {
+  walker.place();
+  canvas.classList.add('placing');
+  $('walkPlaceHint').hidden = false;
+  if (hoverAt) showWalkMarker(hoverAt);
+  syncToolbar();
+  syncWalkPanel();
+  canvas.focus();
+}
+function endPlacing() {
+  canvas.classList.remove('placing');
+  $('walkPlaceHint').hidden = true;
+  placing.next = null;
+  if (state.walkMarker) { state.walkMarker = null; redraw(); }
+}
+// Moves the marker to the surface under the cursor (one pick at a time, the latest position next).
+function showWalkMarker(at) {
+  if (placing.busy) { placing.next = at; return; }
+  placing.busy = true;
+  pickAt(at).then((h) => {
+    if (walker.placing) {
+      // At least about 12 pixels across, so it shows from far off too.
+      const px = h && (2 * V3.len(V3.sub(h.p, camera.eye)) * Math.tan(camera.fov / 2)) / canvas.clientHeight;
+      state.walkMarker = h ? { p: h.p, r: Math.max(WALK_MARKER / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
+      redraw();
+    }
+  }).finally(() => {
+    placing.busy = false;
+    const next = placing.next;
+    placing.next = null;
+    if (next && walker.placing) showWalkMarker(next);
+  });
+}
+// A click while choosing: fade to black, start walking there, and fade back in.
+function startWalkAt(e) {
+  pickAt(e).then((h) => {
+    if (!h || !walker.placing) return;
+    const mpu = METRES_PER_UNIT[model.units] || 1, back = V3.norm(V3.sub(camera.eye, h.p));
+    const p = V3.add(h.p, V3.scale(back, 0.4 / mpu)), f = $('walkFade');
+    walker.placing = false;
+    endPlacing();
+    f.classList.add('dark');
+    setTimeout(() => {
+      state.lastView = null;
+      $('walkHint').hidden = false;
+      walker.enter(p).then(() => { f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); });
+      syncToolbar();
+    }, 250);
+  });
 }
 function toggleWalkPanel() {
   $('walkPanel').hidden = !$('walkPanel').hidden;
@@ -2085,7 +2171,7 @@ function toggleWalkPanel() {
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p>The switch above, or the figure on the toolbar's Walk button, starts walking (perspective views only): you drop onto the surface below the camera, with your eyes 1.5 m above it. Closing this panel does not stop you.</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p>The switch above, or the figure on the toolbar's Walk button, starts walking (perspective views only). The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd>, the figure or the switch cancel. With the camera already within 3 m of the ground (back from a walk, say), you start walking where you are. Closing this panel does not stop you.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or the switch to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });

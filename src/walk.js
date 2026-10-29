@@ -62,17 +62,28 @@ class Walker {
 
   get u() { return 1 / this.ctx.mpu(); } // model units per metre
 
-  // Starts walking from the current (perspective) camera. Resolves false, with a notice, when
+  // Choosing where to start: the person picks a point in the model (main.js), then enter(point).
+  // exit() cancels it.
+  place() { this.placing = true; }
+
+  // Starts walking from the current (perspective) camera, or with start ([x, y, z], model units)
+  // standing on the ground below that point, looking level. Resolves false, with a notice, when
   // there is nothing below to stand on.
-  async enter() {
+  async enter(start = null) {
     const { camera } = this.ctx, u = this.u;
+    const before = camera.snapshot();
+    if (start) {
+      camera.pitch = 0;
+      camera.distance = 5 * u;
+      camera.target = V3.sub([start[0], start[1], start[2] + WALK.EYE * u], V3.scale(camera.dir, camera.distance));
+    }
     const eye = camera.eye;
+    this.placing = false;
     this.active = true;
     this.pending = true;
     this.keys.clear();
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
       lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
-    const before = camera.snapshot();
     this.fov0 = camera.fov;
     camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
@@ -89,13 +100,15 @@ class Walker {
       return false;
     }
     this.map = map;
-    if (g > eye[2] - WALK.EYE * u) { this.foot = g; this.grounded = true; } // closer than eye height: stand up on it
+    // Closer than eye height, or a chosen start point: stand on it.
+    if (start || g > eye[2] - WALK.EYE * u) { this.foot = g; this.grounded = true; }
     else this.entryFall = true;
     this.updateCamera();
     return true;
   }
 
   exit() {
+    if (this.placing) { this.placing = false; this.ctx.onExit(); return; }
     if (!this.active) return;
     this.active = false;
     this.keys.clear();
