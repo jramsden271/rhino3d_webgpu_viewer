@@ -159,7 +159,8 @@ class Walker {
   }
 
   // Ask the renderer for the surroundings at the current position. top: the ground map looks down
-  // from here. Resolves to the decoded map, or null if a previous look is still in flight.
+  // from here. Resolves to the decoded map, or null if a previous look is still in flight or the
+  // probe failed (the caller asks again).
   async look(top) {
     const { renderer } = this.ctx, u = this.u, [mn] = this.ctx.bounds();
     // Faster movement looks further ahead, so walls are seen before the walker reaches them.

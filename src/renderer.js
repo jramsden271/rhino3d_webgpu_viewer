@@ -607,7 +607,9 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
 // Soft edges: real corners are never knife-sharp, so the light rolls round them. The face normals a
 // few pixels around (from the AO prepass) are averaged in where they lie on this surface or on one
 // meeting it at a corner, not on something in front or behind. That rounds each corner by about
-// 6 cm, never less than 2 px on screen. conv: + near an outside corner, - near an inside one.
+// 6 cm, at least 2 px on screen close up. Further off, where those 6 cm shrink below about a
+// pixel, it fades out, or small buildings would melt into blobs. conv: + near an outside corner,
+// - near an inside one.
 struct Soft { n: vec3f, conv: f32 };
 fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   var o = Soft(n, 0.0);
@@ -616,7 +618,10 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   let d0 = dot(wp - F.eye.xyz, F.viewDir.xyz);
   let pxw = max(length(dx), length(dy));   // model units per pixel
   if (g0.w <= 0.0 || abs(g0.w - d0) > 2.0 * pxw + abs(d0) * 1e-4) { return o; }   // another surface is in the prepass here
-  let r = clamp(0.06 / F.misc.y / pxw, 2.0, 5.0);
+  let bevel = 0.06 / F.misc.y / pxw;       // the rounding, pixels
+  let k = smoothstep(0.4, 1.5, bevel);
+  if (k <= 0.0) { return o; }
+  let r = clamp(bevel, 2.0, 5.0);
   let lim = vec2i(F.viewport.xy) - 1;
   var sum = g0.xyz;
   var cnt = 1.0;
@@ -629,9 +634,9 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
     if (g.w <= 0.0 || abs(g.w - d0 - dot(ow, F.viewDir.xyz)) > length(ow)) { continue; }
     sum += g.xyz;
     cnt += 1.0;
-    o.conv += dot(g.xyz, normalize(ow)) / 8.0;
+    o.conv += dot(g.xyz, normalize(ow)) * k / 8.0;
   }
-  o.n = normalize(n + sum / cnt - g0.xyz);
+  o.n = normalize(n + (sum / cnt - g0.xyz) * k);
   return o;
 }
 
@@ -1479,7 +1484,8 @@ class Renderer {
   //    q.reach wide either side and q.reach deep, between heights q.z0 and q.z1.
   // Vegetation (by its layer's magic material, even with the Magic button off) is left out, so
   // people walk through trees. Resolves to { ground, walls } (Float32Arrays, 4 floats per texel),
-  // or null at once when the previous probe has not been read back yet.
+  // or null at once when the previous probe has not been read back yet (or later, if the GPU
+  // rejected this one).
   probe(q) {
     if (this.probeBusy || !this.batches.length) return Promise.resolve(null);
     this.probeBusy = true;
@@ -1492,13 +1498,16 @@ class Renderer {
       this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
       this.probeBGs = null;
     }
-    // Rebuilt when the object flags buffer is replaced (it grows with the model).
+    // Rebuilt when the object flags buffer is replaced (it grows with the model). The screen-sized
+    // textures are not bound (the pick pipeline reads neither): a resize destroys them, and a
+    // bind group still holding one made every probe fail, leaving the walker with a stale map.
     if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
       this.probeFlagsBuf = this.objFlagsBuf;
+      const none = this.noGbuf.createView();
       this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
         { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: this.aoTex.createView() }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: this.noGbuf.createView() }] }));
+        { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] }));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
@@ -1511,6 +1520,9 @@ class Renderer {
     const R = Math.max(q.half, q.reach);
     const near = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION
       && b.min[0] <= q.x + R && b.max[0] >= q.x - R && b.min[1] <= q.y + R && b.max[1] >= q.y - R && b.min[2] <= q.top && b.max[2] >= q.bottom);
+    // Should the GPU reject this work, the read-back buffer still holds the previous result (for
+    // somewhere else): resolve null then, so the walker asks again rather than trusting it.
+    dev.pushErrorScope('validation');
     const enc = dev.createCommandEncoder();
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: this.probeTex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
@@ -1530,7 +1542,9 @@ class Renderer {
     pass.end();
     enc.copyTextureToBuffer({ texture: this.probeTex }, { buffer: this.probeRead, bytesPerRow: G * 16 }, [G, rows]);
     dev.queue.submit([enc.finish()]);
-    return this.probeRead.mapAsync(GPUMapMode.READ).then(() => {
+    const failed = dev.popErrorScope();
+    return this.probeRead.mapAsync(GPUMapMode.READ).then(async () => {
+      if (await failed) { this.probeRead.unmap(); return null; }
       // Two sets of arrays used in turn, so the previous result stays valid and nothing is
       // allocated per frame (garbage collection pauses showed as judder while walking).
       this.probeOut = this.probeOut || [0, 1].map(() => ({ all: new Float32Array(G * rows * 4), walls: new Float32Array(4 * W * H * 4) }));
