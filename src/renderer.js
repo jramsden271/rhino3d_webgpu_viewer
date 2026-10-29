@@ -7,7 +7,6 @@ const MAX_LAMPS = 8;
 const LAMP_SHADOW_SIZE = 512;
 const LAMP_SHADOW_LAYERS = 25;   // e.g. a torch (1) and four point lights (6 each)
 const LAMP_NEAR = 0.05;          // metres
-
 // Unit vectors across a lamp shadow view looking along d (matches lampBasis in the shader).
 function lampBasis(d) {
   const up = Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1];
@@ -56,7 +55,7 @@ struct Frame {
   sunColor: vec4f,  // rgb = linear key light colour x intensity, w = sky brightness
   splits: vec4f,    // far view depth of each shadow cascade
   texel: vec4f,     // world size of one shadow texel, per cascade
-  spare: vec4f,     // unused (keeps the offsets below)
+  clouds: vec4f,    // x = cloud cover (0-1), yz = how far the clouds have drifted (km), w = haze (1 clear .. 0)
   misc: vec4f,      // x = time (s), y = metres per model unit, z = haze start distance, w = haze density
   sel: vec4f,       // yzw = highlight colour for selected objects (see objFlags)
   camRight: vec4f,  // xyz camera right, w = tan(fov / 2)
@@ -226,10 +225,87 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   let warm = mix(vec3f(1.0, 0.5, 0.2), vec3f(0.96, 0.95, 0.91), high);
   let glow = pow(d, 900.0) * 0.55 + pow(d, 80.0) * 0.14 + pow(d, 10.0) * 0.035;
   let disc = smoothstep(0.99985, 0.99993, d);                          // ~0.7 deg across
-  col = mix(col + warm * glow * above, discCol, disc * above);
+  let clear = mix(0.3, 1.0, F.clouds.w);                               // a hazy sun is fainter
+  col = mix(col + warm * glow * above * clear, discCol, disc * above * clear);
   col = moonDisc(dir, col, sky, night);
+  col = clouds(dir, col);
   col = toSrgb(tonemap(toLinear(clamp(col, vec3f(0.0), vec3f(1.0))) + lampGlow(dir, 1e30)));
   return vec4f(clamp(col, vec3f(0.0), vec3f(1.0)), 1.0);
+}
+
+// Clouds: fractal noise on a plane CLOUD_KM up, drifting with the wind. More cover lowers the
+// threshold the noise must pass, so the clouds grow and merge; from about 9/10 the sky closes over.
+// Towards the horizon the layer thins into an even haze of its average, which also hides the
+// noise's detail where it would shimmer.
+//
+// The layer is fixed in the model's space (km from its origin), so the shadows on the model fall
+// from the clouds seen overhead, and they shift a little as the camera moves; when the camera is
+// in a cloud's shadow, that cloud is over the sun. clouds.js repeats the field on the CPU (for
+// the thermal comfort panel), so its noise uses an integer hash that gives the same values there
+// as here, where sin-based hashing would not.
+fn cloudHash(c: vec2f) -> f32 {
+  let i = bitcast<vec2u>(vec2i(c));
+  var h = (i.x * 0x8da6b343u) ^ (i.y * 0xd8163841u);
+  h = (h ^ (h >> 15u)) * 0x2c1b3c6du;
+  h = (h ^ (h >> 12u)) * 0x297a2d39u;
+  h = h ^ (h >> 15u);
+  return f32(h >> 8u) / 16777216.0;
+}
+fn cloudValue(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(cloudHash(i), cloudHash(i + vec2f(1.0, 0.0)), u.x), mix(cloudHash(i + vec2f(0.0, 1.0)), cloudHash(i + vec2f(1.0, 1.0)), u.x), u.y);
+}
+fn fbm(p: vec2f, octaves: i32) -> f32 {
+  var s = 0.0;
+  var a = 0.5;
+  var q = p;
+  for (var i = 0; i < octaves; i++) { s += a * cloudValue(q); q = q * 2.03 + vec2f(17.1, 9.2); a *= 0.5; }
+  return s / (1.0 - a * 2.0);
+}
+// The noise at a point on the cloud layer (km), drifted with the wind; ~1 km features.
+fn cloudNoise(q: vec2f, octaves: i32) -> f32 { return fbm((q - F.clouds.yz) * 0.8, octaves); }
+// The level the noise exceeds over a fraction cover of the sky (fitted to fbm's distribution),
+// less half the cloud edge's width, so that much of the sky is at least half cloud.
+fn cloudLevel(cover: f32) -> f32 {
+  let dc = cover - 0.5;
+  return 0.47 - 0.37 * dc - 0.45 * dc * dc * dc;
+}
+// Cloud shadow on the model: 1 in the open, down to 0.1 under a cloud. The key light's ray from
+// the point up to the layer, with four octaves rather than the sky's five: the shadows are soft.
+fn cloudShade(wp: vec3f) -> f32 {
+  let cover = F.clouds.x;
+  if (cover < 0.01) { return 1.0; }
+  let L = F.sunDir.xyz;
+  let p = wp * (F.misc.y / 1000.0);
+  let q = p.xy + L.xy / max(L.z, 0.08) * max(${CLOUD_KM} - p.z, 0.0);
+  let t = cloudLevel(cover);
+  let a = max(smoothstep(t - 0.02, t + 0.1, cloudNoise(q, 4)), smoothstep(0.85, 1.0, cover));
+  return 1.0 - 0.9 * a;
+}
+fn clouds(dir: vec3f, col: vec3f) -> vec3f {
+  let cover = F.clouds.x;
+  if (cover < 0.01 || dir.z <= 0.0) { return col; }
+  let L = F.skySun.xyz;
+  let eye = F.eye.xyz * (F.misc.y / 1000.0);
+  let n = cloudNoise(eye.xy + dir.xy / max(dir.z, 0.02) * max(${CLOUD_KM} - eye.z, 0.2), 5);
+  let t = cloudLevel(cover);
+  let detail = smoothstep(0.04, 0.3, dir.z);
+  let thick = mix(cover * 0.5, smoothstep(t, t + 0.3, n), detail);
+  var a = max(smoothstep(t, t + 0.06, n), smoothstep(0.85, 1.0, cover));
+  a = mix(cover * 0.8, a, detail) * smoothstep(0.0, 0.04, dir.z);
+  let ds = dot(dir, L);
+  // Shading: white, greyer where thick and under a closed sky, bright edges towards the sun, a
+  // warm underside at sunset, dimmer through twilight, and at night a little lighter than the sky.
+  let day = smoothstep(-0.12, 0.2, L.z);
+  var c = mix(vec3f(0.98, 0.98, 0.99), vec3f(0.56, 0.58, 0.63), clamp(thick * 0.7 + cover * 0.35, 0.0, 1.0));
+  let high = smoothstep(0.0, 0.25, L.z);
+  c += mix(vec3f(1.0, 0.55, 0.25), vec3f(1.0), high) * pow(max(ds, 0.0), 6.0) * 0.3 * (1.0 - thick) * day;
+  c = c * mix(0.22, 1.0, day) + F.skyGlow.rgb * 1.4 * (1.0 - 0.5 * thick);
+  let moonlit = F.moon.w * smoothstep(-0.02, 0.1, F.moon.z);
+  c = mix(c, F.bgBot.rgb * 1.6 + vec3f(0.02, 0.022, 0.028) + vec3f(0.08, 0.085, 0.095) * moonlit, F.skyGlow.w);
+  return mix(col, clamp(c, vec3f(0.0), vec3f(1.0)), a);
 }
 
 // The moon: a sphere lit from the sun's direction, so its phase and the tilt of the lit side
@@ -294,6 +370,7 @@ fn lighting(wp: vec3f, n: vec3f, wrap: f32) -> Light {
     let ndl = max((dot(n, o.L) + wrap) / (1.0 + wrap), 0.0);
     o.vis = 0.0;
     if (dot(n, o.L) > -wrap) { o.vis = sunVisibility(wp, n); }
+    if (o.vis > 0.0) { o.vis *= cloudShade(wp); }
     o.direct = F.sunColor.rgb * ndl * o.vis;
     o.ambient = mix(vec3f(0.13, 0.125, 0.12), vec3f(0.31, 0.35, 0.43), n.z * 0.5 + 0.5) * F.sunColor.w;
     o.ambient = mix(o.ambient, o.ambient * vec3f(0.62, 0.78, 1.25), F.skyGlow.w);   // blue night light
@@ -880,8 +957,12 @@ class Renderer {
     this.dirty = true;
   }
 
-  // Normal/depth prepass, SSAO, then blur into aoTex (read by the main pass).
-  renderAO(enc, s) {
+  // Normal/depth prepass, SSAO, then blur into aoTex (read by the main pass). Like the sun's
+  // shadow maps, skipped when the view, the window size and the geometry are as last time.
+  renderAO(enc, s, geom) {
+    const key = `${geom}|${Array.prototype.join.call(s.viewProj)}|${this.width}x${this.height}|${s.mode}|${s.aoMaxRadius}`;
+    if (this.aoKey === key) return;
+    this.aoKey = key;
     const c = s.cam, a = new Float32Array(128);
     a.set(s.viewProj, 0);
     a.set([...c.eye, 0], 16); a.set([...c.forward, 0], 20); a.set([...c.right, 0], 24); a.set([...c.up, 0], 28);
@@ -978,6 +1059,7 @@ class Renderer {
       ub.set([b.vc ? 1 : 0, b.kind === 'edge' ? 1 : 0, type, o ? o.gloss : 0], base + 8);
     });
     if (this.batches.length) this.device.queue.writeBuffer(this.batchBuf, 0, ub);
+    this.geomVersion++;   // transparency decides what casts shadows and what ambient occlusion sees
     this.dirty = true;
   }
 
@@ -1002,6 +1084,8 @@ class Renderer {
     f.set(s.sun ? [...s.sun.rgb, s.sun.sky] : [0, 0, 0, 1], 52);
     f.set(sh ? sh.splits : [0, 0, 0, 0], 56);
     f.set(sh ? sh.texel : [0, 0, 0, 0], 60);
+    const cl = s.clouds;
+    f.set(cl ? [cl.cover, cl.drift[0] / 1000, cl.drift[1] / 1000, cl.haze] : [0, 0, 0, 1], 64);
     f.set([s.time || 0, s.metresPerUnit || 1, s.hazeStart || 0, s.hazeDensity || 0], 68);
     f.set([0, 0.25, 0.55, 1.0], 72); // highlight colour for selected objects
     const cam = s.cam;
@@ -1028,7 +1112,12 @@ class Renderer {
   }
 
   // Render each cascade's depth map from the sun.
-  renderShadows(enc, sh) {
+  // Skipped when nothing it depends on has changed since the last time (e.g. while only the
+  // clouds drift): the same sun and camera, so the same matrices, and the same geometry.
+  renderShadows(enc, sh, geom) {
+    const key = `${geom}|${sh.mats.map((m) => Array.prototype.join.call(m)).join('|')}`;
+    if (this.shadowKey === key) return;
+    this.shadowKey = key;
     const data = new Float32Array(CASCADES * 64);
     sh.mats.forEach((m, c) => data.set(m, c * 64));
     this.device.queue.writeBuffer(this.shadowBuf, 0, data);
@@ -1089,15 +1178,20 @@ class Renderer {
   }
 
   // s: { viewProj, eye, viewDir, light, ortho, mode, xray, showEdges, showCurves, showPoints,
-  //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades() }
+  //      sun?: { dir, rgb, sky }, shadows?: output of shadowCascades(),
+  //      clouds?: { cover, drift: [x, y] (m), haze } }
   draw(s) {
     if (!this.width) return;
     s.aoActive = !!(s.ao && s.cam && !s.xray);
     this.writeFrame(this.frameBuf, s.viewProj, s);
     const enc = this.device.createCommandEncoder();
-    if (s.shadows) this.renderShadows(enc, s.shadows);
+    // What is shown: the geometry version and which batches are visible.
+    let geom = this.geomVersion;
+    for (const b of this.batches) if (b.visible) geom = (geom * 31 + b.offset + 1) | 0;
+    if (s.shadows) this.renderShadows(enc, s.shadows, geom);
     this.renderLampShadows(enc, s);
-    if (s.aoActive) this.renderAO(enc, s);
+    if (s.aoActive) this.renderAO(enc, s, geom);
+    else this.aoKey = null;
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(),
         clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'discard' }],

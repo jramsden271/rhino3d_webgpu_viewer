@@ -43,7 +43,8 @@ view, or picking the view you are already in, zooms to the extents. Opening anot
 starts afresh.
 
 **Pedestrian mode** walks round the model at eye height (1.5 m). Move the camera over the
-model in a perspective view and press Walk: the camera drops at the speed of gravity onto the
+model in a perspective view and click the figure on the toolbar's **Walk** button (or the
+switch on the Walk panel): the camera drops at the speed of gravity onto the
 surface below it (click or press a movement key to land straight away). It then follows the
 ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
 1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
@@ -57,7 +58,9 @@ view, from 10° to 75°; it goes back to normal when you stop walking.
 at a steady 2 m/s (6 m/s with `Shift`), ignoring gravity while held; letting go of `E` drops
 you again, and `Q` stops on the ground.
 
-The **Walk panel** opens with pedestrian mode, and closing it stops walking. Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
+The rest of the Walk button opens the **Walk panel**, whose title has the same on/off switch;
+closing the panel does not stop walking. The figure is grey, and yellow while you walk.
+Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
 (1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
@@ -65,8 +68,8 @@ when you walk off an edge, and land when the ground rises to meet you (`Space` d
 while flying). With the sun on, it shows whether you are standing in sunlight, checked a few
 times a second along a line from your eye to the sun; in shade it names the layer of whatever
 casts it. Trees cast shade here even though you can walk through them; glass counts as opaque.
-The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, closing
-the Walk panel, a view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
+The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, the
+switch or the figure, a view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
 
@@ -218,10 +221,48 @@ drop one onto the window; **Replace…** loads another and **Remove** takes it a
 the weather in the Weather panel and, when it has a latitude and longitude, the location.
 
 Click **Weather** on the toolbar for the **Weather panel**: the air temperature, relative
-humidity, wind speed and direction, and global horizontal, direct normal and diffuse
+humidity, wind speed and direction, cloud cover, and global horizontal, direct normal and diffuse
 horizontal irradiance at the Sun panel's date and time. Values are interpolated between the
-file's hourly records, each taken as the middle of its hour. **Weather file…** in its header
-opens the Weather file dialog.
+file's hourly records, each taken as the middle of its hour.
+
+### Clouds and daylight
+
+With the sun on and a weather file loaded, the weather shows in the sky and the light. The
+cloud on the toolbar's Weather button (filled white while on) and the switch on the Weather
+panel turn this on and off; off, the sky and light are a clear day's, as without a file.
+
+- **Cloud cover** comes from the file's total sky cover (tenths), which nearly every EPW has,
+  day and night, and which in most files comes from observations. Where it is missing or does
+  not look like observations (not whole tenths, or never changing), it is estimated by day
+  from the share of diffuse light (diffuse over global horizontal) and filled in overnight; the
+  panel says "from radiation". That estimate is rough (about 2 tenths out on average for
+  Leeds), and low for broken cloud, which barely dims the sun.
+- **The sun's strength** follows the direct normal irradiance against a clear sky's (Meinel,
+  with the Kasten & Young air mass), so an overcast hour has faint, soft shadows and a hazy
+  desert sun is a little weaker, whatever the cloud cover says. Of the direct light lost, the
+  cloud shadows (below) take about 0.9 × cover on average, and an even dimming the rest, which
+  stands for haze. **The sky light** follows the diffuse horizontal irradiance against about an
+  eighth of a clear sky's global (Haurwitz): overcast skies light the model more evenly. Near
+  sunrise and sunset, where these ratios mean little, the cloud cover decides.
+- **Cloud shadows** fall on the model in every view: each lit point looks up towards the sun
+  (or the moon) to the cloud layer, which is fixed above the model, so the shadows come from
+  the clouds overhead and drift with them. Under a cloud the direct light drops to a tenth.
+  They use four octaves of the sky's noise, so they are softer than the clouds' edges.
+- **The sky** greys over as the cover closes in, and in perspective views a cloud layer 1.5 km
+  up is drawn from fractal noise, with as much of the sky covered as the file says. The clouds
+  are white with bright edges towards the sun, grey where thick, warm underneath at sunset and
+  moonlit at night, and hide the stars. The sun is hidden when a cloud is in front of it, which
+  is exactly when the camera stands in that cloud's shadow.
+- **The clouds drift with the wind**, from the file's wind direction at its speed times the
+  **Cloud speed** slider (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
+  up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
+  drift easier to see. Like the water ripples, they stop after 15 s without input. While only
+  the clouds move, the sun's shadow maps and the ambient occlusion are kept from the last frame
+  rather than drawn again, so a drifting frame costs little more than the main pass.
+
+Reflections in water and glass show the sky's colours without the clouds. Rain, fog and dust are not shown: EPW
+precipitation and present-weather fields are too unreliable (Leeds TMYx, for one, reports
+moderate rain in over a third of its hours, with rainfall recorded in very few of them).
 
 **The custom location, the weather file and your choice belong to one model.** Setting any
 of them links it to the open model's entry in **Recent files** (shown there as "custom
@@ -234,7 +275,8 @@ to, so these last only while they are open.
 ## Sun and shadows
 
 Click **Sun** (or press `S`) to open the Sun panel, and switch it on there to light the model
-by the sun with cast shadows. In perspective views the sky shows the sun itself, and both
+by the sun with cast shadows. The sun icon on the Sun button is a switch of its own: click it to
+turn the sun on and off without opening the panel (it turns yellow and filled while on). In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
 and time, so they turn through the night) and the model is lit by a dim blue night light.
@@ -283,6 +325,22 @@ file. Walk to measure at head height; in orbit views it is measured wherever the
   one, in line with field measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI.
   Surfaces heating up and cooling down over the day, their materials, the sky and reflected
   light are not counted.
+- **Clouds** are counted in one of two ways:
+  - By default, the direct sun is the weather file's hourly direct normal radiation: an
+    average that already allows for that hour's cloud by dimming the sun evenly. This is how
+    comfort is normally assessed (hour by hour), and it does not change as the drawn clouds pass.
+  - With **Include simulated clouds** ticked, it is the sun at the camera under the drawn
+    clouds: the beam between the clouds (the hour's direct radiation with the clouds' share
+    of the dimming taken out, see [Clouds and daylight](#clouds-and-daylight)), cut to a tenth
+    when a cloud's shadow is over the camera. The UTCI then follows the clouds as they pass,
+    typically by a few degrees in summer, and the panel says whether the camera is in a gap or
+    under a cloud. The clouds are invented: the weather file gives how much of the sky is
+    cloudy, not where the clouds are, so this shows what a passing cloud does rather than what
+    happened. Over time the two agree on average. The sun-warmed surroundings keep the hourly
+    value either way (ground and walls do not cool as a cloud passes). It needs the sun and
+    the weather on, and an hour with some cloud; otherwise the panel says so and uses the hourly
+    figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
+    gives the same values on both) so the panel and the picture agree.
 
 The value, its category and the wind factor show first; **Inputs** opens to show the air
 temperature, humidity, wind, sun and radiant temperature that went into it.
@@ -303,9 +361,11 @@ Point and spot lights light the model in any shading mode; they show best at nig
 - **Added here**: lamps added with `B`, which puts a warm lamp just off the surface under the
   cursor (towards you). × removes one, `Shift+B` all of them. They are not saved with the file.
 
-The panel's **?** button repeats the keys and limits. Each light has a checkbox, and
-**All on** / **All off** switch the file's and added lights
-together. Up to 8 lights shine at once (the torch first, then the list in order); the panel
+The panel's **?** button repeats the keys and limits. The switch in the panel's title, or the
+bulb icon on the toolbar's Lights button (yellow and filled while on), turns the file's and
+added lights on and off together. While they are on, the ticked lights shine, or all of them
+when none is ticked; a lamp added while some are ticked is ticked too. The torch has its own
+checkbox. Up to 8 lights shine at once (the torch first, then the list in order); the panel
 marks the others "not shown". Light falls off with the square of the distance and fades out
 by 30 m (40 m for the torch). A lamp in view is drawn as a small glowing bulb.
 
@@ -366,6 +426,7 @@ src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
+src/clouds.js            cloud cover, sun and sky strength from the weather file; clear-sky models
 src/utci.js              UTCI (Universal Thermal Climate Index), its stress categories, SolarCal sun on a person
 src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)

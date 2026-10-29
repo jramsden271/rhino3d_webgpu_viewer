@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -12,13 +12,17 @@ const state = {
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
   // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
   // power, range (m) }, and for a spot light dir, inner and outer (cone half angles, degrees).
+  // on marks the lamp as selected: while lightsOn, the selected lamps shine, or all if none is.
   lamps: [],
+  lightsOn: true,
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
   weatherPanel: false,
+  weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // inputs: the Inputs section is open.
-  comfort: { panel: false, inputs: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5 },
+  // clouds: count the simulated cloud over the camera, rather than the hour's average sun.
+  comfort: { panel: false, inputs: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5, clouds: prefs.comfortClouds === true },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -42,7 +46,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; syncToolbar(); syncLightsPanel(); redraw(); },
+  onExit: () => { $('walkHint').hidden = true; syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -133,18 +137,68 @@ function frameState() {
   s.lamps = shownLamps();
   if (state.sun.on) {
     const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
+    const wx = currentSky(pos.altitude);
+    if (wx) overcastSky(light, wx.cover);
     s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
     const sunDir = sunVector(pos.azimuth, pos.altitude, S.north), moonDir = sunVector(moon.azimuth, moon.altitude, S.north);
     // Once the sun is down, a moon above the horizon takes over as the light that casts shadows.
-    const moonRgb = moonLight(moon.altitude, moon.lit, light.night), byMoon = light.up === 0 && moonRgb[2] > 0.004;
-    s.sun = { dir: byMoon ? moonDir : sunDir, rgb: byMoon ? moonRgb : light.rgb, glow: light.glow, night: light.night,
-      sky: light.sky + 0.06 * moonRgb[2] / 0.32, sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north,
+    // With a weather file, the sky is as bright as its diffuse radiation says, and the sun as its
+    // direct: the cloud shadows (drawn on the model) and the haze between them (weatherSky)
+    // share the dimming. The moon is shaded by the clouds alone.
+    const moonRgb = moonLight(moon.altitude, moon.lit, light.night);
+    const byMoon = light.up === 0 && moonRgb[2] > 0.004;
+    const sunRgb = light.rgb.map((v) => v * (wx ? wx.haze : 1));
+    s.sun = { dir: byMoon ? moonDir : sunDir, rgb: byMoon ? moonRgb : sunRgb, glow: light.glow, night: light.night,
+      sky: (light.sky + 0.06 * moonRgb[2] / 0.32) * (wx ? wx.sky : 1), sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north,
       lst: siderealTime(sunOpts()) };
+    if (wx) s.clouds = { cover: wx.cover, drift: clouds.drift, haze: wx.haze };
     if ((light.up > 0 || byMoon) && !state.xray) {
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
   }
   return s;
+}
+
+// Clouds: the weather file's sky at the Sun panel's date and time, and how far the clouds have
+// drifted. They move with the 10 m wind times the Weather panel's multiplier (clouds sit higher,
+// where the wind is stronger, and the multiplier also makes the drift easier to see).
+let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
+const clouds = { drift: [0, 0], last: 0, speed: prefs.cloudSpeed >= 0 && prefs.cloudSpeed <= CLOUD_SPEED_MAX ? prefs.cloudSpeed : 10 };
+
+// The weather as the sky and light show it: null without a weather file or with the weather
+// switched off (the Weather button's icon or the switch on its panel).
+function currentSky(altitude) {
+  const S = state.sun;
+  return site.epw && state.weatherOn ? weatherSky(site.epw, S.doy, S.hour, altitude) : null;
+}
+
+function setWeatherOn(on) {
+  state.weatherOn = on;
+  $('weatherOn').checked = on;
+  $('weatherQuick').setAttribute('aria-pressed', String(on));
+  redraw();
+}
+
+// Greys the sky colours towards an even overcast as the cover closes in, and mutes the sunset glow.
+function overcastSky(light, cover) {
+  const k = 0.85 * Math.pow(cover, 1.5), lum = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+  const g = 0.6 * lum(light.horizon) + 0.4 * lum(light.top), grey = [g * 0.97, g, g * 1.03];
+  light.top = light.top.map((v, i) => v + (grey[i] - v) * k);
+  light.horizon = light.horizon.map((v, i) => v + (grey[i] * 1.04 - v) * k);
+  light.glow = light.glow.map((v) => v * (1 - 0.6 * cover));
+}
+
+// Moves the clouds on by the time since the last frame. Returns true while they are moving.
+function driftClouds(now) {
+  const dt = Math.min(0.1, (now - (clouds.last || now)) / 1000);
+  clouds.last = now;
+  if (!state.sun.on || !site.epw || !clouds.speed) return false;
+  const wx = currentSky(sunPosition().altitude);
+  if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
+  const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
+  // Wrapped well before the noise's coordinates lose precision; a jump every few hundred km.
+  clouds.drift = clouds.drift.map((v, i) => (v + to[i] * d) % 4e5);
+  return true;
 }
 
 function sunOpts() {
@@ -157,6 +211,12 @@ function loop() {
   // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
   // untouched page does not keep the GPU busy.
   if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
+  // Drifting clouds likewise.
+  if (model && performance.now() - lastInput < 15000 && driftClouds(performance.now())) {
+    renderer.dirty = true;
+    // A cloud may have moved over the camera.
+    if (state.comfort.panel && state.comfort.clouds && performance.now() - comfortAt > 200) { comfortAt = performance.now(); syncComfortPanel(); }
+  }
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
@@ -236,7 +296,7 @@ async function openBytes(name, bytes, handle = null) {
     model.handle = handle;
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
-    state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: true,
+    state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
       p: l.p, rgb: l.rgb, power: 25 * l.intensity, range: 30, dir: l.dir, inner: l.inner, outer: l.outer }));
     syncLightsPanel();
     if (loadEdits()) {
@@ -320,8 +380,10 @@ function syncToolbar() {
   document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === (state.lastView || view))));
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
-  $('btnWalk').setAttribute('aria-pressed', String(walker.active));
-  $('btnWalk').disabled = !model || (camera.ortho && !walker.active);
+  $('walkQuick').setAttribute('aria-pressed', String(walker.active));
+  $('walkQuick').disabled = $('walkOn').disabled = !model || (camera.ortho && !walker.active);
+  $('walkOn').checked = walker.active;
+  $('btnWalk').setAttribute('aria-pressed', String(!$('walkPanel').hidden));
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
@@ -1328,6 +1390,7 @@ function applyFileLocation(loc) {
 function syncSunPanel() {
   const S = state.sun;
   $('sunOn').checked = S.on;
+  $('sunQuick').setAttribute('aria-pressed', String(S.on));
   $('sunDay').max = daysInYear(EPW_YEAR);
   $('sunDay').value = S.doy;
   $('sunHour').value = S.hour;
@@ -1410,8 +1473,12 @@ function bindSunPanel() {
   $('sunPlay').addEventListener('click', toggleSunPlay);
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
-  $('weatherFile').addEventListener('click', openWeatherDialog);
   $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
+  $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncSunPanel(); redraw(); });
+  $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
+  $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
+  $('weatherCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWeatherPanel(); }); // the gaps round the icon
+  setWeatherOn(state.weatherOn);
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
   syncSunPanel();
 }
@@ -1430,17 +1497,24 @@ function syncWeather(month, day) {
   $('weatherSrc').textContent = e ? e.location.name || e.fileName : 'No weather file';
   $('weatherSrc').title = e ? e.fileName : '';
   $('weatherWhen').value = `${day} ${MONTHS[month - 1]} · ${fmtHour(state.sun.hour)}`;
+  $('cloudSpeedField').hidden = !e;
+  $('cloudSpeed').value = clouds.speed;
+  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
   if (!e) {
     el.innerHTML = '<span class="fine">Add a weather file (EPW) to see the weather at this date and time.</span> <button class="link">Add one…</button>';
     return;
   }
   const w = e.at(month, day, state.sun.hour), v = (x, d = 0) => (x === null ? '—' : x.toFixed(d));
+  const sky = weatherSky(e, state.sun.doy, state.sun.hour, activeLocation() ? sunPosition().altitude : 30);
+  const cloud = !sky || sky.source === 'none' ? '—'
+    : `<b>${Math.round(sky.cover * 10)}</b>/10 <span class="fine">${sky.source === 'observed' ? 'observed' : 'from radiation'}</span>`;
   const wind = w.windSpeed === null ? '—' : w.windSpeed < 0.05 ? '<b>Calm</b>'
     : `<b>${v(w.windSpeed, 1)}</b> m/s${w.windDirection === null ? '' : ` from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°)`}`;
   el.innerHTML = `<dl class="wx">
     <dt>Air temperature</dt><dd><b>${v(w.dryBulb, 1)}</b> °C</dd>
     <dt>Relative humidity</dt><dd><b>${v(w.relativeHumidity)}</b>%</dd>
     <dt>Wind</dt><dd>${wind}</dd>
+    <dt>Cloud cover</dt><dd title="${sky?.source === 'radiation' ? 'This file has no usable cloud observations, so the cover is estimated from the share of diffuse light, by day, and filled in overnight' : 'Total sky cover from the weather file'}">${cloud}</dd>
     <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
     <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
     <dt>Diffuse horizontal</dt><dd><b>${v(w.diffuseHorizontal)}</b> W/m²</dd></dl>`;
@@ -1838,7 +1912,8 @@ function placeLamp() {
     const mpu = METRES_PER_UNIT[model.units] || 1, back = V3.norm(V3.sub(camera.eye, h.p));
     const p = V3.add(h.p, V3.scale(back, 0.4 / mpu));
     const n = state.lamps.filter((l) => l.src === 'added').length + 1;
-    state.lamps = [...state.lamps, { name: `Lamp ${n}`, src: 'added', on: true, p, rgb: [1, 0.62, 0.32], power: 25, range: 30 }];
+    // A new lamp joins the selection, if there is one; otherwise all lamps shine anyway.
+    state.lamps = [...state.lamps, { name: `Lamp ${n}`, src: 'added', on: state.lamps.some((l) => l.on), p, rgb: [1, 0.62, 0.32], power: 25, range: 30 }];
     syncLightsPanel();
     redraw();
   });
@@ -1847,11 +1922,26 @@ function clearLamps() { state.lamps = state.lamps.filter((l) => l.src !== 'added
 
 function setTorch(on) { state.torch = on; syncLightsPanel(); redraw(); }
 
+function setLightsOn(on) {
+  state.lightsOn = on;
+  $('lightsOn').checked = on;
+  $('lightsQuick').setAttribute('aria-pressed', String(on));
+  syncLightsPanel();
+  redraw();
+}
+
+// The file's and added lamps that shine: none while the lights are off, else the selected ones,
+// or all of them when none is selected. The torch has its own switch.
+function litLamps() {
+  if (!state.lightsOn) return [];
+  return state.lamps.some((l) => l.on) ? state.lamps.filter((l) => l.on) : state.lamps;
+}
+
 // The lamps that light the scene this frame: the torch first (held at chest height, a little to
-// the right, pointing where the walker looks), then the lights that are on. The renderer uses the
+// the right, pointing where the walker looks), then the lights that shine. The renderer uses the
 // first MAX_LAMPS; lampShadowPlan decides which of those cast shadows.
 function shownLamps() {
-  const on = state.lamps.filter((l) => l.on);
+  const on = litLamps();
   if (!state.torch || !walker.active || !model) return on;
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const hand = V3.add(camera.eye, V3.add(V3.scale(camera.right, 0.2 * u), V3.scale(camera.up, -0.3 * u)));
@@ -1868,16 +1958,16 @@ function toggleLightsPanel() {
 function syncLightsPanel() {
   if (!state.lightsPanel) return;
   // Which lights the renderer uses and which cast shadows, as it will see them.
-  const shown = shownLamps().slice(0, MAX_LAMPS), plan = lampShadowPlan(shown);
+  const shown = shownLamps().slice(0, MAX_LAMPS), plan = lampShadowPlan(shown), lit = litLamps();
   const status = (l) => {
     const i = shown.indexOf(l);
-    if (!l.on) return 'off';
+    if (!lit.includes(l)) return 'off';
     if (i < 0) return `not shown (${MAX_LAMPS} at most)`;
     return plan[i] ? 'shadows' : 'no shadows';
   };
   const hex = (rgb) => `#${rgb.map((v) => Math.round(255 * Math.min(1, v) ** (1 / 2.2)).toString(16).padStart(2, '0')).join('')}`;
-  const row = (l, i) => `<div class="light-row${l.on ? '' : ' off'}" data-i="${i}">
-      <input type="checkbox" ${l.on ? 'checked' : ''} aria-label="${escapeHtml(l.name)} on">
+  const row = (l, i) => `<div class="light-row${lit.includes(l) ? '' : ' off'}" data-i="${i}">
+      <input type="checkbox" ${l.on ? 'checked' : ''} aria-label="Select ${escapeHtml(l.name)}" title="Select: only the selected lights shine (all of them when none is)">
       <span class="swatch" style="background:${hex(l.rgb)}"></span>
       <span class="light-name" title="${escapeHtml(l.name)}">${escapeHtml(l.name)}</span>
       <span class="light-meta">${l.dir ? 'Spot' : 'Point'} · ${status(l)}</span>
@@ -1898,6 +1988,7 @@ function syncLightsPanel() {
 function showLightsHelp() {
   Dialog.open({ title: 'Lights', html: true, width: 360, body: `<p>The Rhino file's point and spot lights, lamps you add and the walker's torch light the model; they show best at night.</p>
     <p><kbd>B</kbd> adds a lamp just off the surface under the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes the lamps you added · <kbd>T</kbd> switches the torch on and off while walking.</p>
+    <p>The switch at the top (or the bulb on the toolbar's Lights button) turns the file's and added lights on and off. While on, the ticked lights shine; with none ticked, all of them do. The torch has its own checkbox.</p>
     <p>Up to ${MAX_LAMPS} lights shine at once: the torch first, then the list in order. The torch and about four lamps also cast shadows.</p>` });
 }
 
@@ -1905,9 +1996,10 @@ function bindLightsPanel() {
   document.querySelector('[data-act="lights"]').addEventListener('click', toggleLightsPanel);
   $('lightsClose').addEventListener('click', () => state.lightsPanel && toggleLightsPanel());
   $('lightsHelp').addEventListener('click', showLightsHelp);
-  const setAll = (on) => { state.lamps.forEach((l) => { l.on = on; }); syncLightsPanel(); redraw(); };
-  $('lightsAllOn').addEventListener('click', () => setAll(true));
-  $('lightsAllOff').addEventListener('click', () => setAll(false));
+  $('lightsOn').addEventListener('change', (e) => setLightsOn(e.target.checked));
+  $('lightsQuick').addEventListener('click', () => setLightsOn(!state.lightsOn));
+  $('lightsCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleLightsPanel(); }); // the gaps round the icon
+  setLightsOn(state.lightsOn);
   $('lightsList').addEventListener('change', (e) => {
     const r = e.target.closest('.light-row');
     if (!r) return;
@@ -1975,22 +2067,27 @@ function pickView(name) {
   syncToolbar();
   redraw();
 }
+// Walking on and off: the Walk button's icon and the switch on the Walk panel.
 function toggleWalk() {
   if (walker.active) { walker.exit(); return; }
-  if (!model || camera.ortho) return;
+  if (!model || camera.ortho) { syncWalkPanel(); return; }
   state.lastView = null;
   $('walkHint').hidden = false;
-  $('walkPanel').hidden = false;
-  syncWalkPanel();
-  walker.enter().then(() => { syncToolbar(); syncLightsPanel(); });
+  walker.enter().then(() => { syncToolbar(); syncWalkPanel(); syncLightsPanel(); });
   syncToolbar();
+  syncWalkPanel();
   canvas.focus();
+}
+function toggleWalkPanel() {
+  $('walkPanel').hidden = !$('walkPanel').hidden;
+  syncWalkPanel();
+  syncToolbar();
 }
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> on the toolbar (perspective views only) drops you onto the surface below the camera, with your eyes 1.5 m above it.</p>
-    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or closing this panel to stop</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p>The switch above, or the figure on the toolbar's Walk button, starts walking (perspective views only): you drop onto the surface below the camera, with your eyes 1.5 m above it. Closing this panel does not stop you.</p>
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or the switch to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. The line at the top says whether you are in sunlight, and what casts the shade.</p>` });
 }
@@ -2003,6 +2100,7 @@ function syncWalkPanel() {
   $('walkSpeedOut').classList.toggle('running', shiftDown);
   $('walkCollide').checked = S.collide;
   $('walkFly').checked = S.fly;
+  showWalkSun();
 }
 
 function bindWalkPanel() {
@@ -2011,7 +2109,10 @@ function bindWalkPanel() {
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
   $('walkHelp').addEventListener('click', showWalkHelp);
-  $('walkClose').addEventListener('click', () => { walker.exit(); canvas.focus(); });
+  $('walkClose').addEventListener('click', () => { toggleWalkPanel(); canvas.focus(); });
+  $('walkOn').addEventListener('change', toggleWalk);
+  $('walkQuick').addEventListener('click', toggleWalk);
+  $('walkCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWalkPanel(); }); // the gaps round the icon
   $('walkSun').addEventListener('click', (e) => { if (e.target.id === 'walkSunOn') { setSun({ on: true }); syncSunPanel(); } });
   syncWalkPanel();
 }
@@ -2059,7 +2160,8 @@ function showWalkSun() {
     el.dataset.k = k; el.className = 'walk-sun ' + cls; el.innerHTML = '<span class="dot"></span><span>' + html + '</span>' + extra;
   };
   const s = sunlight;
-  if (!state.sun.on) show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>');
+  if (!walker.active) show('', 'Not walking: turn walking on with the switch above, or the icon on the Walk button');
+  else if (!state.sun.on) show('', 'Sun is off: turn it on to see if you are in sunlight', '<button class="link" id="walkSunOn">Turn on</button>');
   else if (!s) show('', 'Checking for sunlight…');
   else if (s.night) show('shade', '<b>Night</b> · the sun is below the horizon');
   else if (s.lit) show('lit', '<b>In sunlight</b>');
@@ -2091,10 +2193,27 @@ function comfortNow() {
   const pos = activeLocation() ? sunPosition() : null;
   const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
   const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
-  const dSun = sun ? solarMrtDelta(w.directNormal, pos.altitude) : 0, dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
+  // With simulated clouds the sun on the person is the beam between the clouds, cut by the cloud
+  // over the camera if there is one (the same cloud field as the sky and its shadows). The
+  // sunlit surroundings keep the hour's average: ground and walls do not cool as a cloud passes.
+  const sim = comfortClouds(pos);
+  const beam = sim?.shade != null ? sim.gap * sim.shade : w.directNormal;
+  const dSun = sun ? solarMrtDelta(beam, pos.altitude) : 0, dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
   const tr = ta + dSun + dSurr;
   // Wind below the UTCI's 0.5 m/s is raised to it (utci does), so it is not counted as out of range.
-  return { w, pos, sun, ta, rh, va, tr, dSun, dSurr, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
+  return { w, pos, sun, sim, beam, ta, rh, va, tr, dSun, dSurr, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
+}
+
+// The simulated cloud at the camera: null with the option off; { off: reason } when there are no
+// clouds to count; else { shade (1 open .. 0.1 under a cloud), gap (the beam between clouds, W/m²) }.
+function comfortClouds(pos) {
+  if (!state.comfort.clouds) return null;
+  if (!state.sun.on || !state.weatherOn) return { off: 'Simulated clouds need the sun and the weather switched on' };
+  if (!pos || pos.altitude <= 0) return { off: 'No sun to cover' };
+  const sky = currentSky(pos.altitude);
+  if (!sky || sky.cover < 0.01) return { off: 'No cloud in the weather file at this hour' };
+  const mpu = (model && METRES_PER_UNIT[model.units]) || 1;
+  return { shade: cloudShadeAt(camera.eye, sunVector(pos.azimuth, pos.altitude, state.sun.north), sky.cover, clouds.drift, mpu), gap: sky.gapBeam };
 }
 
 function syncComfortPanel() {
@@ -2119,10 +2238,15 @@ function syncComfortPanel() {
   $('comfortRead').style.setProperty('--cat', cat.color);
   setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
     <div class="utci-scale">${UTCI_CATEGORIES.map((c) => `<span style="background:${c.color}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
-    ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}`);
+    ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}
+    ${comfortCloudNote(r)}`);
   const s = sunlight, pos = r.pos;
+  const under = r.sim?.shade != null && r.sim.shade < 0.55;
+  const direct = r.sim?.shade != null
+    ? `${f(r.beam, 0)} W/m² direct ${under ? 'under a simulated cloud' : 'between simulated clouds'} (hourly average ${f(r.w.directNormal, 0)})`
+    : `${f(r.w.directNormal, 0)} W/m² direct`;
   const sunRow = !pos ? 'No location: shade assumed' : pos.altitude <= 0 || s?.night ? 'Night' : !s ? 'Checking…'
-    : s.lit ? (r.w.directNormal > 0 ? `<b>In sunlight</b> · ${f(r.w.directNormal, 0)} W/m² direct, ${f(pos.altitude, 0)}° up` : '<b>In sunlight</b> · no direct sun in the weather file')
+    : s.lit ? (r.w.directNormal > 0 ? `<b>In sunlight</b> · ${direct}, ${f(pos.altitude, 0)}° up` : '<b>In sunlight</b> · no direct sun in the weather file')
       : `<b>In shade</b> · ${shadeText(s)}`;
   setHtml($('comfortInputs'), `<dl class="wx">
     <dt>Air temperature</dt><dd><b>${f(r.ta)}</b> °C</dd>
@@ -2133,13 +2257,23 @@ function syncComfortPanel() {
     ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
 }
 
+// Under the UTCI: which way the sun was counted, when simulated clouds are asked for.
+function comfortCloudNote(r) {
+  if (!r.sim) return '';
+  if (r.sim.off) return `<div class="fine">${r.sim.off}: using the hour's average sun.</div>`;
+  if (!r.sun) return '<div class="fine">With simulated clouds · in shade here, so they make no difference.</div>';
+  return `<div class="fine">With simulated clouds · <b>${r.sim.shade < 0.55 ? 'under a cloud' : 'in a gap'}</b> at the camera.</div>`;
+}
+
 // Replaces an element's content only when it changes (the panel refreshes several times a second).
 function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } }
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
     <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
-    <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>` });
+    <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>
+    <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
+    <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
 }
 
 function bindComfortPanel() {
@@ -2148,6 +2282,8 @@ function bindComfortPanel() {
   $('comfortHelp').addEventListener('click', showComfortHelp);
   $('comfortToggle').addEventListener('click', () => { state.comfort.inputs = !state.comfort.inputs; syncComfortPanel(); });
   $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
+  $('comfortClouds').checked = state.comfort.clouds;
+  $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });
   $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
 }
 
@@ -2259,6 +2395,8 @@ function bindUi() {
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="sun"]').addEventListener('click', toggleSunPanel);
+  $('sunCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleSunPanel(); }); // the gaps round the icon
+  $('sunQuick').addEventListener('click', () => setSun({ on: !state.sun.on }));
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   bindLayerMenu();
@@ -2278,8 +2416,8 @@ function bindUi() {
   });
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
-  for (const [btn, panel] of [['[data-act="sun"]', 'sunPanel'], ['[data-act="weather"]', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['[data-act="lights"]', 'lightsPanel'], ['#btnWalk', 'walkPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+  for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
+    ['#lightsQuick', 'lightsPanel'], ['#walkQuick', 'walkPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
@@ -2297,7 +2435,7 @@ function bindUi() {
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
   window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); });
   window.addEventListener('blur', () => { setShift(false); walker.blur(); });
-  $('btnWalk').addEventListener('click', toggleWalk);
+  $('btnWalk').addEventListener('click', toggleWalkPanel);
   bindWalkPanel();
   bindPointer();
   state.lastView = 'perspective';

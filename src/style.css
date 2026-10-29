@@ -59,7 +59,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
-@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 6px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; } }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 5px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; }
+  .toolbar .combo-icon { margin-left: 2px; padding: 2px; } .toolbar .btn-combo > .btn { padding-left: 2px; } .toolbar { gap: 1px; } }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -151,6 +152,24 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .layer-special { flex: none; font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px; line-height: 15px; white-space: nowrap; }
 .layer-special[hidden] { display: none; }
 .btn.toggle svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+/* A toolbar button with a smaller button inside it: the icon toggles, the rest opens the panel. */
+.btn-combo { display: inline-flex; align-items: center; border-radius: 7px; cursor: pointer; }
+.btn-combo:hover { background: var(--hover); }
+.btn-combo:has(> .btn[aria-pressed="true"]) { background: var(--accent-soft); color: var(--accent); }
+.toolbar .btn-combo > .btn, .btn-combo > .btn:hover, .btn-combo > .btn[aria-pressed="true"] { background: transparent; padding-left: 3px; }
+.combo-icon { border: 0; background: transparent; color: inherit; padding: 3px; margin-left: 5px; border-radius: 5px; display: inline-flex; cursor: pointer; }
+.combo-icon:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.combo-icon svg { width: 16px; height: 16px; }
+.combo-icon[aria-pressed="true"] svg { stroke: #f2b100; }
+.combo-icon[aria-pressed="true"] svg circle, .combo-icon[aria-pressed="true"] svg path:last-child { fill: #f2b100; }
+/* Weather on: a filled white cloud (it stays distinct on the blue of an open panel's button).
+   Walk: a solid figure, dark grey when off and yellow while walking. */
+#weatherQuick[aria-pressed="true"] svg { stroke: #d6e9fb; }
+#weatherQuick[aria-pressed="true"] svg path { fill: #f3f8fd; }
+#walkQuick svg { color: #7b828c; stroke: #7b828c; }
+#walkQuick[aria-pressed="true"] svg { color: #f2b100; stroke: #f2b100; }
+.combo-icon:disabled { opacity: 0.45; cursor: default; }
+.combo-icon:disabled:hover { background: transparent; }
 .sun-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 12px; }
 .sun-read { font-size: 12px; color: var(--muted); line-height: 1.5; font-variant-numeric: tabular-nums; }
 .sun-read b { color: var(--text); font-weight: 600; }

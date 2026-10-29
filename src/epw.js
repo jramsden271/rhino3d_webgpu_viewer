@@ -105,13 +105,19 @@ class EPW {
   // the records' half hours; with interpolate: false, the record whose hour contains it.
   // Missing values are null. 29 February falls back to the 28th in a 365-day file.
   at(month, day, hour, { interpolate = true } = {}) {
-    let start = this.dayStart.get(month * 32 + day);
-    if (start === undefined && month === 2 && day === 29) start = this.dayStart.get(2 * 32 + 28);
-    if (start === undefined) return null;
+    const f = this.index(month, day, hour);
+    if (f === null) return null;
     const out = { month, day, hour };
-    const f = start + hour * this.perHour - 0.5; // fractional record index; whole at the half hours
     for (const [key] of EPW_FIELDS) out[key] = interpolate ? this.sample(key, f) : this.value(key, Math.round(f));
     return out;
+  }
+
+  // The fractional record index for a local clock hour (whole at the half hours), for sample();
+  // null when the file has no records for that day.
+  index(month, day, hour) {
+    let start = this.dayStart.get(month * 32 + day);
+    if (start === undefined && month === 2 && day === 29) start = this.dayStart.get(2 * 32 + 28);
+    return start === undefined ? null : start + hour * this.perHour - 0.5;
   }
 
   // Same, from a day of the year (1-366). The year only decides whether there is a 29 February.
