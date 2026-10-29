@@ -3412,12 +3412,30 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
     g += dirs[i] * cos(ph) * k * 0.035 * lens[i] / 7.0;
   }
   let n = normalize(vec3f(-g * fade, 1.0) * select(1.0, -1.0, flatN.z < 0.0));
-  let lt = lighting(in.wp, flatN, 0.0);
+  var lt = lighting(in.wp, flatN, 0.0);
+  if (F.sunDir.w > 0.5 && F.opts.y > 0.5 && dot(flatN, lt.L) > 0.0) {
+    // Softer shadow edges than on land (light scatters in the water): four samples ~0.4 m apart.
+    let r = 0.4 / F.misc.y;
+    var soft = 0.0;
+    for (var i = 0; i < 4; i++) {
+      let a = f32(i) * 1.5707963 + 0.4;
+      soft += sunVisibility(in.wp + vec3f(cos(a), sin(a), 0.0) * r, flatN);
+    }
+    soft *= 0.25 * cloudShade(in.wp);
+    lt.direct += F.sunColor.rgb * max(dot(flatN, lt.L), 0.0) * (soft - lt.vis);
+    lt.vis = soft;
+  }
   let cosV = max(dot(n, V), 0.0);
   let fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
   let R = reflect(-V, n);
-  let body = toLinear(B.mat.rgb) * (lt.ambient * 1.6 + lt.direct * 0.25);  // the layer's water colour
-  var col = mix(body, sky(R) * (0.55 + 0.45 * F.sunColor.w), fres);
+  var ao = 1.0;
+  if (F.opts.z > 0.5) { ao = mix(1.0, textureLoad(aoTex, vec2i(in.pos.xy), 0).r, 0.6); }
+  // The layer's water colour. The sun term is what shows shadows: in shallow water they fall on
+  // the lit floor beneath. Shade dims the reflection a little too (the caster hides some sky).
+  let body = toLinear(B.mat.rgb) * (lt.ambient * 1.2 * ao + lt.direct * 0.3);
+  var shade = ao;
+  if (F.sunDir.w > 0.5) { shade *= mix(0.7, 1.0, lt.vis); }
+  var col = mix(body, sky(R) * (0.55 + 0.45 * F.sunColor.w) * shade, fres);
   if (F.sunDir.w > 0.5) { col += F.sunColor.rgb * pow(max(dot(R, lt.L), 0.0), 600.0) * 6.0 * lt.vis; }
   return col;
 }
