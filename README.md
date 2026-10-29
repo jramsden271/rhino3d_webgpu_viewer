@@ -103,8 +103,23 @@ that layer ("By layer", or "By parent" inside a block instance that takes it fro
 Blocks are not matched by their names: the parts of a tree block use the magic material of
 the layer their material comes from.
 
-The **Magic ✨** button on the toolbar turns magic materials on and off. When off,
-everything renders with its plain material colour.
+Surfaces without a magic material also get a faint **natural variation** in Rendered view, so
+walls and roofs look less like a CAD model:
+
+- slight blotchy discolouration (a few metres across, stretched downwards on walls, as
+  weathering streaks run);
+- a fine grain that shows close up;
+- highlights that break up across a surface instead of shining evenly (visible on layers
+  given some gloss).
+
+The variation is worked out in 3D at each point, in metres, so it needs no texture coordinates
+and looks the same scale in any model units. Fine detail fades out as it gets smaller than a
+few pixels, so distant surfaces don't shimmer as the view moves. Grass, road, paving and ground
+use the same noise for their larger-scale variation, so it also wraps evenly over slopes and
+embankments.
+
+The **Magic ✨** button on the toolbar turns magic materials on and off, natural variation
+included. When off, everything renders with its plain material colour.
 
 The colour in the dialog is the magic material's **base colour**: vegetation varies around
 it from object to object, and grass, road, paving and ground across the surface. Pick any

@@ -425,7 +425,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
     <span class="sep"></span>
     <button class="btn toggle" data-toggle="showEdges" title="Edges (E)">Edges</button>
     <button class="btn toggle" data-toggle="showCurves" title="Curves and points (C)">Curves</button>
-    <button class="btn toggle" id="btnSpecials" title="Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer (Rendered view). Off: plain material colours only.">Magic ✨</button>
+    <button class="btn toggle" id="btnSpecials" title="Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view). Off: plain material colours only.">Magic ✨</button>
     <button class="btn toggle" data-toggle="ao" title="Ambient occlusion: soft shading in corners and recesses (O)">AO</button>
     <button class="btn toggle" data-toggle="xray" title="X-ray (X)">X-ray</button>
     <span class="sep"></span>
@@ -2929,6 +2929,7 @@ struct Frame {
   stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
+  surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
   shadow: array<mat4x4f, ${CASCADES}>,
   lampCount: vec4f, // x = number of lamps in use
   // Per lamp: xyz position, w = range (m); rgb = colour x power, w = cos of the spot's inner cone;
@@ -2972,13 +2973,51 @@ fn finish(lin: vec3f, wp: vec3f) -> vec3f {
   return mix(toSrgb(tonemap(lin)), F.bgBot.rgb, hazeAmount(wp));
 }
 
-// Value noise for subtle large-scale variation on ground surfaces.
+// Value noise for the sky's features.
 fn hash2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
 fn noise2(p: vec2f) -> f32 {
   let i = floor(p);
   let f = fract(p);
   let u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash2(i), hash2(i + vec2f(1.0, 0.0)), u.x), mix(hash2(i + vec2f(0.0, 1.0)), hash2(i + vec2f(1.0, 1.0)), u.x), u.y);
+}
+
+// 3D value noise for surfaces, evaluated at the point in space, so it needs no texture coordinates
+// and wraps round any shape without seams or the streaks a flat projection leaves on slopes.
+fn hash3(c: vec3f) -> f32 {
+  let i = bitcast<vec3u>(vec3i(c));
+  var h = (i.x * 0x8da6b343u) ^ (i.y * 0xd8163841u) ^ (i.z * 0xcb1ab31fu);
+  h = (h ^ (h >> 15u)) * 0x2c1b3c6du;
+  h = (h ^ (h >> 12u)) * 0x297a2d39u;
+  h = h ^ (h >> 15u);
+  return f32(h >> 8u) / 16777216.0;
+}
+fn noise3(p: vec3f) -> f32 {
+  let i = floor(p);
+  let f = p - i;
+  let u = f * f * (3.0 - 2.0 * f);
+  let a = mix(mix(hash3(i), hash3(i + vec3f(1.0, 0.0, 0.0)), u.x), mix(hash3(i + vec3f(0.0, 1.0, 0.0)), hash3(i + vec3f(1.0, 1.0, 0.0)), u.x), u.y);
+  let b = mix(mix(hash3(i + vec3f(0.0, 0.0, 1.0)), hash3(i + vec3f(1.0, 0.0, 1.0)), u.x), mix(hash3(i + vec3f(0.0, 1.0, 1.0)), hash3(i + vec3f(1.0, 1.0, 1.0)), u.x), u.y);
+  return mix(a, b, u.z);
+}
+// Surface noise around 0 (mostly within +-0.25): octaves from features of size metres down, each
+// half the last. p in metres; px: metres per pixel there. An octave fades out as its features
+// shrink towards a few pixels, so distant surfaces settle to their plain colour instead of
+// shimmering as the view moves (multisampling smooths edges, not shading).
+fn surfNoise(p: vec3f, size: f32, octaves: i32, px: f32) -> f32 {
+  var s = 0.0;
+  var a = 0.5;
+  var w = size;
+  var q = p / size;
+  for (var i = 0; i < octaves; i++) {
+    let fade = 1.0 - smoothstep(0.12, 0.35, px / w);
+    if (fade <= 0.0) { break; }
+    s += a * fade * (noise3(q) - 0.5);
+    q = q * 2.03 + vec3f(17.1, 9.2, 4.7);
+    w = w / 2.03;
+    a *= 0.5;
+  }
+  return s;
 }
 fn sky(dir: vec3f) -> vec3f {
   return mix(toLinear(F.bgBot.rgb), toLinear(F.bgTop.rgb), pow(clamp(dir.z, 0.0, 1.0), 0.6));
@@ -3205,7 +3244,8 @@ fn moonDisc(dir: vec3f, col: vec3f, sky: vec3f, night: f32) -> vec3f {
 
 // Meshes -------------------------------------------------------------------------------------
 struct MOut { @builtin(position) pos: vec4f, @location(0) n: vec3f, @location(1) wp: vec3f, @location(2) c: vec4f,
-  @location(3) @interpolate(flat) seed: f32, @location(4) @interpolate(flat) oid: u32 };
+  @location(3) @interpolate(flat) seed: f32, @location(4) @interpolate(flat) oid: u32,
+  @location(5) np: vec3f };   // np: position for the surface noise, in metres from F.surface.xyz
 // Surface priority (B.color.a): ground-like layers are pushed very slightly away from the camera
 // so roads, paving and water win where they nearly coincide with or dip into the terrain.
 // The push is a fraction of the viewing distance, so it is invisible at any zoom.
@@ -3215,10 +3255,10 @@ fn meshClip(p: vec3f, oid: u32) -> vec4f {
   return vec4f(c.xy, c.z * (1.0 - B.color.a * 1e-3), c.w);
 }
 @vertex fn vsMesh(@location(0) p: vec3f, @location(1) n: vec4f, @location(4) oid: u32) -> MOut {
-  return MOut(meshClip(p, oid), n.xyz, p, vec4f(0.0), n.w, oid);
+  return MOut(meshClip(p, oid), n.xyz, p, vec4f(0.0), n.w, oid, (p - F.surface.xyz) * F.misc.y);
 }
 @vertex fn vsMeshVC(@location(0) p: vec3f, @location(1) n: vec4f, @location(2) c: vec4f, @location(4) oid: u32) -> MOut {
-  return MOut(meshClip(p, oid), n.xyz, p, c, n.w, oid);
+  return MOut(meshClip(p, oid), n.xyz, p, c, n.w, oid, (p - F.surface.xyz) * F.misc.y);
 }
 // Selected object: tint it with the highlight colour.
 fn highlight(c: vec3f, oid: u32) -> vec3f {
@@ -3370,6 +3410,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   if (dot(faceN, V) < 0.0) { faceN = -faceN; }
   var n = normalize(in.n);
   if (dot(n, faceN) < 0.0) { n = -n; }
+  let px = max(length(dpdx(in.np)), length(dpdy(in.np)));   // metres per pixel, for surfNoise
 
   // Magic materials (materials.js) apply in Rendered mode; water also keeps its look in Clay mode.
   var cls = 0;
@@ -3393,7 +3434,9 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
     gloss = mix(gloss, 260.0, B.flags.w);
   }
   if (mode > 1.5) { base = vec3f(0.91, 0.91, 0.90) * (1.0 + 0.03 * v); }
-  let ground = noise2(in.wp.xy * F.misc.y * 0.04) * 0.6 + noise2(in.wp.xy * F.misc.y * 0.25) * 0.4;
+  // Ground types: blotches from 25 m across down to a few metres.
+  var ground = 0.5;
+  if (cls >= 4) { ground = clamp(0.5 + 1.6 * surfNoise(in.np, 25.0, 4, px), 0.0, 1.0); }
   // Each type varies around the layer's material colour (the factors match "tones" in materials.js),
   // so its default colour gives the standard look and any other colour keeps the same variation.
   let c = B.mat.rgb;
@@ -3408,6 +3451,18 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
     case 6: { base = c * (0.95 + 0.08 * ground); }                                                               // paving
     case 7: { base = mix(c * vec3f(1.04, 1.034, 1.045), c * vec3f(0.96, 0.966, 0.955), ground); spec = 0.0; }   // ground
     default: {}
+  }
+  // Other surfaces, in the Rendered view with magic materials on: a faint blotchy discolouration,
+  // a finer grain seen close up, and highlights that break up as a real finish's do rather than
+  // shining evenly. On walls the blotches stretch downwards, as weathering streaks run.
+  if (cls == 0 && F.surface.w > 0.0 && F.opts.x == 0.0) {
+    let wall = 1.0 - abs(n.z);
+    let blotch = surfNoise(in.np * vec3f(1.0, 1.0, mix(1.0, 0.35, wall)), 8.0, 3, px);
+    let grain = surfNoise(in.np + vec3f(41.0, 7.0, 23.0), 0.12, 2, px);
+    base *= 1.0 + F.surface.w * (0.25 * blotch + 0.13 * grain);
+    let rough = surfNoise(in.np + vec3f(5.0, 61.0, 13.0), 1.2, 3, px) * F.surface.w;
+    spec *= max(1.0 + 3.0 * rough, 0.2);
+    gloss *= max(1.0 - 2.0 * rough, 0.4);
   }
   let vc = B.flags.x > 0.5 && mode < 1.5;
   if (vc) { base = in.c.rgb; }
@@ -3895,6 +3950,9 @@ class Renderer {
       const { position, normal, index, vcolor, objectId, ...meta } = b;
       this.batches.push({ ...meta, gpu, offset: i * BATCH_STRIDE, visible: true });
     });
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const b of this.batches) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
+    this.noiseOrigin = isFinite(mn[0]) ? mn.map((v, k) => (v + mx[k]) / 2) : [0, 0, 0];
     this.setMaterialRules(this.specialsOn ?? true, this.layerMaterials, this.layerColours, this.layerSpecials);
   }
 
@@ -3961,8 +4019,12 @@ class Renderer {
     f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
     f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
-    if (sh) sh.mats.forEach((m, c) => f.set(m, 100 + c * 16));
-    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 100 + CASCADES * 16;
+    // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:
+    // far from the file's origin (map coordinates), float precision would break up fine grain.
+    const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];
+    f.set([...o.map((v) => Math.round(v / step) * step), s.mode === 1 && s.specials ? 1 : 0], 100);
+    if (sh) sh.mats.forEach((m, c) => f.set(m, 104 + c * 16));
+    const lamps = (s.lamps || []).slice(0, MAX_LAMPS), L0 = 104 + CASCADES * 16;
     const plan = s.xray ? [] : lampShadowPlan(lamps), near = LAMP_NEAR / (s.metresPerUnit || 1);
     f.fill(0, L0, L0 + 4 + MAX_LAMPS * 16);
     f[L0] = lamps.length;
