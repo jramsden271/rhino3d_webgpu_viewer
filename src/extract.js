@@ -238,8 +238,7 @@ const meshBuffers = (m) => {
 // Reading a model has two stages. extractScene() reads the file once into plain JS data: layers,
 // materials, block definitions and one item per top-level object, with geometry already meshed.
 // buildBatches() turns that into GPU batches using each item's current attributes; it runs again
-// whenever an object's colour or material source changes or a block is exploded, without
-// re-reading the file.
+// whenever an object's colour or material source changes, without re-reading the file.
 
 async function extractModel(rhino, doc, onProgress) {
   const scene = await extractScene(rhino, doc, onProgress);
@@ -353,7 +352,7 @@ async function extractScene(rhino, doc, onProgress) {
       if (!o) continue;
       const g = o.geometry(), a = o.attributes(), tn = enumName(g.objectType), ai = attrInfo(a);
       if (!a.visible) continue;
-      const base = { ai, src: oid, type: TYPE_LABEL[tn] || tn, userText: userText(a) };
+      const base = { ai };
       if (tn === 'InstanceReference') { getIdef(g.parentIdefId); def.entries.push({ ...base, k: 'inst', idef: g.parentIdefId, xf: xformOf(g.xform) }); }
       else if (tn === 'Curve') { const s = []; sampleCurve(g, s); def.entries.push({ ...base, k: 'line', segs: Float64Array.from(s) }); }
       else if (tn === 'Point') def.entries.push({ ...base, k: 'point', p: Float64Array.from(g.location) });
@@ -396,11 +395,10 @@ async function extractScene(rhino, doc, onProgress) {
     if (a.isInstanceDefinitionObject || a.mode.value === 3 || a.mode.value === 1 || !a.visible) continue;
     if (a.activeSpace && a.activeSpace.value === 2) continue; // layout / page space
     const g = o.geometry(), tn = enumName(g.objectType), ai = attrInfo(a);
-    const it = { id: a.id, key: a.id, name: ai.name, type: TYPE_LABEL[tn] || tn, block: '', userText: userText(a), ai, ai0: { ...ai },
-      seed: seedOf(i, 0.5, 0.25), xf: null, chain: '' };
+    const it = { id: a.id, name: ai.name, type: TYPE_LABEL[tn] || tn, block: '', userText: userText(a), ai, ai0: { ...ai },
+      seed: seedOf(i, 0.5, 0.25), xf: null };
     if (tn === 'InstanceReference') {
-      const fileXf = xformOf(g.xform);
-      Object.assign(it, { k: 'inst', idef: g.parentIdefId, xf: mulRM(originXf, fileXf), fileXf, block: getIdef(g.parentIdefId).name });
+      Object.assign(it, { k: 'inst', idef: g.parentIdefId, xf: mulRM(originXf, xformOf(g.xform)), block: getIdef(g.parentIdefId).name });
       it.seed = seedOf(it.xf[3], it.xf[7], it.xf[11]);
     } else if (tn === 'Curve') {
       const s = []; sampleCurve(g, s);
@@ -419,8 +417,8 @@ async function extractScene(rhino, doc, onProgress) {
     }
     items.push(it);
   }
-  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items, fileItems: items.length,
-    stats, location: readLocation(doc), objects: items, lights };
+  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items,
+    stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
 }
 
 const TYPE_LABEL = { Brep: 'Polysurface', Extrusion: 'Extrusion', Mesh: 'Mesh', SubD: 'SubD', InstanceReference: 'Block instance', Curve: 'Curve', Point: 'Point' };
@@ -563,7 +561,6 @@ function buildBatches(scene) {
     rec = it;
     it.min = [Infinity, Infinity, Infinity]; it.max = [-Infinity, -Infinity, -Infinity]; it.triangles = 0;
     it.layer = it.ai.layer;
-    if (it.gone) return;
     const look = resolveLook(scene, it.ai, null), ls = [it.ai.layer];
     it.look = look;
     it.material = look.matSet ? look.mat.name : '';
@@ -592,35 +589,19 @@ function buildBatches(scene) {
   return batches;
 }
 
-// Replace a block instance with the objects inside it (recursively, so nested blocks are
-// exploded too) as new top-level items, like Rhino's ExplodeBlock. "By parent" colours and
-// materials become the instance's values, so nothing changes on screen; shownRgb(look) gives a
-// look's colour as currently displayed (including colours set in the viewer). Returns the new
-// item indices.
-function explodeItem(scene, index, shownRgb) {
-  const it = scene.items[index];
-  if (!it || it.k !== 'inst' || it.gone) return [];
-  const added = [];
-  const path = (l) => (scene.layers[l] ? scene.layers[l].fullPath : '');
-  const walk = (idefId, xf, fileXf, parentLook, chain, depth) => {
-    const def = scene.defs.get(idefId);
-    if (!def || depth > 24) return;
-    chain += ' ' + def.name;
-    const seed = seedOf(xf[3], xf[7], xf[11]);
-    for (const e of def.entries) {
-      const look = resolveLook(scene, e.ai, parentLook);
-      if (e.k === 'inst') { walk(e.idef, mulRM(xf, e.xf), mulRM(fileXf, e.xf), look, `${chain} ${path(e.ai.layer)} ${e.ai.name}`, depth + 1); continue; }
-      const ai = { ...e.ai };
-      if (ai.cs === 3) { ai.cs = 1; ai.oc = shownRgb(parentLook); }
-      if (ai.ms === 2) { ai.ms = 1; ai.mi = parentLook.mi; }
-      const child = { id: '', key: `${it.key}/${added.length}`, name: ai.name, type: e.type, block: '', userText: e.userText, ai, ai0: { ...ai },
-        seed, xf, fileXf, chain, src: e.src, from: it.key, k: e.k, parts: e.parts, segs: e.segs, p: e.p };
-      added.push(scene.items.push(child) - 1);
+// The views saved by name in the file, relative to the origin; Camera.fromRhino turns one into a
+// camera. Their viewport handles are not freed: delete() on one aborts inside rhino3dm.
+function readNamedViews(doc, origin) {
+  const views = [];
+  try {
+    const table = doc.namedViews();
+    for (let i = 0; i < table.count; i++) {
+      const v = table.get(i), p = v.getViewport();
+      views.push({ name: v.name || `View ${i + 1}`, ortho: p.isParallelProjection, eye: V3.sub(p.cameraLocation, origin), dir: V3.norm(p.cameraDirection),
+        up: V3.norm(p.cameraUp), target: V3.sub(p.targetPoint, origin), frustum: p.getFrustum() });
     }
-  };
-  walk(it.idef, it.xf, it.fileXf, it.look || resolveLook(scene, it.ai, null), `${path(it.ai.layer)} ${it.ai.name}`, 0);
-  it.gone = true;
-  return added;
+  } catch (e) { console.warn('Could not read all the named views', e); }
+  return views;
 }
 
 // Site location for sun studies: Rhino's Sun settings first (they include date, time and time

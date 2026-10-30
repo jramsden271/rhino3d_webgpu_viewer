@@ -4,6 +4,7 @@
 
 const Z_UP = [0, 0, 1];
 const PITCH_LIMIT = (89.99 * Math.PI) / 180;
+const DEFAULT_FOV = (40 * Math.PI) / 180;
 
 class Camera {
   constructor() {
@@ -11,7 +12,7 @@ class Camera {
     this.distance = 100;
     this.yaw = (-60 * Math.PI) / 180;
     this.pitch = (28 * Math.PI) / 180;
-    this.fov = (40 * Math.PI) / 180;
+    this.fov = DEFAULT_FOV;
     this.ortho = false;
     this.center = [0, 0, 0];
     this.radius = 100;
@@ -67,7 +68,33 @@ class Camera {
       left: [180, 0, true],
     };
     const [y, p, o] = views[name];
-    this.yaw = y * deg; this.pitch = p * deg; this.ortho = o;
+    this.yaw = y * deg; this.pitch = p * deg; this.ortho = o; this.fov = DEFAULT_FOV;
+  }
+
+  // The snapshot closest to a view saved in a Rhino file (see readNamedViews in extract.js). All of
+  // Rhino's frame stays in view whatever the window's shape. This camera has no roll or lens shift:
+  // a shifted frame (a two-point perspective, say) is framed by turning towards its centre instead.
+  fromRhino(v) {
+    const f = v.frustum, right = V3.cross(v.dir, v.up);
+    const off = V3.add(V3.scale(right, (f.left + f.right) / 2), V3.scale(v.up, (f.bottom + f.top) / 2));
+    const half = Math.max((f.top - f.bottom) / 2, (f.right - f.left) / 2 / this.aspect);
+    const depth = V3.dot(V3.sub(v.target, v.eye), v.dir);
+    const s = { ortho: v.ortho, fov: DEFAULT_FOV };
+    let look = v.dir;
+    if (v.ortho) {
+      s.distance = half / Math.tan(DEFAULT_FOV / 2);
+      s.target = V3.add(V3.add(v.eye, off), V3.scale(v.dir, depth));
+    } else {
+      look = V3.norm(V3.add(V3.scale(v.dir, f.near), off));
+      s.fov = 2 * Math.atan(half / f.near);
+      s.distance = depth > 0 ? depth : this.radius * 0.1;
+      s.target = V3.add(v.eye, V3.scale(look, s.distance));
+    }
+    // Straight down or up, the heading comes from the view's up direction.
+    const [x, y, z] = V3.scale(look, -1);
+    s.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, Math.asin(Math.max(-1, Math.min(1, z)))));
+    s.yaw = Math.abs(z) < 0.9999 ? Math.atan2(y, x) : z > 0 ? Math.atan2(-v.up[1], -v.up[0]) : Math.atan2(v.up[1], v.up[0]);
+    return s;
   }
 
   // Rotate the camera (eye and target together) about `pivot`.
@@ -109,6 +136,6 @@ class Camera {
     this.target = [...q];
   }
 
-  snapshot() { return { target: [...this.target], distance: this.distance, yaw: this.yaw, pitch: this.pitch, ortho: this.ortho }; }
-  restore(s) { Object.assign(this, { target: [...s.target], distance: s.distance, yaw: s.yaw, pitch: s.pitch, ortho: s.ortho }); }
+  snapshot() { return { target: [...this.target], distance: this.distance, yaw: this.yaw, pitch: this.pitch, ortho: this.ortho, fov: this.fov }; }
+  restore(s) { Object.assign(this, { target: [...s.target], distance: s.distance, yaw: s.yaw, pitch: s.pitch, ortho: s.ortho, fov: s.fov }); }
 }

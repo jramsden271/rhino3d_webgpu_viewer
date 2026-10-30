@@ -29,18 +29,29 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel zooms (field of view) | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
-| Views | Toolbar | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
+| Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
 
-Top, Front and Right are parallel (no perspective) views, as in Rhino; orbiting one turns it
-into a free view. Each of the four views remembers its camera: leave one and come back, and
-it is where you left it (including after walking, for Perspective). The first visit to a
-view, or picking the view you are already in, zooms to the extents. Opening another model
-starts afresh.
+The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right and Perspective, with any views
+saved by name in the Rhino file above them. Top, Front and Right are parallel (no perspective)
+views, as in Rhino; orbiting a parallel view turns it into a free view. Each camera remembers
+where you left it: leave one and come back, and it is where it was (including after walking).
+The first visit to a camera, or picking the one you are already in, gives its default: the
+extents for the four built-in cameras, the saved view for a named one.
+
+Named views are read-only and are matched as closely as this camera allows: the position,
+direction, lens and parallel zoom come from the file, and all of the saved frame stays in view
+whatever the window's shape. There is no roll, and a shifted frame (a two-point perspective, for
+example) is framed by turning towards its centre, so its verticals may converge. A named view
+sets only the camera, not the layers.
+
+The cameras, layer visibility and hidden objects are **remembered in this browser** for each
+model (by file name and size) and come back when you open it again. They are not changes to the
+model, so they are not undoable and are not written to a saved copy.
 
 **Pedestrian mode** walks round the model at eye height (1.5 m). In a perspective view, click
 the figure on the toolbar's **Walk** button (or the switch on the Walk panel). Then, as in
@@ -77,11 +88,10 @@ walking for a torch: a spot light held at chest height that points where you loo
 shadows (see [Lights](#lights)).
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
-materials, object colour and material sources, exploded blocks, the north angle and Revert.
+materials, object colour and material sources, the north angle and Revert.
 View changes, date and time, hiding objects, turning layers on or off and the site location
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
-picker is one step. Undoing an explode rebuilds the model, which takes a moment on large
-files. The history starts afresh each time a file is opened.
+picker is one step. The history starts afresh each time a file is opened.
 
 In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:
@@ -177,17 +187,11 @@ materials. With several objects selected, a source that differs between them sho
 and a change applies to all of them. On a block instance the source applies to the parts inside
 it that are set to "By parent".
 
-**Explode blocks.** When the selection includes block instances, *Explode block(s)* replaces
-each with the objects inside it, including nested blocks, so each part can be selected and
-changed. Parts set to "By parent" take the instance's colour and material as their own, so
-nothing changes on screen. The block definitions themselves are unchanged.
-
-All of these changes are **remembered automatically** in this browser for each model (by file
-name and size) and restored when you open it again. **Download .3dm** in the file properties
+All of these changes, and the north angle, are **remembered automatically** in this browser for
+each model (by file name and size) and restored when you open it again. **Download .3dm** in the file properties
 (click the file name) writes a *copy* of the .3dm with them: layer colours, a Rhino material
 for each layer material set in the viewer (assigned as the layer's render material), changed
-object colour and material sources, and exploded blocks (replaced by copies of their parts).
-Your original file is not touched. Materials with a magic material are named after it (e.g.
+and changed object colour and material sources. Your original file is not touched. Materials with a magic material are named after it (e.g.
 "Water – 010_WaterBody"), so Auto matches them again when the copy is reopened. "Always off"
 is not saved in the copy.
 
@@ -205,10 +209,9 @@ objects, triangles, curves, block instances, layers, location, anything not show
 changes made in the viewer. It also has the model's **north angle**, as in Rhino: degrees
 anticlockwise from the model's +X axis to north, so 90 means +Y is north. It comes from the
 file's Sun settings or Earth anchor point, or is 90 when the file sets neither. From there,
-**Download .3dm** saves a copy with your colour, material and block changes, and **Revert
-changes** puts everything (layer colours and materials, object colours and materials,
-exploded blocks, the north angle, hidden objects and layer visibility) back to how it is in
-the file.
+**Download .3dm** saves a copy with your colour and material changes, and **Revert changes**
+puts everything (layer colours and materials, object colours and materials, the north angle,
+hidden objects and layer visibility) back to how it is in the file. The cameras stay where they are.
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
@@ -469,7 +472,8 @@ src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
 src/materials.js         magic materials: keyword rules and default colours
-src/camera.js            Z-up orbit / pan / zoom camera
+src/camera.js            Z-up orbit / pan / zoom camera, matching Rhino's named views
+src/toolmenu.js          toolbar menus: a button with a popup that takes any content (ToolbarMenu), a list of choices (ChoiceList)
 src/walk.js              pedestrian mode: walking, ground following, steps, falls
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)
@@ -487,3 +491,15 @@ ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays
 radiant temperature from direct sun (SolarCal), and `surroundingsMrtDelta` the placeholder for
 sun-warmed surroundings. `node tools/test-utci.js` checks it
 against values from ladybug-comfort.
+
+## Future work
+
+**Layer settings inside blocks.** Editing in the viewer stays basic; anything more complicated
+belongs in Rhino. To fix common layer and display problems within blocks, a selected block could
+offer three options:
+
+- All sub-elements by layer
+- All sub-elements by parent
+- Restore layer settings of sub-elements
+
+This replaces the earlier Explode block feature, which was removed to keep the viewer simple.

@@ -273,6 +273,7 @@ async function readModel(kind, name, bytes) {
 async function openBytes(name, bytes, handle = null) {
   const t0 = performance.now();
   walker.exit();
+  saveViewState();
   clearNotices();
   try {
     let m;
@@ -293,6 +294,7 @@ async function openBytes(name, bytes, handle = null) {
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
+    model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
     state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
@@ -310,6 +312,8 @@ async function openBytes(name, bytes, handle = null) {
     m.batches = null;
     model.loadMs = performance.now() - t0;
     resetObjectState();
+    const savedView = loadViewState();
+    restoreLayersAndHidden(savedView);
     clearHistory();
     $('undoRedo').hidden = false;
     $('fileDialog').hidden = true;
@@ -320,9 +324,14 @@ async function openBytes(name, bytes, handle = null) {
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
+    if (model.savedNorth != null) setSun({ north: model.savedNorth });
     if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
     viewNow = 'perspective'; viewCams = {};
+    fillCameraMenu();
     setView('perspective', true);
+    restoreCameras(savedView);
+    model.viewReady = true;
+    reportRestored();
     leaveHome();
     $('fileName').textContent = name;
     document.title = `${name} · 3DM Viewer`;
@@ -375,8 +384,7 @@ function setView(name, extents = true) {
 }
 
 function syncToolbar() {
-  const view = camera.ortho ? null : 'perspective';
-  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === (state.lastView || view))));
+  syncCameraMenu();
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
   const walking = walker.active || !!walker.placing;
@@ -399,6 +407,7 @@ function layerEffective(i) {
 
 function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
+  saveViewState();
   redraw();
 }
 
@@ -496,7 +505,7 @@ function openLayerMenu(i, tree, [x, y]) {
   const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
-    return model.objects.flatMap((o, id) => (!o.gone && set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
+    return model.objects.flatMap((o, id) => (set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
   };
   const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
   const own = visibleOn([i]), all = tree && visibleOn(tree);
@@ -560,12 +569,12 @@ function bindLayerMenu() {
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
 // layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
-// in extract.js). state.exploded: keys of block instances exploded in the viewer, in order.
-// Everything is remembered in this browser per model, and can be written into a copy of the .3dm.
+// in extract.js). Everything is remembered in this browser per model, and can be written into a
+// copy of the .3dm.
 
 const rgbHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, exploded: [] });
+const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {} });
 Object.assign(state, NO_EDITS());
 
 // Swatches and dialogs show materials in Rendered view and display colours otherwise.
@@ -635,15 +644,15 @@ const oldMaterialsKey = () => model && `3dm-viewer:materials:${model.name}:${mod
 // Layers whose material or magic material was set in the viewer.
 const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...Object.keys(state.layerSpecial)]);
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
-  obj: Object.keys(state.objEdits).length, expl: state.exploded.length });
+  obj: Object.keys(state.objEdits).length });
 
 function saveEdits() {
-  const n = editCount();
+  const n = editCount(), north = state.sun.north;
   try {
     localStorage.removeItem(oldMaterialsKey());
-    if (n.mat + n.col + n.obj + n.expl) {
-      const { layerMat, layerColor, layerSpecial, objEdits, exploded } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, exploded }));
+    if (n.mat + n.col + n.obj || north !== fileNorth()) {
+      const { layerMat, layerColor, layerSpecial, objEdits } = state;
+      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, north }));
     } else localStorage.removeItem(editsKey());
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
@@ -660,7 +669,7 @@ function applyLayerMaterials(save = true) {
   redraw();
 }
 
-// Rebuild the GPU batches after objects' attributes change or blocks are exploded.
+// Rebuild the GPU batches after objects' attributes change.
 async function rebuildModel() {
   const slow = model.stats.triangles > 400000;
   if (slow) { showBusy('Updating the model', 0.5); await new Promise((r) => setTimeout(r, 20)); }
@@ -669,50 +678,34 @@ async function rebuildModel() {
   } finally {
     if (slow) hideBusy();
   }
-  if (objFlags.length !== model.objects.length) objFlags = new Uint32Array(model.objects.length);
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
 }
 
-function indexKeys() {
-  model.keyIndex = new Map(model.objects.map((o, i) => [o.key, i]));
-}
-
-// Put the objects back as they are in the file, then explode blocks (keys, in order) and apply
-// attribute changes (object key -> changed attributes). Sets state.exploded and state.objEdits.
-// The batches need rebuilding afterwards.
-function replayObjectEdits(exploded = [], objEdits = {}) {
-  model.objects.length = model.fileItems;
-  for (const o of model.objects) { o.ai = { ...o.ai0 }; o.gone = false; }
-  state.exploded = [];
+// Put the objects back as they are in the file, then apply attribute changes (object id ->
+// changed attributes). Sets state.objEdits. The batches need rebuilding afterwards.
+function applyObjectEdits(objEdits = {}) {
+  for (const o of model.objects) o.ai = { ...o.ai0 };
   state.objEdits = {};
-  indexKeys();
-  for (const key of exploded) {
-    const i = model.keyIndex.get(key);
-    if (i == null || model.objects[i].k !== 'inst' || model.objects[i].gone) continue;
-    explodeItem(model, i, shownRgb);
-    state.exploded.push(key);
-  }
-  indexKeys();
-  for (const [key, d] of Object.entries(objEdits)) {
-    const i = model.keyIndex.get(key);
+  for (const [id, d] of Object.entries(objEdits)) {
+    const i = model.objectIndex.get(id);
     if (i == null) continue;
     Object.assign(model.objects[i].ai, d);
-    state.objEdits[key] = { ...d };
+    state.objEdits[id] = { ...d };
   }
 }
 
 // ---------------------------------------------------------------------------------------------
 // Undo and redo, as in Rhino: changes to the model (layer colours, materials and magic materials,
-// object colour and material sources, exploded blocks, the north angle, Revert) can be undone. View
+// object colour and material sources, the north angle, Revert) can be undone. View
 // changes, hiding objects, turning layers on or off and the site location (a viewer setting, not
 // part of the model) are not recorded. Each entry keeps the edit state from before the change;
 // undoing swaps it with the current one. Not kept between sessions.
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, exploded: state.exploded,
+const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits,
   north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
@@ -755,22 +748,17 @@ async function stepHistory(redo) {
 
 // Make the given edit state current, rebuilding only if objects or foliage normals change.
 async function restoreEdits(e) {
-  const objectsChange = JSON.stringify([state.exploded, state.objEdits]) !== JSON.stringify([e.exploded, e.objEdits]);
+  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits);
   const vegBefore = model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
   Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial) });
   const vegChange = vegBefore !== model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
-  if (objectsChange) {
-    replayObjectEdits(e.exploded, e.objEdits);
-    state.sel = { ids: [], p: null };
-    $('inspect').hidden = true; inspectPin = null;
-  }
+  if (objectsChange) applyObjectEdits(e.objEdits);
   if (objectsChange || vegChange) await rebuildModel();
-  if (objectsChange) buildLayerTree();
+  if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
   if (state.sel.ids.length) showInspector();
   pushObjectFlags();
-  if (e.north !== undefined) { setSun({ north: e.north }); renderFileInfo(); }
 }
 
 // Restore the changes remembered for this model. Returns true if objects changed (the batches
@@ -791,14 +779,63 @@ function loadEdits() {
     state.layerMat[id] = t === MAT_WATER ? { alpha: m.alpha, gloss: m.gloss } : { rgb: m.rgb, alpha: m.alpha, gloss: m.gloss };
   }
   model.specialOf = layerSpecialId;
-  replayObjectEdits(e.exploded, e.objEdits);
+  applyObjectEdits(e.objEdits);
+  model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
   if (n.col) parts.push(`colours on ${n.col} layer${n.col > 1 ? 's' : ''}`);
   if (n.mat) parts.push(`materials on ${n.mat} layer${n.mat > 1 ? 's' : ''}`);
   if (n.obj) parts.push(`${n.obj.toLocaleString()} object${n.obj > 1 ? 's' : ''} changed`);
-  if (n.expl) parts.push(`${n.expl.toLocaleString()} block${n.expl > 1 ? 's' : ''} exploded`);
-  if (parts.length) notice(`Restored your changes to this model: ${parts.join(', ')}. To undo them, click the file name (top left) and choose Revert changes.`);
-  return n.obj + n.expl > 0 || Object.keys(state.layerSpecial).length > 0;
+  if (model.savedNorth != null && model.savedNorth !== fileNorth()) parts.push('the north angle');
+  model.restored = parts;
+  return n.obj > 0 || Object.keys(state.layerSpecial).length > 0;
+}
+
+// Layer visibility, hidden objects and the cameras are the state of looking at a model rather than
+// changes to it: remembered in this browser per model, but not undoable or written to a copy.
+// The cameras are saved as the page goes away or another model opens.
+const viewKey = () => `3dm-viewer:view:${model.name}:${model.size}`;
+
+function loadViewState() {
+  try { return JSON.parse(localStorage.getItem(viewKey()) || '{}') || {}; } catch (e) { return {}; }
+}
+
+function saveViewState() {
+  if (!model?.viewReady) return; // not until what was saved has been restored
+  const layers = {};
+  model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
+  const now = camera.snapshot();
+  if (walker.active) now.fov = walker.fov0; // not the walker's own zoom
+  try {
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now }));
+  } catch (e) { /* storage unavailable: lasts for this session only */ }
+}
+
+function restoreLayersAndHidden(saved) {
+  layerOn = model.layers.map((l) => (typeof saved.layers?.[l.id] === 'boolean' ? saved.layers[l.id] : l.visible));
+  for (const id of saved.hidden || []) {
+    const i = model.objectIndex.get(id);
+    if (i != null) state.hidden.add(i);
+  }
+  pushObjectFlags();
+  syncHiddenButton();
+  if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
+  if (layerOn.some((on, i) => on !== model.layers[i].visible)) model.restored.push('layer visibility');
+}
+
+function restoreCameras(saved) {
+  const finite = (...v) => v.every(Number.isFinite);
+  const valid = (c) => c && Array.isArray(c.target) && c.target.length === 3 && finite(...c.target, c.yaw, c.pitch) && c.distance > 0 && c.fov > 0 && c.fov < Math.PI && typeof c.ortho === 'boolean';
+  if (!valid(saved.camera)) return;
+  viewCams = Object.fromEntries(Object.entries(saved.cams || {}).filter(([id, c]) => isCameraId(id) && valid(c)));
+  viewNow = isCameraId(saved.view) ? saved.view : null;
+  camera.restore(saved.camera);
+  syncToolbar();
+  redraw();
+}
+
+function reportRestored() {
+  const parts = model.restored;
+  if (parts.length) notice(`Restored your changes to this model: ${parts.join(', ')}. To undo them, click the file name (top left) and choose Revert changes.`, 'info');
 }
 
 // Layer colour / material dialog -------------------------------------------------------------
@@ -835,7 +872,7 @@ function openMaterialDialog(i, anchor) {
 // Top-level objects on a layer whose colour (or material) does not come from the layer, so a
 // layer setting does not change them.
 function objectsNotFollowingLayer(i, kind) {
-  return model.objects.flatMap((o, id) => (!o.gone && o.ai.layer === i && (kind === 'material' ? o.ai.ms === 1 : o.ai.cs === 1 || o.ai.cs === 2) ? [id] : []));
+  return model.objects.flatMap((o, id) => (o.ai.layer === i && (kind === 'material' ? o.ai.ms === 1 : o.ai.cs === 1 || o.ai.cs === 2) ? [id] : []));
 }
 
 function syncMaterialDialog() {
@@ -918,13 +955,8 @@ function bindMaterialDialog() {
   });
 }
 
-// Object attributes carried over to the parts of an exploded block (not its id or block mode).
-const COPY_ATTRS = ['visible', 'name', 'castsShadows', 'receivesShadows', 'linetypeSource', 'colorSource', 'plotColorSource', 'plotWeightSource',
-  'url', 'layerIndex', 'materialIndex', 'materialSource', 'objectColor', 'plotColor', 'displayOrder', 'plotWeight', 'objectDecoration', 'wireDensity'];
-
 // Write a copy of the .3dm with the viewer's changes (the original is never touched): layer
-// colours, a Rhino material for each layer set in the viewer, object colour/material sources,
-// and exploded blocks (replaced by copies of their contents).
+// colours, a Rhino material for each layer set in the viewer and object colour/material sources.
 async function downloadCopy() {
   if (!model || !model.bytes) return;
   try {
@@ -951,37 +983,17 @@ async function downloadCopy() {
     }
     const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
     const MS = [rhino.ObjectMaterialSource.MaterialFromLayer, rhino.ObjectMaterialSource.MaterialFromObject, rhino.ObjectMaterialSource.MaterialFromParent];
-    const setAttrs = (a, ai) => {
+    // Objects whose attributes changed.
+    for (const it of model.objects) {
+      if (!state.objEdits[it.id]) continue;
+      const o = objs.findId(it.id);
+      if (!o) continue;
+      const a = o.attributes(), ai = it.ai;
       a.colorSource = CS[ai.cs] ?? CS[0];
       a.objectColor = rgba(ai.oc);
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
-    };
-    // Objects from the file whose attributes changed.
-    for (const it of model.objects) {
-      if (!it.id || it.gone || !state.objEdits[it.key]) continue;
-      const o = objs.findId(it.id);
-      if (o) setAttrs(o.attributes(), it.ai);
     }
-    // Exploded blocks: add a transformed copy of each part, then delete the instances.
-    showBusy('Writing exploded blocks', 0.5);
-    await new Promise((r) => setTimeout(r, 20));
-    for (const it of model.objects) {
-      if (!it.from) continue;
-      const src = objs.findId(it.src);
-      if (!src) continue;
-      const g = src.geometry().duplicate(), t = new rhino.Transform(1);
-      ['m00', 'm01', 'm02', 'm03', 'm10', 'm11', 'm12', 'm13', 'm20', 'm21', 'm22', 'm23', 'm30', 'm31', 'm32', 'm33'].forEach((k, n) => (t[k] = it.fileXf[n]));
-      g.transform(t);
-      // attributes() writes through to the block's own object, so build a separate copy.
-      const s = src.attributes(), a = new rhino.ObjectAttributes();
-      for (const k of COPY_ATTRS) try { a[k] = s[k]; } catch (e) { /* not in this rhino3dm version */ }
-      for (const [k, v] of s.getUserStrings() || []) a.setUserString(k, v);
-      setAttrs(a, it.ai);
-      objs.add(g, a);
-      g.delete?.(); t.delete?.();
-    }
-    for (const key of state.exploded) if (objs.findId(key)) objs.delete(key);
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
     const out = doc.toByteArray();
@@ -1057,7 +1069,7 @@ function selectObjects(ids, p = null) {
 
 // Ctrl+A: every visible object (not hidden, on a layer that is on).
 function selectAll() {
-  selectObjects(model.objects.flatMap((o, id) => (!o.gone && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : [])));
+  selectObjects(model.objects.flatMap((o, id) => (!state.hidden.has(id) && layerEffective(o.layer) ? [id] : [])));
 }
 
 const UNIT_ABBR = { Meters: 'm', Millimeters: 'mm', Centimeters: 'cm', Kilometers: 'km', Feet: 'ft', Inches: 'in' };
@@ -1110,8 +1122,6 @@ function showInspector() {
   const size = V3.sub(max, min);
   const sizeText = isFinite(size[0]) ? `${fmtLen(size[0])} × ${fmtLen(size[1])} × ${fmtLen(size[2])} ${unit}` : '—';
   const layerLink = (i) => `<button class="link" data-layer="${i}">${escapeHtml(model.layers[i] ? model.layers[i].fullPath : '?')}</button>`;
-  const nBlocks = objs.filter((o) => o.k === 'inst').length;
-  const explode = nBlocks ? ` <button class="btn small" data-act="explode" title="Replace ${nBlocks > 1 ? 'these blocks' : 'this block'} with the objects inside (including nested blocks)">Explode block${nBlocks > 1 ? 's' : ''}</button>` : '';
   const srcRow = [showsMaterial() ? 'Material' : 'Colour', sourceControl(objs), true];
   let rows, title, swatch;
   if (objs.length === 1) {
@@ -1119,13 +1129,13 @@ function showInspector() {
     title = o.name || o.block || o.type;
     swatch = o.look ? rgbHex(showsMaterial() ? shownMaterialRgb(o.look) : shownRgb(o.look)) : 'var(--accent)';
     rows = [
-      ['Type', (o.block ? `Block · ${escapeHtml(o.block)}` : escapeHtml(o.type)) + explode, true],
+      ['Type', o.block ? `Block · ${escapeHtml(o.block)}` : escapeHtml(o.type), true],
       ['Layer', layerLink(o.layer), true],
       srcRow,
       ['Size', sizeText],
       ['Triangles', o.triangles.toLocaleString()],
       ...o.userText.map(([k, v]) => [k, v]),
-      o.id ? ['ID', `<code>${o.id}</code>`, true] : ['ID', 'None yet (from an exploded block)'],
+      ['ID', `<code>${o.id}</code>`, true],
     ];
   } else {
     const count = (key) => {
@@ -1138,7 +1148,7 @@ function showInspector() {
     title = `${objs.length} objects selected`;
     swatch = 'var(--accent)';
     rows = [
-      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : '') + (explode ? `<br>${explode}` : ''), true],
+      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
       ['Layers', layers.slice(0, 4).map(([l]) => layerLink(l)).join('<br>') + (layers.length > 4 ? `<br>and ${layers.length - 4} more` : ''), true],
       srcRow,
       ['Extent', sizeText],
@@ -1165,29 +1175,12 @@ async function setSelectedAttrs(change) {
     const d = {};
     for (const k of ['cs', 'ms', 'mi']) if (o.ai[k] !== o.ai0[k]) d[k] = o.ai[k];
     if (rgbHex(o.ai.oc) !== rgbHex(o.ai0.oc)) d.oc = o.ai.oc;
-    if (Object.keys(d).length) state.objEdits[o.key] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.key];
+    if (Object.keys(d).length) state.objEdits[o.id] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.id];
   }
   await rebuildModel();
   saveEdits();
   showInspector();
   if (!$('matDialog').hidden && matLayer >= 0) syncMaterialDialog();
-}
-
-async function explodeSelected() {
-  const keep = [], added = [], n = state.sel.ids.filter((id) => model.objects[id].k === 'inst').length;
-  recordUndo(`Explode ${n > 1 ? `${n} blocks` : 'block'}`);
-  for (const id of state.sel.ids) {
-    const o = model.objects[id];
-    if (o.k !== 'inst') { keep.push(id); continue; }
-    state.exploded.push(o.key);
-    added.push(...explodeItem(model, id, shownRgb));
-  }
-  indexKeys();
-  await rebuildModel();
-  buildLayerTree();
-  saveEdits();
-  if (keep.length + added.length) selectObjects([...keep, ...added], state.sel.p);
-  else selectObject(null);
 }
 
 function hideSelected() {
@@ -1198,12 +1191,14 @@ function hideSelected() {
   inspectPin = null;
   pushObjectFlags();
   syncHiddenButton();
+  saveViewState();
 }
 
 function unhideAll() {
   state.hidden.clear();
   pushObjectFlags();
   syncHiddenButton();
+  saveViewState();
 }
 
 function syncHiddenButton() {
@@ -1262,7 +1257,6 @@ function bindInspector() {
       if (!state.layers) toggle('layers');
       buildLayerTree.reveal(+b.dataset.layer);
     }
-    if (e.target.closest('[data-act="explode"]')) explodeSelected();
     const code = e.target.closest('code');
     if (code) navigator.clipboard?.writeText(code.textContent).then(() => { code.classList.add('copied'); setTimeout(() => code.classList.remove('copied'), 900); });
   });
@@ -1305,7 +1299,6 @@ function renderFileInfo() {
   if (n.col) saved.push(`Colours set on ${plural(n.col, 'layer')}`);
   if (n.mat) saved.push(`Materials set on ${plural(n.mat, 'layer')}`);
   if (n.obj) saved.push(`${plural(n.obj, 'object')} with changed colour or material`);
-  if (n.expl) saved.push(`${plural(n.expl, 'block')} exploded`);
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
@@ -1314,8 +1307,8 @@ function renderFileInfo() {
   $('fileNorthInfo').textContent = `Degrees anticlockwise from the model’s +X axis to north (90: +Y is north). ${loc ? `The file’s is ${+fileNorth().toFixed(1)}°, from its ${loc.source}.` : 'The file does not set one; 90 is the default.'}`;
   $('fileChanges').textContent = changes.length ? changes.join(' · ') : 'No changes made in the viewer.';
   $('btnDownload').disabled = saved.length === 0;
-  $('btnDownload').title = saved.length ? 'Save a copy of the .3dm with the colours, materials and exploded blocks changed in this viewer'
-    : 'Change a layer colour or material, an object’s colour or material, or explode a block first';
+  $('btnDownload').title = saved.length ? 'Save a copy of the .3dm with the colours and materials changed in this viewer'
+    : 'Change a layer colour or material, or an object’s colour or material, first';
   $('btnRevert').disabled = changes.length === 0;
 }
 
@@ -1327,24 +1320,21 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, exploded blocks, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours and materials, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
-  if (n.mat + n.col + n.obj + n.expl || state.sun.north !== north) recordUndo('Revert changes');
+  if (n.mat + n.col + n.obj || state.sun.north !== north) recordUndo('Revert changes');
   setSun({ north });
-  const rebuild = state.exploded.length || Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
+  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
   state.sel = { ids: [], p: null };
   $('inspect').hidden = true; inspectPin = null;
   layerOn = model.layers.map((l) => l.visible);
   if (rebuild) {
-    model.objects.length = model.fileItems;
-    for (const o of model.objects) { o.ai = { ...o.ai0 }; o.gone = false; }
-    indexKeys();
+    applyObjectEdits();
     await rebuildModel();
-    buildLayerTree();
   }
   applyLayerVisibility();
   applyLayerMaterials();
@@ -1364,6 +1354,7 @@ function bindFileDialog() {
     if (!model || !Number.isFinite(v) || Math.abs(v) > 360 || v === state.sun.north) return;
     recordUndo('Change north angle', 'north');
     setSun({ north: v });
+    saveEdits();
     renderFileInfo();
   });
   north.addEventListener('change', endUndoGroup);
@@ -1801,7 +1792,7 @@ function bindPointer() {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
       // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
       // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
-      const flat = ['top', 'front', 'right'].includes(state.lastView);
+      const flat = camera.ortho && viewNow;
       const orbit = (!flat && (e.pointerType === 'touch' || (e.button === 2 && !e.shiftKey))) || (e.button === 0 && e.altKey);
       const pan = !orbit;
       drag = { mode: pan ? 'pan' : 'orbit', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
@@ -1825,7 +1816,7 @@ function bindPointer() {
       const ndc = [((p.cx - r.left) / r.width) * 2 - 1, 1 - ((p.cy - r.top) / r.height) * 2];
       camera.zoomAt(drag.dist / p.dist, camera.planePoint(...ndc));
       Object.assign(drag, p);
-      state.lastView = null; syncToolbar(); redraw();
+      redraw();
       return;
     }
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -1834,7 +1825,6 @@ function bindPointer() {
     if (drag.mode === 'look') walker.turn(dx, dy);
     else if (drag.mode === 'orbit') {
       camera.orbit(dx, dy, pivot);
-      state.lastView = null;
       if (camera.ortho) viewNow = null;
       syncToolbar();
     } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
@@ -2041,7 +2031,7 @@ function onKey(e) {
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { walker.exit(); camera.ortho = !camera.ortho; state.lastView = null; viewNow = null; syncToolbar(); redraw(); },
+    p: () => { walker.exit(); camera.ortho = !camera.ortho; viewNow = null; syncToolbar(); redraw(); },
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
@@ -2058,21 +2048,47 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-// Top, Front, Right and Perspective each keep their own camera: leaving one remembers it, and
-// coming back restores it (the first visit, or picking the view you are in, zooms to extents).
+// Top, Front, Right, Perspective and the file's named views each keep their own camera: leaving
+// one remembers it, and coming back restores it. The first visit, or picking the view you are in,
+// gives the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
 // viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
-// walking and orbiting in perspective. Orbiting Top, Front or Right, or P, makes it a free view
-// that belongs to none.
+// walking and orbiting in perspective. Orbiting a parallel view, or P, makes it a free view that
+// belongs to none.
 let viewNow = 'perspective', viewCams = {};
-function pickView(name) {
+function pickView(id) {
   walker.exit();
-  if (viewNow && viewNow !== name) viewCams[viewNow] = camera.snapshot();
-  const saved = viewNow !== name && viewCams[name];
-  viewNow = name; state.lastView = name;
-  if (!saved) { setView(name, true); return; }
-  camera.restore(saved);
+  if (viewNow && viewNow !== id) viewCams[viewNow] = camera.snapshot();
+  const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
+  viewNow = id;
+  if (!saved && !named) { setView(id, true); return; }
+  camera.restore(saved || camera.fromRhino(named));
   syncToolbar();
   redraw();
+}
+
+// The toolbar's Camera menu. Picking leaves it open, to compare views.
+const CAMERAS = [['top', 'Top', '1'], ['front', 'Front', '2'], ['right', 'Right', '3'], ['perspective', 'Perspective', '4']];
+const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
+const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
+let cameraList = null;
+
+function bindCameraMenu() {
+  cameraList = new ChoiceList({ label: 'Cameras', onPick: (id) => model && pickView(id) });
+  new ToolbarMenu($('btnCamera'), { label: 'Camera' }).body.append(cameraList.el);
+  fillCameraMenu();
+}
+
+function fillCameraMenu() {
+  const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
+  cameraList.setGroups([...(named.length ? [{ heading: 'From this file', items: named }] : []),
+    { items: CAMERAS.map(([id, label, hint]) => ({ id, label, hint })) }]);
+}
+
+function syncCameraMenu() {
+  cameraList?.setActive(viewNow);
+  const name = namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
+  $('cameraName').textContent = name || 'Free view';
+  $('btnCamera').title = name ? `Camera: ${name}` : 'Camera: a free view';
 }
 // Walking on and off: the Walk button's icon and the switch on the Walk panel. Turning it on
 // usually first asks where to start: the figure follows the cursor, a marker shows the spot under it,
@@ -2095,7 +2111,6 @@ function toggleWalk() {
   });
 }
 function enterWalkHere() {
-  state.lastView = null;
   $('walkHint').hidden = false;
   walker.enter().then(() => { syncToolbar(); syncWalkPanel(); syncLightsPanel(); });
   syncToolbar();
@@ -2156,7 +2171,6 @@ function startWalkAt(e) {
     endPlacing();
     f.classList.add('dark');
     setTimeout(() => {
-      state.lastView = null;
       $('walkHint').hidden = false;
       walker.enter(p).then(() => { f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); });
       syncToolbar();
@@ -2474,7 +2488,7 @@ function bindUi() {
     if (f) Promise.resolve(h).then((handle) => openFile(f, handle?.kind === 'file' ? handle : null), () => openFile(f));
   });
 
-  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => model && pickView(b.dataset.view)));
+  bindCameraMenu();
   document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(+b.dataset.mode)));
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
@@ -2523,7 +2537,8 @@ function bindUi() {
   $('btnWalk').addEventListener('click', toggleWalkPanel);
   bindWalkPanel();
   bindPointer();
-  state.lastView = 'perspective';
+  window.addEventListener('pagehide', saveViewState);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewState(); });
   syncToolbar();
 }
 
@@ -2538,9 +2553,10 @@ function hideBusy() { $('busy').hidden = true; }
 // included, go after NOTICE_MS. The countdown restarts while the pointer is over the notice.
 // action: { label, run } adds a link that runs it and dismisses the notice.
 const NOTICE_MS = 10000;
+// error: true for an error, 'info' for news that needs no action.
 function notice(text, error = false, timeout = 0, action = null) {
   const n = document.createElement('div');
-  n.className = 'notice' + (error ? ' error' : '') + (timeout ? ' brief' : '');
+  n.className = 'notice' + (error === 'info' ? ' info' : error ? ' error' : '') + (timeout ? ' brief' : '');
   if (timeout) $('notices').querySelectorAll('.notice.brief').forEach((b) => b.remove()); // one at a time
   let timer = 0;
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => n.remove(), timeout || NOTICE_MS); };

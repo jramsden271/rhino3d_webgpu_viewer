@@ -61,6 +61,26 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
 @media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 5px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; }
   .toolbar .combo-icon { margin-left: 2px; padding: 2px; } .toolbar .btn-combo > .btn { padding-left: 2px; } .toolbar { gap: 1px; } }
+.btn.toggle[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+/* A fixed width, so the toolbar stays still as the camera's name changes. */
+.camera-btn { flex: none; width: 150px; display: inline-flex; align-items: center; text-align: left; }
+.camera-btn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1100px) { .camera-btn { width: 130px; } .toolbar .btn.camera-btn svg { display: inline; } }
+/* A toolbar menu's popup (toolmenu.js). Its body takes any content: column (default), row or grid. */
+.tool-menu { position: fixed; z-index: 6; padding: 6px; overflow-y: auto; box-sizing: border-box; max-width: calc(100vw - 16px); }
+.tool-menu[hidden] { display: none; }
+.tool-menu-body { display: flex; flex-direction: column; gap: 6px; }
+.tool-menu-body.row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tool-menu-body.grid { display: grid; grid-template-columns: repeat(2, auto); align-items: center; gap: 6px 10px; }
+.tool-menu .btn-combo > .btn { background: transparent; padding-left: 3px; }
+.choice-list { display: flex; flex-direction: column; gap: 1px; min-width: 170px; max-width: 280px; }
+.choice-list .heading { padding: 4px 8px 2px; font-size: 11px; color: var(--muted); }
+.choice-list hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.choice-list button { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 0; background: transparent; color: inherit; font: inherit; padding: 6px 8px; border-radius: 7px; cursor: pointer; text-align: left; }
+.choice-list button:hover { background: var(--hover); }
+.choice-list button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 .seg { display: flex; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
@@ -370,7 +390,7 @@ body.walking .walk-frame { display: block; }
 .undo-redo { display: inline-flex; gap: 0; margin: 0 -4px; }
 .undo-redo[hidden] { display: none; }
 .btn.icon:disabled:hover { background: transparent; }
-.notice.brief { border-left-color: var(--accent); }
+.notice.brief, .notice.info { border-left-color: var(--accent); }
 .btn.outline { border: 1px solid var(--border); }
 /* Thermal comfort panel */
 .utci-read { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border-left: 4px solid var(--cat, var(--border)); display: flex; flex-direction: column; gap: 6px; }

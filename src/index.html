@@ -25,12 +25,7 @@
   <nav id="toolbar" class="chrome toolbar" aria-label="View controls">
     <button class="btn icon" data-act="extents" title="Zoom extents (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg></button>
     <span class="sep"></span>
-    <div class="seg" data-group="view">
-      <button data-view="perspective" title="Perspective (4)">Persp</button>
-      <button data-view="top" title="Top (1)">Top</button>
-      <button data-view="front" title="Front (2)">Front</button>
-      <button data-view="right" title="Right (3)">Right</button>
-    </div>
+    <button class="btn toggle camera-btn" id="btnCamera"><svg viewBox="0 0 24 24"><path d="M4 8h3.5l1.5-3h6l1.5 3H20v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span id="cameraName">Camera</span></button>
     <span class="sep"></span>
     <div class="seg" data-group="mode">
       <button data-mode="0" title="Shaded: object / layer colours (M)">Shaded</button>
@@ -221,14 +216,15 @@
         <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
+        <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
         <dt>Walk</dt><dd>The figure on the toolbar's <b>Walk</b> button (perspective only), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
-        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source, or explode a block</dd>
+        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
-        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material, block and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
+        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>
@@ -248,6 +244,7 @@
 <script src="clouds.js"></script>
 <script src="utci.js"></script>
 <script src="camera.js"></script>
+<script src="toolmenu.js"></script>
 <script src="walk.js"></script>
 <script src="renderer.js"></script>
 <script src="main.js"></script>
