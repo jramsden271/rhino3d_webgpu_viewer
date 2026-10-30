@@ -313,8 +313,8 @@ The moon is shown in its real position and phase (lit on the side facing the sun
 the sky is dark it lights the model and casts soft shadows, brighter towards full moon. Set
 the date and local time with the sliders (right-click the date slider to jump to a solstice
 or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00), and press ▶ to animate
-from sunrise to sunset. The panel shows the sun's altitude and azimuth and the day's
-sunrise and sunset. The date has no year: sun positions change too little from year to
+from sunrise to sunset. **Details** on the panel opens the sun's altitude and azimuth and the
+day's sunrise and sunset. The date has no year: sun positions change too little from year to
 year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
 starting date and time.
 

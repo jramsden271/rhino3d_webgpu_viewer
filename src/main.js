@@ -27,7 +27,7 @@ const state = {
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
-  on: false, panel: false,
+  on: false, panel: false, details: false, // details: the Details section is open
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -1391,20 +1391,26 @@ function syncSunPanel() {
   $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
   syncWeather(month, day);
   syncComfortPanel();
-  if (!activeLocation()) {
+  document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
+  const located = !!activeLocation();
+  $('sunRead').hidden = located;
+  $('sunDetailsField').hidden = !located;
+  if (!located) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
-    document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
     return;
   }
+  $('sunToggle').setAttribute('aria-expanded', String(S.details));
+  $('sunToggle').querySelector('.caret').classList.toggle('collapsed', !S.details);
+  $('sunDetails').hidden = !S.details;
   const p = sunPosition();
   const dirName = COMPASS[Math.round(p.azimuth / 22.5) % 16];
   const pos = p.altitude > -0.83
-    ? `Altitude <b>${p.altitude.toFixed(1)}°</b> · Azimuth <b>${p.azimuth.toFixed(1)}°</b> (${dirName})`
-    : `<b>Sun below the horizon</b> (${p.altitude.toFixed(1)}°)`;
-  const day2 = p.polar === 'day' ? 'Sun up all day' : p.polar === 'night' ? 'Sun down all day' : `Sunrise <b>${fmtHour(p.sunrise)}</b> · Sunset <b>${fmtHour(p.sunset)}</b>`;
-  $('sunRead').innerHTML = `${pos}<br>${day2}`;
-  document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
+    ? `<dt>Altitude</dt><dd><b>${p.altitude.toFixed(1)}°</b></dd><dt>Azimuth</dt><dd><b>${p.azimuth.toFixed(1)}°</b> (${dirName})</dd>`
+    : `<dt>Altitude</dt><dd><b>${p.altitude.toFixed(1)}°</b> (below the horizon)</dd>`;
+  const day2 = p.polar === 'day' ? '<dt>Day</dt><dd>Sun up all day</dd>' : p.polar === 'night' ? '<dt>Day</dt><dd>Sun down all day</dd>'
+    : `<dt>Sunrise</dt><dd><b>${fmtHour(p.sunrise)}</b></dd><dt>Sunset</dt><dd><b>${fmtHour(p.sunset)}</b></dd>`;
+  $('sunDetails').innerHTML = `<dl class="wx">${pos}${day2}</dl>`;
 }
 
 function setSun(changes) {
@@ -1472,6 +1478,7 @@ function bindSunPanel() {
   $('weatherCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWeatherPanel(); }); // the gaps round the icon
   setWeatherOn(state.weatherOn);
   $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
+  $('sunToggle').addEventListener('click', () => { state.sun.details = !state.sun.details; syncSunPanel(); });
   syncSunPanel();
 }
 
@@ -2070,17 +2077,25 @@ function pickView(id) {
 const CAMERAS = [['top', 'Top', '1'], ['front', 'Front', '2'], ['right', 'Right', '3'], ['perspective', 'Perspective', '4']];
 const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
 const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
-let cameraList = null;
+let cameraList = null, cameraMenu = null;
 
 function bindCameraMenu() {
   cameraList = new ChoiceList({ label: 'Cameras', onPick: (id) => model && pickView(id) });
-  new ToolbarMenu($('btnCamera'), { label: 'Camera' }).body.append(cameraList.el);
+  cameraMenu = new ToolbarMenu($('btnCamera'), { label: 'Camera' });
+  cameraMenu.body.append(cameraList.el);
   fillCameraMenu();
+}
+
+function showNamedViewsHelp() {
+  cameraMenu.close();
+  Dialog.open({ title: 'Named views', html: true, width: 380, body: `<p>These are the views saved by name in the Rhino file. In Rhino, they are made and managed with the <b>NamedView</b> command.</p>
+    <p>Here they can be picked but not changed. Moving the camera from one does not alter the file, and picking it again goes back to the saved view. To add or change a named view, do it in Rhino and open the file again.</p>
+    <p>The camera matches Rhino's as closely as it can, so the framing may differ a little.</p>` });
 }
 
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
-  cameraList.setGroups([...(named.length ? [{ heading: 'From this file', items: named }] : []),
+  cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
     { items: CAMERAS.map(([id, label, hint]) => ({ id, label, hint })) }]);
 }
 

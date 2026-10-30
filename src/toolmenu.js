@@ -43,7 +43,7 @@ class ToolbarMenu {
     window.addEventListener('pointerdown', this.onOutside, true);
     window.addEventListener('keydown', this.onKey, true);
     window.addEventListener('resize', this.place);
-    (this.body.querySelector('[aria-checked="true"]') || this.body.querySelector('button, input, select'))?.focus({ preventScroll: true });
+    (this.body.querySelector('[aria-checked="true"]') || this.body.querySelector('[aria-checked], button, input, select'))?.focus({ preventScroll: true });
   }
 
   close() {
@@ -76,11 +76,11 @@ class ChoiceList {
     this.el.setAttribute('role', 'menu');
     if (label) this.el.setAttribute('aria-label', label);
     this.el.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
+      const b = e.target.closest('button[data-id]');
       if (b) onPick(b.dataset.id);
     });
     this.el.addEventListener('keydown', (e) => {
-      const all = [...this.el.querySelectorAll('button')], at = all.indexOf(document.activeElement);
+      const all = [...this.el.querySelectorAll('button[data-id]')], at = all.indexOf(document.activeElement);
       const to = { ArrowDown: at + 1, ArrowUp: at - 1 + all.length, Home: 0, End: all.length - 1 }[e.key];
       if (to === undefined) return;
       e.preventDefault();
@@ -89,7 +89,8 @@ class ChoiceList {
     });
   }
 
-  // groups: [{ heading (optional), items: [{ id, label, hint (optional) }] }]
+  // groups: [{ heading (optional), help (optional: { title, run }, a ? button on the heading's row),
+  //   items: [{ id, label, hint (optional) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
     groups.forEach((g, n) => {
@@ -98,6 +99,13 @@ class ChoiceList {
         const h = document.createElement('div');
         h.className = 'heading';
         h.textContent = g.heading;
+        if (g.help) {
+          const q = document.createElement('button');
+          Object.assign(q, { className: 'q', textContent: '?', title: g.help.title });
+          q.setAttribute('aria-label', g.help.title);
+          q.addEventListener('click', g.help.run);
+          h.append(q);
+        }
         this.el.append(h);
       }
       for (const it of g.items) {
@@ -121,6 +129,6 @@ class ChoiceList {
   }
 
   setActive(id) {
-    for (const b of this.el.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.id === id));
+    for (const b of this.el.querySelectorAll('button[data-id]')) b.setAttribute('aria-checked', String(b.dataset.id === id));
   }
 }

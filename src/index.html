@@ -64,7 +64,7 @@
       <span class="panel-actions"><label class="switch" title="Sun lighting on/off"><input type="checkbox" id="sunOn"><span></span></label><button class="x" id="sunClose" aria-label="Close sun panel" title="Close (S)">×</button></span>
     </div>
     <div class="sun-body">
-      <div class="sun-read" id="sunRead"></div>
+      <div class="sun-read" id="sunRead" hidden></div>
       <div class="field">
         <div class="field-label"><span>Date</span><output id="sunDateOut"></output></div>
         <input type="range" id="sunDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes">
@@ -72,6 +72,10 @@
       <div class="field">
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
         <input type="range" id="sunHour" min="0" max="24" step="0.0833" title="Right-click for 10:00, 12:00, solar noon and 15:00">
+      </div>
+      <div class="field" id="sunDetailsField">
+        <div class="field-label"><button class="field-toggle" id="sunToggle" aria-controls="sunDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button></div>
+        <div id="sunDetails" class="sun-weather" hidden></div>
       </div>
     </div>
   </section>
