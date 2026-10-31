@@ -5,6 +5,7 @@
 const Z_UP = [0, 0, 1];
 const PITCH_LIMIT = (89.99 * Math.PI) / 180;
 const DEFAULT_FOV = (40 * Math.PI) / 180;
+const FIT_MARGIN = 1.15; // zoom extents: leaves the model clear of the toolbars
 
 class Camera {
   constructor() {
@@ -49,11 +50,40 @@ class Camera {
     this.radius = Math.max(V3.len(V3.sub(max, min)) / 2, 1e-6);
   }
 
-  zoomExtents(min, max) {
-    const c = V3.scale(V3.add(min, max), 0.5), r = Math.max(V3.len(V3.sub(max, min)) / 2, 1e-6);
-    const half = Math.min(this.fov / 2, Math.atan(Math.tan(this.fov / 2) * this.aspect));
-    this.target = c;
-    this.distance = (r / Math.sin(half)) * 1.05;
+  // Fit the points to the window, as closely as the current viewing direction allows. In view
+  // coordinates each side of the frustum is limited by one point; the eye is where the limits meet.
+  zoomExtents(points) {
+    const { right, up, forward } = this;
+    const tanY = Math.tan(this.fov / 2), ty = this.ortho ? 0 : tanY / FIT_MARGIN, tx = ty * this.aspect;
+    let xHi = -Infinity, xLo = -Infinity, yHi = -Infinity, yLo = -Infinity, zMin = Infinity, zMax = -Infinity;
+    for (const p of points) {
+      const x = V3.dot(p, right), y = V3.dot(p, up), z = V3.dot(p, forward);
+      xHi = Math.max(xHi, x - z * tx); xLo = Math.max(xLo, -x - z * tx);
+      yHi = Math.max(yHi, y - z * ty); yLo = Math.max(yLo, -y - z * ty);
+      zMin = Math.min(zMin, z); zMax = Math.max(zMax, z);
+    }
+    let ex = (xHi - xLo) / 2, ey = (yHi - yLo) / 2;
+    const zMid = (zMin + zMax) / 2, least = this.radius * 0.01;
+    const at = (z) => V3.add(V3.add(V3.scale(right, ex), V3.scale(up, ey)), V3.scale(forward, z));
+    if (this.ortho) {
+      const half = Math.max((xHi + xLo) / 2 / this.aspect, (yHi + yLo) / 2) * FIT_MARGIN;
+      this.distance = Math.max(half, least) / tanY;
+      this.target = at(zMid);
+    } else {
+      const ez = Math.min(-(xHi + xLo) / (2 * tx), -(yHi + yLo) / (2 * ty));
+      this.distance = Math.max(zMid - ez, least);
+      // The eye moved back along one axis, so the other is off centre on screen: nudge it across.
+      for (let i = 0; i < 6; i++) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const p of points) {
+          const w = Math.max(V3.dot(p, forward) - ez, least);
+          const x = (V3.dot(p, right) - ex) / w, y = (V3.dot(p, up) - ey) / w;
+          x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        }
+        ex += ((x0 + x1) / 2) * this.distance; ey += ((y0 + y1) / 2) * this.distance;
+      }
+      this.target = at(ez + this.distance);
+    }
   }
 
   setView(name) {

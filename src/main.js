@@ -361,10 +361,13 @@ function reportSkipped(st) {
 // ---------------------------------------------------------------------------------------------
 // View helpers
 
+function visibleBatches() {
+  return renderer.batches.some((b) => b.visible) ? renderer.batches.filter((b) => b.visible) : renderer.batches;
+}
+
 function visibleBounds() {
   const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
-  const use = renderer.batches.some((b) => b.visible) ? renderer.batches.filter((b) => b.visible) : renderer.batches;
-  for (const b of use) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
+  for (const b of visibleBatches()) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
   return isFinite(mn[0]) ? [mn, mx] : [[-1, -1, -1], [1, 1, 1]];
 }
 
@@ -372,7 +375,8 @@ function zoomExtents() {
   if (!model) return;
   const [mn, mx] = visibleBounds();
   camera.setBounds(mn, mx);
-  camera.zoomExtents(mn, mx);
+  const points = visibleBatches().flatMap((b) => b.extremes);
+  camera.zoomExtents(points.length ? points : [mn, mx]);
   redraw();
 }
 

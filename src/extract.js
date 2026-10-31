@@ -452,6 +452,36 @@ function resolveLook(scene, ai, parent) {
   return { rgb, mat, mi, matSet: mat !== DEFAULT_MATERIAL, cLayer, cMatLayer, mLayer };
 }
 
+// Directions to look for a batch's outermost vertices in, both ways along each: most of them level,
+// as models are mostly wide and flat.
+const EXTREME_AXES = (() => {
+  const axes = [[0, 0, 1]], deg = Math.PI / 180;
+  for (const [elevation, count, step] of [[0, 12, 15], [35, 12, 30], [65, 6, 60]]) {
+    for (let i = 0; i < count; i++) {
+      const a = i * step * deg, c = Math.cos(elevation * deg);
+      axes.push([c * Math.cos(a), c * Math.sin(a), Math.sin(elevation * deg)]);
+    }
+  }
+  return Float64Array.from(axes.flat());
+})();
+
+// A few vertices on a batch's outline. Its vertex data leaves for the GPU, and these remain for
+// zoom extents, which fits them far more tightly than a box around a round or diagonal model.
+function extremePoints(p) {
+  if (!p.length) return [];
+  const a = EXTREME_AXES, n = a.length / 3, lo = new Float64Array(n).fill(Infinity), hi = new Float64Array(n).fill(-Infinity);
+  const loAt = new Uint32Array(n), hiAt = new Uint32Array(n);
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i], y = p[i + 1], z = p[i + 2];
+    for (let k = 0; k < n; k++) {
+      const d = x * a[k * 3] + y * a[k * 3 + 1] + z * a[k * 3 + 2];
+      if (d < lo[k]) { lo[k] = d; loAt[k] = i; }
+      if (d > hi[k]) { hi[k] = d; hiAt[k] = i; }
+    }
+  }
+  return [...new Set([...loAt, ...hiAt])].map((i) => [p[i], p[i + 1], p[i + 2]]);
+}
+
 // Turn the scene's items into GPU batches. Also refreshes per-item and per-layer statistics.
 function buildBatches(scene) {
   const { layers, items, defs } = scene, stats = scene.stats;
@@ -585,6 +615,7 @@ function buildBatches(scene) {
   for (const b of batches) {
     const bx = boxOf(b.position);
     b.min = bx.slice(0, 3); b.max = bx.slice(3);
+    b.extremes = extremePoints(b.position);
   }
   return batches;
 }
