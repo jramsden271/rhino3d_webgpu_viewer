@@ -73,7 +73,7 @@ no choosing: after the same fade, you start walking where you are. Once walking,
 camera follows the
 ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
 1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
-(so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings a downward view back to the horizontal. A fall with nothing
+(so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings the view back to the horizontal, first jerking it down unless it already points 20° or more below. A fall with nothing
 below returns you to where you last stood, with the controls locked for a second. Only what is
 shown counts: hidden objects and layers are walked through, and so is vegetation (layers with
 the Vegetation magic material). The mouse wheel zooms by narrowing or widening the field of

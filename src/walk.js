@@ -41,6 +41,10 @@ const WALK = {
   LOST: 3,          // seconds falling with nothing below before returning
   LOCK: 1,          // seconds the controls are locked after returning
   EASE: 0.07,       // time constant for the eye following steps up and down
+  DIP: 10,          // degrees a level view jerks down on landing from a fall; an upward view jerks to this below the horizontal
+  DIP_HEIGHT: 10,   // a fall of this many metres gets all of DIP (linear from nothing)
+  DIP_FADE: 20,     // a view this many degrees below the horizontal has no jerk (linear from DIP at level)
+  JERK: 0.03,       // time constant for that jerk
 };
 
 const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
@@ -84,7 +88,7 @@ class Walker {
     this.pending = true;
     this.keys.clear();
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
-      lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
+      lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, jerk: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
     this.fov0 = camera.fov;
     camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
@@ -103,7 +107,7 @@ class Walker {
     this.map = map;
     // Closer than eye height, or a chosen start point: stand on it.
     if (start || g > eye[2] - WALK.EYE * u) { this.foot = g; this.grounded = true; }
-    else this.entryFall = true;
+    else { this.entryFall = true; this.fallFrom = this.foot; }
     this.updateCamera();
     return true;
   }
@@ -146,7 +150,7 @@ class Walker {
   turn(dx, dy) {
     const { camera } = this.ctx, eye = camera.eye;
     const lim = (89 * Math.PI) / 180;
-    this.level = false;
+    this.level = this.jerk = false;
     camera.yaw -= dx * 0.004;
     camera.pitch = Math.max(-lim, Math.min(lim, camera.pitch + dy * 0.004));
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
@@ -216,8 +220,15 @@ class Walker {
   land(g) {
     this.lag += this.foot - g;
     if (this.entryFall) this.lag = 0;
-    // After a real fall, a view pointing down comes back up to the horizontal.
-    if ((this.entryFall || this.fallFrom - g > WALK.STEP * this.u) && this.ctx.camera.pitch > 0) this.level = true;
+    // After a real fall, the view comes back to the horizontal. Unless it already points well down,
+    // it first jerks down to the angle in this.jerk, to feel the impact.
+    const fell = (this.fallFrom - g) / this.u;
+    if (this.entryFall || fell > WALK.STEP) {
+      const p = this.ctx.camera.pitch, fade = (WALK.DIP_FADE * Math.PI) / 180;
+      const dip = ((WALK.DIP * Math.PI) / 180) * Math.min(1, fell / WALK.DIP_HEIGHT);
+      this.jerk = p < 0 ? dip : p < fade ? p + dip * (1 - p / fade) : false;
+      this.level = !this.jerk;
+    }
     Object.assign(this, { foot: g, vz: 0, grounded: true, air: 0, entryFall: false });
   }
 
@@ -283,7 +294,10 @@ class Walker {
       if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST && !fly))) this.lost(now);
     }
     this.lag *= Math.exp(-dt / WALK.EASE);
-    if (this.level) {
+    if (this.jerk) {
+      camera.pitch = this.jerk + (camera.pitch - this.jerk) * Math.exp(-dt / WALK.JERK);
+      if (this.jerk - camera.pitch < 0.003) { camera.pitch = this.jerk; this.jerk = false; this.level = true; }
+    } else if (this.level) {
       camera.pitch *= Math.exp(-dt / 0.15);
       if (camera.pitch < 0.003) { camera.pitch = 0; this.level = false; }
     }
