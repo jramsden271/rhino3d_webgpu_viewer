@@ -737,7 +737,6 @@ async function stepHistory(redo) {
     to.push({ label: entry.label, edits: editSnapshot() });
     history.coalesce = null;
     await restoreEdits(entry.edits);
-    notice(`${redo ? 'Redone' : 'Undone'}: ${entry.label}.`, false, 2500);
   } finally {
     historyBusy = false;
     syncUndoButtons();
@@ -2644,10 +2643,15 @@ function notice(text, error = false, timeout = 0, action = null) {
   $('notices').appendChild(n);
   return n;
 }
-function clearNotices() { $('notices').innerHTML = ''; }
+function clearNotices() {
+  $('notices').innerHTML = '';
+  messages.length = 0;
+  syncMessages();
+}
 
-// The bell's window keeps every notice, after it has left the screen, until it is dismissed there
-// or the page reloads. A notice repeated moves to the top instead of appearing twice.
+// The bell's window keeps every notice about the open model, after it has left the screen, until
+// it is dismissed there or another model loads. A notice repeated moves to the top instead of
+// appearing twice.
 const messages = []; // oldest first
 let messagesDialog = null;
 

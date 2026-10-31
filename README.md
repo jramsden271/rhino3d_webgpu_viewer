@@ -35,7 +35,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `5` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
-| Messages from this session · dismiss one or all | Bell, top left | |
+| Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · `O` · `X` |
