@@ -36,7 +36,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
-| Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
+| Render mode: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |

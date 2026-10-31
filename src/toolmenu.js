@@ -90,7 +90,7 @@ class ChoiceList {
   }
 
   // groups: [{ heading (optional), help (optional: { title, run }, a ? button on the heading's row),
-  //   items: [{ id, label, hint (optional) }] }]
+  //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
     groups.forEach((g, n) => {
@@ -111,7 +111,7 @@ class ChoiceList {
       for (const it of g.items) {
         const b = document.createElement('button');
         b.dataset.id = it.id;
-        b.title = it.label;
+        b.title = it.title || it.label;
         b.setAttribute('role', 'menuitemradio');
         b.setAttribute('aria-checked', 'false');
         const l = document.createElement('span');

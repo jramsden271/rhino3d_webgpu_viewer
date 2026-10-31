@@ -385,7 +385,7 @@ function setView(name, extents = true) {
 
 function syncToolbar() {
   syncCameraMenu();
-  document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
+  syncModeMenu();
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
   document.body.classList.toggle('walking', walker.active);
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
@@ -2408,6 +2408,22 @@ function bindComfortPanel() {
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 
+// The toolbar's render mode menu. Picking leaves it open, to compare modes.
+const MODES = [['Shaded', 'Shaded: object / layer colours'], ['Rendered', 'Rendered: material colours'], ['Clay', 'Clay: uniform white']];
+let modeList = null;
+
+function bindModeMenu() {
+  modeList = new ChoiceList({ label: 'Render modes', onPick: (id) => setMode(+id) });
+  modeList.setGroups([{ items: MODES.map(([label, title], i) => ({ id: String(i), label, title })) }]);
+  new ToolbarMenu($('btnMode'), { label: 'Render mode' }).body.append(modeList.el);
+}
+
+function syncModeMenu() {
+  modeList?.setActive(String(state.mode));
+  $('modeName').textContent = MODES[state.mode][0];
+  $('btnMode').title = `${MODES[state.mode][1]} (M changes it)`;
+}
+
 function setMode(m) {
   const wasMat = showsMaterial();
   state.mode = m;
@@ -2511,7 +2527,7 @@ function bindUi() {
   });
 
   bindCameraMenu();
-  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(+b.dataset.mode)));
+  bindModeMenu();
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));

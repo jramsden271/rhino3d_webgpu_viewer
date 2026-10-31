@@ -59,12 +59,13 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .link:hover { text-decoration: underline; }
 
 .toolbar { left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none; }
-@media (max-width: 1100px) { .toolbar .btn:not(.icon), .toolbar .seg button { padding: 6px 5px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; }
+@media (max-width: 1100px) { .toolbar .btn:not(.icon) { padding: 6px 5px; } .toolbar .sep { margin: 4px 2px; } .toolbar .btn.toggle svg { display: none; }
   .toolbar .combo-icon { margin-left: 2px; padding: 2px; } .toolbar .btn-combo > .btn { padding-left: 2px; } .toolbar { gap: 1px; } }
 .btn.toggle[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 /* A fixed width, so the toolbar stays still as the camera's name changes. */
 .camera-btn { flex: none; width: 150px; display: inline-flex; align-items: center; text-align: left; }
 .camera-btn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camera-btn.mode-btn { width: 112px; }
 @media (max-width: 1100px) { .camera-btn { width: 130px; } .toolbar .btn.camera-btn svg { display: inline; } }
 /* A toolbar menu's popup (toolmenu.js). Its body takes any content: column (default), row or grid. */
 .tool-menu { position: fixed; z-index: 6; padding: 6px; overflow-y: auto; box-sizing: border-box; max-width: calc(100vw - 16px); }
@@ -84,10 +85,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
-.seg { display: flex; gap: 2px; }
-.seg button { border: 0; background: transparent; padding: 6px 9px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
-.seg button:hover { background: var(--hover); }
-.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 .side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: 300px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 .panel { position: relative; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; }
