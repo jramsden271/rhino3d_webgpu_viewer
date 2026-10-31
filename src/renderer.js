@@ -1248,6 +1248,9 @@ class Renderer {
       b.effCls = type;
       b.special = sp;
       b.transparent = b.kind === 'mesh' && type !== MAT_WATER && alpha < 1;
+      // Casts a shadow unless over 40% transparent. Water and Glass go by the file's material: their
+      // alpha above is 1 unless set in the viewer, however clear the file makes them.
+      b.castsShadow = (type === MAT_WATER || type === MAT_GLASS ? (b.mat ? b.mat[3] : 1) : alpha) >= 0.6;
       ub.set([...rgb, alpha], base + 4);
       ub.set([b.vc ? 1 : 0, b.kind === 'edge' ? 1 : 0, type, o ? o.gloss : 0], base + 8);
     });
@@ -1325,7 +1328,7 @@ class Renderer {
       pass.setPipeline(this.shadowPipe);
       pass.setBindGroup(0, this.shadowBG, [c * 256]);
       for (const b of this.batches) {
-        if (!b.visible || b.kind !== 'mesh' || (b.mat && b.mat[3] < 0.6)) continue;
+        if (!b.visible || b.kind !== 'mesh' || !b.castsShadow) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
         pass.drawIndexed(b.count);
@@ -1341,7 +1344,7 @@ class Renderer {
     const lamps = (s.lamps || []).slice(0, MAX_LAMPS);
     if (s.xray || !lamps.length) return;
     const mpu = s.metresPerUnit || 1, near = LAMP_NEAR / mpu;
-    const casters = this.batches.filter((b) => b.visible && b.kind === 'mesh' && !(b.mat && b.mat[3] < 0.6));
+    const casters = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.castsShadow);
     let geom = this.geomVersion;
     for (const b of casters) geom = (geom * 31 + b.offset + 1) | 0;
     const plan = lampShadowPlan(lamps), jobs = [];

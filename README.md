@@ -332,7 +332,7 @@ Sun positions use the NOAA solar position equations (with refraction), which mat
 published sunrise/sunset times to within about a minute. This is a visual study tool, not a
 validated daylight or solar analysis. Shadows fall only on the model's own geometry: where
 there is no ground modelled, there is nothing to receive them. They are cast by surfaces and
-meshes only (not curves); materials more than 40% transparent do not cast shadows. Shadows use four
+meshes only (not curves); materials more than 40% transparent do not cast shadows, whether that comes from the file or the viewer (the Water and Glass magic materials go by the file's value alone). Shadows use four
 cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
 
 ## Thermal comfort
