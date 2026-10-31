@@ -2543,6 +2543,7 @@ function bindUi() {
   $('btnHome').addEventListener('click', goHome);
   $('btnLocation').addEventListener('click', openLocationDialog);
   $('btnWeather').addEventListener('click', openWeatherDialog);
+  $('btnMessages').addEventListener('click', openMessages);
   $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
@@ -2620,7 +2621,9 @@ const NOTICE_MS = 10000;
 // error: true for an error, 'info' for news that needs no action.
 function notice(text, error = false, timeout = 0, action = null) {
   const n = document.createElement('div');
-  n.className = 'notice' + (error === 'info' ? ' info' : error ? ' error' : '') + (timeout ? ' brief' : '');
+  const kind = (error === 'info' ? ' info' : error ? ' error' : '') + (timeout ? ' brief' : '');
+  n.className = 'notice' + kind;
+  const message = saveMessage({ text, kind, action, time: new Date(), toast: n });
   if (timeout) $('notices').querySelectorAll('.notice.brief').forEach((b) => b.remove()); // one at a time
   let timer = 0;
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => n.remove(), timeout || NOTICE_MS); };
@@ -2631,7 +2634,7 @@ function notice(text, error = false, timeout = 0, action = null) {
   if (action) {
     const a = document.createElement('button');
     a.className = 'link'; a.textContent = action.label;
-    a.onclick = () => { n.remove(); action.run(); };
+    a.onclick = () => { dismissMessage(message); action.run(); };
     n.append(' ', a);
   }
   const x = document.createElement('button');
@@ -2642,6 +2645,78 @@ function notice(text, error = false, timeout = 0, action = null) {
   return n;
 }
 function clearNotices() { $('notices').innerHTML = ''; }
+
+// The bell's window keeps every notice, after it has left the screen, until it is dismissed there
+// or the page reloads. A notice repeated moves to the top instead of appearing twice.
+const messages = []; // oldest first
+let messagesDialog = null;
+
+function saveMessage(message) {
+  const same = messages.find((m) => m.text === message.text);
+  if (same) dismissMessage(same);
+  messages.push(message);
+  syncMessages();
+  return message;
+}
+
+function dismissMessage(message) {
+  const i = messages.indexOf(message);
+  if (i >= 0) messages.splice(i, 1);
+  message.toast.remove();
+  syncMessages();
+}
+
+function syncMessages() {
+  const n = messages.length;
+  $('msgCount').hidden = !n;
+  $('msgCount').textContent = n > 99 ? '99+' : n;
+  $('btnMessages').title = !n ? 'No messages' : n === 1 ? '1 message' : `${n} messages`;
+  if (messagesDialog) renderMessages();
+}
+
+function renderMessages() {
+  const d = messagesDialog, close = d.box.querySelector('.dlg-actions .primary');
+  d.box.querySelector('.dlg-actions .btn').hidden = !messages.length; // Dismiss all
+  if (!messages.length) {
+    const none = document.createElement('p');
+    none.textContent = 'No messages.';
+    d.body.replaceChildren(none);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'msg-list';
+    messages.slice().reverse().forEach((m, i) => {
+      const row = document.createElement('div');
+      row.className = 'notice' + m.kind;
+      const time = document.createElement('span');
+      time.className = 'msg-time';
+      time.textContent = m.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      row.append(time, m.text);
+      if (m.action) {
+        const a = document.createElement('button');
+        a.className = 'link'; a.textContent = m.action.label;
+        a.onclick = () => { d.close(null); dismissMessage(m); m.action.run(); };
+        row.append(' ', a);
+      }
+      const x = document.createElement('button');
+      x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', 'Dismiss');
+      x.onclick = () => { dismissMessage(m); d.body.querySelectorAll('.x')[i]?.focus(); };
+      row.append(x);
+      list.append(row);
+    });
+    d.body.replaceChildren(list);
+  }
+  if (!d.box.contains(document.activeElement)) close.focus();
+}
+
+function openMessages() {
+  if (messagesDialog) return;
+  messagesDialog = new Dialog({ title: 'Messages', width: 440, buttons: [{ label: 'Dismiss all', value: 'all' }, { label: 'Close', value: true, primary: true }] });
+  renderMessages();
+  messagesDialog.result.then((v) => {
+    messagesDialog = null;
+    if (v === 'all') messages.slice().forEach(dismissMessage);
+  });
+}
 
 function fatal(title, text) {
   $('drop').hidden = true;
