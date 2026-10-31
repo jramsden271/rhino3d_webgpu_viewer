@@ -27,13 +27,7 @@
     <span class="sep"></span>
     <button class="btn toggle camera-btn" id="btnCamera"><svg viewBox="0 0 24 24"><path d="M4 8h3.5l1.5-3h6l1.5 3H20v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span id="cameraName">Camera</span></button>
     <span class="sep"></span>
-    <button class="btn toggle camera-btn mode-btn" id="btnMode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" style="fill:currentColor;stroke:none"/></svg><span id="modeName">Rendered</span></button>
-    <span class="sep"></span>
-    <button class="btn toggle" data-toggle="showEdges" title="Edges (E)">Edges</button>
-    <button class="btn toggle" data-toggle="showCurves" title="Curves and points (C)">Curves</button>
-    <button class="btn toggle" id="btnSpecials" title="Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view). Off: plain material colours only.">Magic ✨</button>
-    <button class="btn toggle" data-toggle="ao" title="Ambient occlusion: soft shading in corners and recesses (O)">AO</button>
-    <button class="btn toggle" data-toggle="xray" title="X-ray (X)">X-ray</button>
+    <button class="btn toggle camera-btn mode-btn" id="btnMode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10.2 5.9A6.4 6.4 0 0 0 5.9 10.2l3.3 1c.1-2 .4-3.7 1-5.3z" style="fill:currentColor;stroke:none"/></svg><span id="modeName">Rendered</span></button>
     <span class="sep"></span>
     <span class="btn-combo" id="sunCombo"><button class="combo-icon" id="sunQuick" aria-pressed="false" title="Sunlight on/off"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><button class="btn toggle" data-act="sun" title="Sun panel: sunlight and shadows (S)">Sun</button></span>
     <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: the weather file's clouds, sunshine and sky light, with the sun on"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 .25 8.5z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather panel: the weather file at the Sun panel's date and time">Weather</button></span>
@@ -221,7 +215,7 @@
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
-        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source</dd>
+        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>5</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>

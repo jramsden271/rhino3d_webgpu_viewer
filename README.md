@@ -36,8 +36,9 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
-| Render mode: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar: render mode button | `M` cycles |
-| Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
+| Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
+| Edges · Curves · Magic · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · `O` · `X` |
+| Layers · Sun panel | Toolbar | `L` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
@@ -139,7 +140,7 @@ few pixels, so distant surfaces don't shimmer as the view moves. Grass, road, pa
 use the same noise for their larger-scale variation, so it also wraps evenly over slopes and
 embankments.
 
-The **Magic ✨** button on the toolbar turns magic materials on and off, natural variation
+The **Magic ✨** item in the render mode menu turns magic materials on and off, natural variation
 included. When off, everything renders with its plain material colour.
 
 The colour in the dialog is the magic material's **base colour**: vegetation varies around
@@ -164,7 +165,7 @@ base colour is the magic material's default.
 Where surfaces of these types nearly coincide or cross (a road draped over terrain, say), the
 viewer gives hard surfaces display priority: water, road and paving show in front of grass,
 and grass in front of ground/terrain. This follows each layer's magic material, even with
-the Magic button off.
+Magic off.
 
 The keyword lists are at the top of `src/materials.js`; edit them to match your own layer
 conventions and rebuild. Independently of the rules, Rendered mode is matte (Rhino gloss

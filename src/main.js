@@ -35,7 +35,7 @@ state.sun = {
 // and which source to use (use: 'custom', 'epw', 'file' or null for the first that is set).
 const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
-state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the toolbar's Magic button
+state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -386,9 +386,7 @@ function setView(name, extents = true) {
 function syncToolbar() {
   syncCameraMenu();
   syncModeMenu();
-  $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
   document.body.classList.toggle('walking', walker.active);
-  $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
 
@@ -875,7 +873,7 @@ function syncMaterialDialog() {
     const info = layerSpecialInfo(matLayer), look = layerLook(matLayer), name = info.id ? SPECIAL[info.id].name : '';
     // The magic material and why; then where the colour comes from.
     $('matSpecialHint').textContent = (info.auto ? (info.id ? `Auto: ${name}. ` : '') : '') + specialReason(info) +
-      (info.id && !state.specials ? ' Magic materials are off (Magic button on the toolbar).' : '');
+      (info.id && !state.specials ? ' Magic materials are off (Magic in the render mode menu).' : '');
     $('matSource').textContent = 'Render material, used in Rendered view. ' + (state.layerMat[l.id] ? 'Set in this viewer.'
       : look.special ? `Colour: the ${name} default.`
       : l.materialName ? `From the file's material “${l.materialName}”.` : 'No material in the file (default).');
@@ -2032,7 +2030,7 @@ function onKey(e) {
   const actions = {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'), 5: () => pickView('walk'),
-    m: () => setMode((state.mode + 1) % 3),
+    m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
       if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
@@ -2408,20 +2406,45 @@ function bindComfortPanel() {
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 
-// The toolbar's render mode menu. Picking leaves it open, to compare modes.
-const MODES = [['Shaded', 'Shaded: object / layer colours'], ['Rendered', 'Rendered: material colours'], ['Clay', 'Clay: uniform white']];
+// The toolbar's render mode menu: what is drawn, on and off, then the modes. Picking leaves it open,
+// to compare. A mode's id is its value of state.mode, and an on/off item's its key in state.
+const MODES = [[0, 'Shaded', 'Shaded: object / layer colours'], [2, 'Clay', 'Clay: uniform white'], [1, 'Rendered', 'Rendered: material colours']];
+const RENDER_TOGGLES = [
+  { id: 'showEdges', label: 'Edges', hint: 'E' },
+  { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
+  { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view). Off: plain material colours only.' },
+  { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
+  { id: 'xray', label: 'X-ray', hint: 'X' },
+];
 let modeList = null;
 
 function bindModeMenu() {
-  modeList = new ChoiceList({ label: 'Render modes', onPick: (id) => setMode(+id) });
-  modeList.setGroups([{ items: MODES.map(([label, title], i) => ({ id: String(i), label, title })) }]);
+  modeList = new ChoiceList({ label: 'Render settings', onPick: (id) => {
+    if (id === 'specials') toggleSpecials();
+    else if (RENDER_TOGGLES.some((t) => t.id === id)) toggle(id);
+    else setMode(+id);
+  } });
+  modeList.setGroups([{ items: RENDER_TOGGLES.map((t) => ({ ...t, toggle: true })) },
+    { items: MODES.map(([id, label, title]) => ({ id: String(id), label, title })) }]);
   new ToolbarMenu($('btnMode'), { label: 'Render mode' }).body.append(modeList.el);
 }
 
 function syncModeMenu() {
+  const [, name, title] = MODES.find(([id]) => id === state.mode);
   modeList?.setActive(String(state.mode));
-  $('modeName').textContent = MODES[state.mode][0];
-  $('btnMode').title = `${MODES[state.mode][1]} (M changes it)`;
+  for (const { id } of RENDER_TOGGLES) modeList?.setChecked(id, !!state[id]);
+  modeList?.item('specials').classList.toggle('inactive', state.mode !== 1);
+  $('modeName').textContent = name;
+  $('btnMode').title = `${title} (M changes it)`;
+}
+
+function toggleSpecials() {
+  state.specials = !state.specials;
+  savePrefs();
+  applyLayerMaterials(false);
+  if (!$('matDialog').hidden && matLayer >= 0 && matKind === 'material') openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  if (state.sel.ids.length) showInspector();
+  syncToolbar();
 }
 
 function setMode(m) {
@@ -2543,14 +2566,6 @@ function bindUi() {
   bindMaterialDialog();
   bindInspector();
   bindFileDialog();
-  $('btnSpecials').addEventListener('click', () => {
-    state.specials = !state.specials;
-    savePrefs();
-    applyLayerMaterials(false);
-    if (!$('matDialog').hidden && matLayer >= 0 && matKind === 'material') openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
-    if (state.sel.ids.length) showInspector();
-    syncToolbar();
-  });
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],

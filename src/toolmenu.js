@@ -43,7 +43,7 @@ class ToolbarMenu {
     window.addEventListener('pointerdown', this.onOutside, true);
     window.addEventListener('keydown', this.onKey, true);
     window.addEventListener('resize', this.place);
-    (this.body.querySelector('[aria-checked="true"]') || this.body.querySelector('[aria-checked], button, input, select'))?.focus({ preventScroll: true });
+    (this.body.querySelector('[role="menuitemradio"][aria-checked="true"]') || this.body.querySelector('[aria-checked], button, input, select'))?.focus({ preventScroll: true });
   }
 
   close() {
@@ -68,7 +68,8 @@ class ToolbarMenu {
   }
 }
 
-// A column of choices with one current, for a menu's body. Arrow keys move between them.
+// A column of choices with one current, for a menu's body, and any on/off items, each set by
+// setChecked. Arrow keys move between them.
 class ChoiceList {
   constructor({ label, onPick }) {
     this.el = document.createElement('div');
@@ -90,7 +91,8 @@ class ChoiceList {
   }
 
   // groups: [{ heading (optional), help (optional: { title, run }, a ? button on the heading's row),
-  //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label) }] }]
+  //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label),
+  //     toggle (optional: an on/off item, with a checkbox) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
     groups.forEach((g, n) => {
@@ -112,8 +114,13 @@ class ChoiceList {
         const b = document.createElement('button');
         b.dataset.id = it.id;
         b.title = it.title || it.label;
-        b.setAttribute('role', 'menuitemradio');
+        b.setAttribute('role', it.toggle ? 'menuitemcheckbox' : 'menuitemradio');
         b.setAttribute('aria-checked', 'false');
+        if (it.toggle) {
+          const box = document.createElement('span');
+          box.className = 'box';
+          b.append(box);
+        }
         const l = document.createElement('span');
         l.className = 'label';
         l.textContent = it.label;
@@ -129,6 +136,9 @@ class ChoiceList {
   }
 
   setActive(id) {
-    for (const b of this.el.querySelectorAll('button[data-id]')) b.setAttribute('aria-checked', String(b.dataset.id === id));
+    for (const b of this.el.querySelectorAll('[role="menuitemradio"]')) b.setAttribute('aria-checked', String(b.dataset.id === id));
   }
+
+  item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
+  setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
 }
