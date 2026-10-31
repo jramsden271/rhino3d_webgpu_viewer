@@ -4,9 +4,15 @@ A single HTML file that opens Rhino `.3dm` models in the browser and renders the
 No install, no server, no internet connection: the Rhino file reader (McNeel's rhino3dm,
 compiled to WebAssembly) is embedded in the page, and the model never leaves your computer.
 
+## Installation
+
+To use the viewer, there is nothing to install: download
+[`dist/index.html`](dist/index.html) and follow [Using it](#using-it) below. To work
+on the code, see [Development](#development).
+
 ## Using it
 
-1. Open `dist/rhino-viewer.html` in a current **Chrome** or **Microsoft Edge** (double-click it).
+1. Open `dist/index.html` in a current **Chrome** or **Microsoft Edge** (double-click it).
 2. Drag a `.3dm` file onto the page, or click **browse for one**.
 
 The welcome screen lists the last five files opened (in this browser); click one to open it
@@ -445,21 +451,79 @@ instances) loads in about 15 seconds.
 Models far from the origin (e.g. on British National Grid coordinates) are re-centred in
 double precision before conversion, so there is no jitter when zoomed in.
 
-## Rebuilding
+## Development
 
-Only needed after editing `src/` or to update rhino3dm. Requires Node.js 18 or later.
+### Requirements
+
+- [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 18 or later.
+- `tar` on the path, which Windows 10 and later, macOS and Linux all include.
+- A current Chrome or Microsoft Edge, for WebGPU.
+
+There is no `package.json` and no `npm install`: the build and tools use only Node's built-in
+modules, and the page has no framework or bundler.
+
+### Setting up
+
+```bash
+git clone https://github.com/jramsden271/rhino3d_webgpu_viewer.git
+```
+
+```bash
+cd rhino3d_webgpu_viewer
+```
 
 ```bash
 node build.js
 ```
 
-The first build downloads rhino3dm from the npm registry into `vendor/`. After that it works
-offline. To update rhino3dm, change `RHINO3DM_VERSION` in `build.js`.
+The first build needs an internet connection, to download rhino3dm from the npm registry into
+`vendor/` (git-ignored). After that it works offline.
+
+### Running it
+
+```bash
+node tools/serve.js
+```
+
+This serves the project on http://localhost:8123/ (`node tools/serve.js 9000` for another port).
+The server is only for development; the built viewer does not need it.
+
+- http://localhost:8123/src/index.html runs the sources unbuilt, so a reload shows an edit straight
+  away. It needs `vendor/`, so run `node build.js` once first.
+- http://localhost:8123/dist/index.html is the built viewer. Rebuild to see an edit.
+- Adding `?model=/samples/x.3dm` to either opens a model straight away. No models come with the
+  repository: create a `samples/` folder and put your own there (it and `*.3dm` files are git-ignored).
+
+### Making a change
+
+Edit `src/`, then run `node build.js`, which regenerates `dist/index.html`. That file is
+what people use and it is committed, so commit it with the change to the sources.
+
+To update rhino3dm, change `RHINO3DM_VERSION` in `build.js` and rebuild.
+
+### Hosting
+
+Cloudflare Pages serves the `dist/` folder as static files (build output directory `dist`, no build
+command) and deploys each push to `main`. It runs no build, so what is committed in `dist/` is what goes live. Models
+still stay on the computer of whoever opens them: the site only delivers the page.
+
+### Tests and tools
+
+There is no test framework; these are plain Node scripts. Only the first runs without any files
+of your own, and the last three need `vendor/`. Behaviour in the browser is checked by hand.
+
+| Command | What it does |
+| --- | --- |
+| `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort |
+| `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
+| `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
+| `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
+| `node tools/probe2.js <file.3dm>` | Prints the shapes of values returned by rhino3dm |
 
 ## Layout
 
 ```
-dist/rhino-viewer.html   the viewer (the only file anyone needs)
+dist/index.html          the viewer (the only file anyone needs)
 build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist/
 src/index.html, style.css  page and UI
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
@@ -478,10 +542,6 @@ src/walk.js              pedestrian mode: walking, ground following, steps, fall
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)
 ```
-
-During development, `node tools/serve.js` serves the project on http://localhost:8123/.
-`src/index.html` runs unbuilt, and `dist/rhino-viewer.html?model=/samples/x.3dm` opens a
-model straight away.
 
 `src/utci.js` is the UTCI_approx polynomial (Bröde et al. 2009), with its coefficients taken
 from the BHoM LadybugTools Toolkit (`external_comfort/utci.py`). `utci(ta, tr, va, rh)` takes

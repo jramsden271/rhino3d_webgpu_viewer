@@ -1,4 +1,4 @@
-// Builds dist/rhino-viewer.html: one self-contained file with the viewer, rhino3dm.js and its
+// Builds dist/index.html: one self-contained file with the viewer, rhino3dm.js and its
 // WebAssembly binary inlined. Run once (or after editing src/):  node build.js
 // Downloads rhino3dm from the npm registry the first time only; afterwards it works offline.
 
@@ -9,7 +9,7 @@ const { execFileSync } = require('child_process');
 const RHINO3DM_VERSION = '8.35.0';
 const root = __dirname;
 const vendor = path.join(root, 'vendor', 'package');
-const out = path.join(root, 'dist', 'rhino-viewer.html');
+const out = path.join(root, 'dist', 'index.html');
 
 async function ensureRhino3dm() {
   const pkg = path.join(vendor, 'package.json');
@@ -21,7 +21,8 @@ async function ensureRhino3dm() {
   fs.mkdirSync(path.dirname(tgz), { recursive: true });
   fs.writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
   fs.rmSync(vendor, { recursive: true, force: true });
-  execFileSync('tar', ['-xzf', tgz, '-C', path.join(root, 'vendor')]);
+  // Run from the folder: Git for Windows' tar reads a C:\ path as a remote host.
+  execFileSync('tar', ['-xzf', path.basename(tgz)], { cwd: path.dirname(tgz) });
 }
 
 (async () => {
