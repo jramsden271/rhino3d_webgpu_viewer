@@ -56,8 +56,9 @@ whatever the window's shape. There is no roll, and a shifted frame (a two-point 
 example) is framed by turning towards its centre, so its verticals may converge. A named view
 sets only the camera, not the layers.
 
-The cameras, layer visibility and hidden objects are **remembered in this browser** for each
-model (by file name and size) and come back when you open it again. They are not changes to the
+The cameras, layer visibility, hidden objects and the sun (on or off, date and time) are
+**remembered in this browser** for each model (by file name and size) and come back when you
+open it again. If the model has no location by then, the sun stays off. They are not changes to the
 model, so they are not undoable and are not written to a saved copy.
 
 **Pedestrian mode** walks round the model at eye height (1.5 m). Pick **Walk** in the camera

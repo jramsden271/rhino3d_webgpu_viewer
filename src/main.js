@@ -325,6 +325,7 @@ async function openBytes(name, bytes, handle = null) {
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
     if (model.savedNorth != null) setSun({ north: model.savedNorth });
+    restoreSun(savedView);
     if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
     viewNow = 'perspective'; viewCams = {};
     fillCameraMenu();
@@ -798,7 +799,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -823,6 +824,14 @@ function restoreCameras(saved) {
   camera.restore(saved.camera);
   syncToolbar();
   redraw();
+}
+
+// The sun as it was left with this model. Without a location now (a weather file or custom location
+// that did not come back, say), it stays off.
+function restoreSun(saved) {
+  const { on, doy, hour } = saved.sun || {};
+  if (typeof on !== 'boolean' || !(doy >= 1 && doy <= 366) || !(hour >= 0 && hour <= 24)) return;
+  setSun({ on: on && !!activeLocation(), doy, hour });
 }
 
 function reportRestored() {
