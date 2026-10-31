@@ -66,12 +66,13 @@ class Walker {
   // exit() cancels it.
   place() { this.placing = true; }
 
-  // Starts walking from the current (perspective) camera, or with start ([x, y, z], model units)
-  // standing on the ground below that point, looking level. Resolves false, with a notice, when
-  // there is nothing below to stand on.
+  // Starts walking from the current camera, or with start ([x, y, z], model units) standing on the
+  // ground below that point, looking level. Resolves false, with a notice, when there is nothing
+  // below to stand on.
   async enter(start = null) {
     const { camera } = this.ctx, u = this.u;
     const before = camera.snapshot();
+    camera.ortho = false;
     if (start) {
       camera.pitch = 0;
       camera.distance = 5 * u;

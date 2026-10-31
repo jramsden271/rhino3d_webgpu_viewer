@@ -43,7 +43,6 @@
     <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: the weather file's clouds, sunshine and sky light, with the sun on"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 .25 8.5z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather panel: the weather file at the Sun panel's date and time">Weather</button></span>
     <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
-    <span class="btn-combo" id="walkCombo"><button class="combo-icon" id="walkQuick" aria-pressed="false" title="Walking on/off: walk around at eye height (perspective views only)"><svg viewBox="0 0 24 24" class="walk-figure"><circle cx="13" cy="3.6" r="2.4" style="fill:currentColor;stroke:none"/><path d="M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1" style="fill:none;stroke-width:3.2"/></svg></button><button class="btn toggle" id="btnWalk" title="Walk panel">Walk</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
@@ -123,8 +122,8 @@
   </section>
   <section id="walkPanel" class="chrome panel sun-panel" hidden aria-label="Pedestrian mode">
     <div class="panel-head">
-      <span>Walk</span>
-      <span class="panel-actions"><label class="switch" title="Walking on/off (perspective views only)"><input type="checkbox" id="walkOn"><span></span></label><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close">×</button></span>
+      <span><svg viewBox="0 0 24 24" class="walk-figure"><circle cx="13" cy="3.6" r="2.4" style="fill:currentColor;stroke:none"/><path d="M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1" style="fill:none;stroke-width:3.2"/></svg>Walk</span>
+      <span class="panel-actions"><button class="x q" id="walkHelp" aria-label="About walking" title="About walking">?</button><button class="x" id="walkClose" aria-label="Close walk panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div class="field">
@@ -221,7 +220,7 @@
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
-        <dt>Walk</dt><dd>The figure on the toolbar's <b>Walk</b> button (perspective only), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls</dd>
+        <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>5</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
@@ -229,7 +228,7 @@
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> on the toolbar turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>P</kbd> parallel/perspective · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>5</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>
 

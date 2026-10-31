@@ -46,7 +46,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; endPlacing(); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
+  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -387,12 +387,7 @@ function syncToolbar() {
   syncCameraMenu();
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.mode === state.mode)));
   $('btnSpecials').setAttribute('aria-pressed', String(state.specials));
-  const walking = walker.active || !!walker.placing;
-  $('walkQuick').setAttribute('aria-pressed', String(walking));
-  $('walkQuick').disabled = $('walkOn').disabled = !model || (camera.ortho && !walking);
-  $('walkOn').checked = walking;
   document.body.classList.toggle('walking', walker.active);
-  $('btnWalk').setAttribute('aria-pressed', String(!$('walkPanel').hidden));
   $('btnSpecials').classList.toggle('inactive', state.mode !== 1);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
@@ -803,8 +798,7 @@ function saveViewState() {
   if (!model?.viewReady) return; // not until what was saved has been restored
   const layers = {};
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
-  const now = camera.snapshot();
-  if (walker.active) now.fov = walker.fov0; // not the walker's own zoom
+  const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
     localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
@@ -2032,13 +2026,12 @@ function onKey(e) {
   // Pedestrian mode: movement keys walk, Esc stops; other shortcuts still work.
   if (walker.active) {
     if (walker.key(e, true)) { e.preventDefault(); return; }
-    if (k === 'escape') { e.preventDefault(); walker.exit(); return; }
+    if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'),
-    p: () => { walker.exit(); camera.ortho = !camera.ortho; viewNow = null; syncToolbar(); redraw(); },
+    1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'), 5: () => pickView('walk'),
     m: () => setMode((state.mode + 1) % 3),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
@@ -2059,10 +2052,12 @@ function onKey(e) {
 // one remembers it, and coming back restores it. The first visit, or picking the view you are in,
 // gives the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
 // viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
-// walking and orbiting in perspective. Orbiting a parallel view, or P, makes it a free view that
-// belongs to none.
+// walking and orbiting in perspective. Orbiting a parallel view makes it a free view that
+// belongs to none. Walk is listed with them but has no camera of its own: see startWalk.
 let viewNow = 'perspective', viewCams = {};
 function pickView(id) {
+  if (id === 'walk') { startWalk(); return; }
+  if (walker.active) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
   if (viewNow && viewNow !== id) viewCams[viewNow] = camera.snapshot();
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
@@ -2096,41 +2091,66 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: CAMERAS.map(([id, label, hint]) => ({ id, label, hint })) }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '5' }] }]);
 }
 
 function syncCameraMenu() {
-  cameraList?.setActive(viewNow);
-  const name = namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
+  const walking = walker.active || walker.placing;
+  cameraList?.setActive(walking ? 'walk' : viewNow);
+  const name = walking ? 'Walk' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
   $('cameraName').textContent = name || 'Free view';
   $('btnCamera').title = name ? `Camera: ${name}` : 'Camera: a free view';
 }
-// Walking on and off: the Walk button's icon and the switch on the Walk panel. Turning it on
-// usually first asks where to start: the figure follows the cursor, a marker shows the spot under it,
-// and a click there starts walking (as Street View's figure is dropped). Esc, the icon or the
-// switch cancel. The start is found as a lamp's place is (B): the surface under the cursor, a
-// little towards the eye; the walker then stands on the ground below it.
-// With the camera already near the ground (back from a walk, say), walking starts where it is.
+// Walking starts from Walk in the camera list, which usually first asks where to start: the figure
+// follows the cursor, a marker shows the spot under it, and a click there starts walking (as Street
+// View's figure is dropped). Esc or another camera cancels. The start is found as a lamp's place is
+// (B): the surface under the cursor, a little towards the eye; the walker then stands on the ground
+// below it. With a perspective camera already near the ground, walking starts where it is.
+// Picking Walk while walking shows its panel again, if closed. Walking ends through the fade, by
+// Esc or another camera; walkFrom is the camera it started from, which it then goes back to.
 const WALK_MARKER = 1;   // marker radius (m)
 const WALK_NEAR = 3;     // camera at most this high above the surface below it (m): no choosing
 const placing = { busy: false, next: null, checking: false };
-function toggleWalk() {
-  if (walker.active || walker.placing) { walker.exit(); return; }
-  if (!model || camera.ortho) { syncWalkPanel(); return; }
-  if (placing.checking) return;
+let walkFrom = null, leaving = null;
+function startWalk() {
+  cameraMenu.close();
+  if (walker.active) { $('walkPanel').hidden = false; canvas.focus(); return; }
+  if (!model || walker.placing || placing.checking) return;
+  if (camera.ortho) { startPlacing(); return; }
   placing.checking = true;
   heightAboveGround().then((h) => {
     placing.checking = false;
-    if (walker.active || walker.placing || !model || camera.ortho) return;
-    if (h != null && h <= WALK_NEAR) enterWalkHere(); else startPlacing();
+    if (walker.active || walker.placing || !model) return;
+    if (h != null && h <= WALK_NEAR) fadeIntoWalk(); else startPlacing();
   });
 }
-function enterWalkHere() {
-  $('walkHint').hidden = false;
-  walker.enter().then(() => { syncToolbar(); syncWalkPanel(); syncLightsPanel(); });
-  syncToolbar();
-  syncWalkPanel();
+// Fades to black, stops walking, runs then (the latest, if asked again meanwhile) and fades back in.
+function leaveWalk(then = null) {
+  const first = !leaving, f = $('walkFade');
+  leaving = then || (() => {});
+  if (!first) return;
+  f.classList.add('dark');
+  setTimeout(() => {
+    const next = leaving;
+    leaving = null;
+    walker.exit();
+    next();
+    f.classList.remove('dark');
+  }, 250);
+}
+// Fades to black, starts walking (at start, or where the camera is) and fades back in.
+function fadeIntoWalk(start = null) {
+  const f = $('walkFade');
+  placing.checking = true;
+  f.classList.add('dark');
   canvas.focus();
+  setTimeout(() => {
+    placing.checking = false;
+    $('walkHint').hidden = false;
+    walkFrom = camera.snapshot();
+    walker.enter(start).then((ok) => { if (ok) $('walkPanel').hidden = false; f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); });
+    syncToolbar();
+  }, 250);
 }
 // Height (m) of the camera above the surface straight below it, or null with nothing there:
 // a one-pixel orthographic view looking down (as checkSunlight looks towards the sun).
@@ -2176,32 +2196,21 @@ function showWalkMarker(at) {
     if (next && walker.placing) showWalkMarker(next);
   });
 }
-// A click while choosing: fade to black, start walking there, and fade back in.
+// A click while choosing: start walking there.
 function startWalkAt(e) {
   pickAt(e).then((h) => {
     if (!h || !walker.placing) return;
-    const mpu = METRES_PER_UNIT[model.units] || 1, back = V3.norm(V3.sub(camera.eye, h.p));
-    const p = V3.add(h.p, V3.scale(back, 0.4 / mpu)), f = $('walkFade');
+    const mpu = METRES_PER_UNIT[model.units] || 1, back = camera.ortho ? camera.dir : V3.norm(V3.sub(camera.eye, h.p));
     walker.placing = false;
     endPlacing();
-    f.classList.add('dark');
-    setTimeout(() => {
-      $('walkHint').hidden = false;
-      walker.enter(p).then(() => { f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); });
-      syncToolbar();
-    }, 250);
+    fadeIntoWalk(V3.add(h.p, V3.scale(back, 0.4 / mpu)));
   });
-}
-function toggleWalkPanel() {
-  $('walkPanel').hidden = !$('walkPanel').hidden;
-  syncWalkPanel();
-  syncToolbar();
 }
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p>The switch above, or the figure on the toolbar's Walk button, starts walking (perspective views only). The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd>, the figure or the switch cancel. With the camera already within 3 m of the ground (back from a walk, say), you start walking where you are. Closing this panel does not stop you.</p>
-    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or the switch to stop</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>5</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
 }
@@ -2222,10 +2231,8 @@ function bindWalkPanel() {
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
   $('walkHelp').addEventListener('click', showWalkHelp);
-  $('walkClose').addEventListener('click', () => { toggleWalkPanel(); canvas.focus(); });
-  $('walkOn').addEventListener('change', toggleWalk);
-  $('walkQuick').addEventListener('click', toggleWalk);
-  $('walkCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWalkPanel(); }); // the gaps round the icon  syncWalkPanel();
+  $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
+  syncWalkPanel();
 }
 
 // Is the camera in sunlight? A ray from the eye towards the sun, drawn with the pick pass (so
@@ -2531,7 +2538,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['#walkQuick', 'walkPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
@@ -2549,7 +2556,6 @@ function bindUi() {
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
   window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); });
   window.addEventListener('blur', () => { setShift(false); walker.blur(); });
-  $('btnWalk').addEventListener('click', toggleWalkPanel);
   bindWalkPanel();
   bindPointer();
   window.addEventListener('pagehide', saveViewState);

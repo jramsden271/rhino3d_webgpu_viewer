@@ -32,17 +32,17 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode (perspective only) | Toolbar: Walk · drag to look · wheel zooms (field of view) | `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
+| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `5` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
-| Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `P` parallel/perspective |
+| Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
 | Shading: Shaded (layer/object colours), Rendered (materials), Clay | Toolbar | `M` cycles |
 | Edges · Curves · Ambient occlusion · X-ray · Layers · Sun panel | Toolbar | `E` · `C` · `O` · `X` · `L` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
 
-The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right and Perspective, with any views
+The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right, Perspective and Walk, with any views
 saved by name in the Rhino file above them. Top, Front and Right are parallel (no perspective)
 views, as in Rhino; orbiting a parallel view turns it into a free view. Each camera remembers
 where you left it: leave one and come back, and it is where it was (including after walking).
@@ -59,14 +59,14 @@ The cameras, layer visibility and hidden objects are **remembered in this browse
 model (by file name and size) and come back when you open it again. They are not changes to the
 model, so they are not undoable and are not written to a saved copy.
 
-**Pedestrian mode** walks round the model at eye height (1.5 m). In a perspective view, click
-the figure on the toolbar's **Walk** button (or the switch on the Walk panel). Then, as in
+**Pedestrian mode** walks round the model at eye height (1.5 m). Pick **Walk** in the camera
+list, or press `5`, from any view. Then, as in
 Street View, the figure follows the cursor and a soft yellow circle marks the surface under
 it. Click to start there: the view fades through black and you stand on the ground at that
 spot, looking level in the same direction. Click a wall and you stand at its foot, on your side,
-as a lamp is placed with `B`. Until you click you can still orbit, pan and zoom; `Esc`, the
-figure or the switch cancel. If the camera is already within 3 m of the surface below it (back
-from a walk, say), there is no choosing: you start walking where you are. Once walking, the
+as a lamp is placed with `B`. Until you click you can still orbit, pan and zoom; `Esc` or another
+camera cancels. If a perspective camera is already within 3 m of the surface below it, there is
+no choosing: after the same fade, you start walking where you are. Once walking, the
 camera follows the
 ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
 1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
@@ -80,16 +80,15 @@ view, from 10° to 75°; it goes back to normal when you stop walking.
 at a steady 2 m/s (6 m/s with `Shift`), ignoring gravity while held; letting go of `E` drops
 you again, and `Q` stops on the ground.
 
-The rest of the Walk button opens the **Walk panel**, whose title has the same on/off switch;
-closing the panel does not stop walking. The figure is grey, and yellow while you walk.
-Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
+Starting a walk opens the **Walk panel**. Closing it does not stop walking; pick Walk in the
+camera list again to bring it back. Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
 (1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
 climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
 when you walk off an edge, and land when the ground rises to meet you (`Space` does nothing
 while flying). Whether you are standing in sunlight shows in the
-[Thermal comfort](#thermal-comfort) panel. The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history; pressing Esc, the
-switch or the figure, a view button or `P` stops it and leaves you orbiting a point just ahead. Press `T` while
+[Thermal comfort](#thermal-comfort) panel. The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history. Picking another camera stops it, through the same
+fade, and goes to that camera; `Esc` goes back to the camera you started from. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
 

@@ -184,12 +184,9 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .combo-icon svg { width: 16px; height: 16px; }
 .combo-icon[aria-pressed="true"] svg { stroke: #f2b100; }
 .combo-icon[aria-pressed="true"] svg circle, .combo-icon[aria-pressed="true"] svg path:last-child { fill: #f2b100; }
-/* Weather on: a filled white cloud (it stays distinct on the blue of an open panel's button).
-   Walk: a solid figure, dark grey when off and yellow while walking. */
+/* Weather on: a filled white cloud (it stays distinct on the blue of an open panel's button). */
 #weatherQuick[aria-pressed="true"] svg { stroke: #d6e9fb; }
 #weatherQuick[aria-pressed="true"] svg path { fill: #f3f8fd; }
-#walkQuick svg { color: #7b828c; stroke: #7b828c; }
-#walkQuick[aria-pressed="true"] svg { color: #f2b100; stroke: #f2b100; }
 .combo-icon:disabled { opacity: 0.45; cursor: default; }
 .combo-icon:disabled:hover { background: transparent; }
 .sun-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 12px; }
@@ -265,7 +262,6 @@ body.walking .walk-frame { display: block; }
 .sun-state.cloud .dot { background: #a3acb8; box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.3); }
 .sun-state.shade .dot { background: #64748b; }
 #walkSpeedOut.running { color: var(--accent); font-weight: 600; }
-#btnWalk:disabled { opacity: 0.45; cursor: default; }
 .notices { position: absolute; top: 60px; left: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .notice { background: var(--surface); backdrop-filter: blur(12px); border: 1px solid var(--border); border-left: 3px solid #d97706; border-radius: 8px; padding: 8px 30px 8px 10px; box-shadow: var(--shadow); font-size: 12.5px; position: relative; }
 .notice.error { border-left-color: #dc2626; }
