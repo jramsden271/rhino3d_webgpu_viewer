@@ -141,7 +141,8 @@ use the same noise for their larger-scale variation, so it also wraps evenly ove
 embankments.
 
 The **Magic ✨** item in the render mode menu turns magic materials on and off, natural variation
-included. When off, everything renders with its plain material colour.
+included. When off, everything renders with its plain material colour. Clay view shows only the
+magic water, and leaves everything else in clay.
 
 The colour in the dialog is the magic material's **base colour**: vegetation varies around
 it from object to object, and grass, road, paving and ground across the surface. Pick any

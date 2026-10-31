@@ -2412,7 +2412,7 @@ const MODES = [[0, 'Shaded', 'Shaded: object / layer colours'], [2, 'Clay', 'Cla
 const RENDER_TOGGLES = [
   { id: 'showEdges', label: 'Edges', hint: 'E' },
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
-  { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view). Off: plain material colours only.' },
+  { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];
@@ -2433,7 +2433,6 @@ function syncModeMenu() {
   const [, name, title] = MODES.find(([id]) => id === state.mode);
   modeList?.setActive(String(state.mode));
   for (const { id } of RENDER_TOGGLES) modeList?.setChecked(id, !!state[id]);
-  modeList?.item('specials').classList.toggle('inactive', state.mode !== 1);
   $('modeName').textContent = name;
   $('btnMode').title = `${title} (M changes it)`;
 }

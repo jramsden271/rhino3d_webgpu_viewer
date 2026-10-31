@@ -81,7 +81,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 .choice-list button { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 0; background: transparent; color: inherit; font: inherit; padding: 6px 8px; border-radius: 7px; cursor: pointer; text-align: left; }
 .choice-list button:hover { background: var(--hover); }
-.choice-list button.inactive { opacity: 0.6; }
 .choice-list button[role="menuitemradio"][aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .choice-list button[role="menuitemcheckbox"] .label { flex: 1; }
 .choice-list .box { flex: none; position: relative; width: 14px; height: 14px; margin-right: -8px; border: 1px solid var(--muted); border-radius: 3px; }

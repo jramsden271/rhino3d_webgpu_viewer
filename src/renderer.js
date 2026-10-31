@@ -1228,7 +1228,7 @@ class Renderer {
 
   // Resolve each batch's colour and material from the per-layer settings, then upload. They
   // apply only to batches whose colour or material comes from that layer (see resolveLook in
-  // extract.js), as in Rhino. specialsOn: the toolbar's Magic button.
+  // extract.js), as in Rhino. specialsOn: the render mode menu's Magic item.
   // layerMaterial(layerIndex): material properties set in the viewer ({ rgb?, alpha, gloss }) or null.
   // layerColour(layerIndex): display colour set in the viewer, or null.
   // layerSpecial(layerIndex): the layer's magic material (materials.js id, 0 = none).
