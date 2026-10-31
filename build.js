@@ -1,5 +1,6 @@
-// Builds dist/index.html: one self-contained file with the viewer, rhino3dm.js and its
-// WebAssembly binary inlined. Run once (or after editing src/):  node build.js
+// Builds one self-contained file with the viewer, rhino3dm.js and its WebAssembly binary inlined.
+//   node build.js             dist-dev/index.html, for development (git-ignored)
+//   node build.js --release   dist/index.html, the live site: only when releasing on main
 // Downloads rhino3dm from the npm registry the first time only; afterwards it works offline.
 
 const fs = require('fs');
@@ -9,7 +10,7 @@ const { execFileSync } = require('child_process');
 const RHINO3DM_VERSION = '8.35.0';
 const root = __dirname;
 const vendor = path.join(root, 'vendor', 'package');
-const out = path.join(root, 'dist', 'index.html');
+const out = path.join(root, process.argv.includes('--release') ? 'dist' : 'dist-dev', 'index.html');
 
 async function ensureRhino3dm() {
   const pkg = path.join(vendor, 'package.json');

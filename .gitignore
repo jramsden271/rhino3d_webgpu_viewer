@@ -3,6 +3,9 @@ samples/
 *.3dm
 *.3dmbak
 
+# Development builds (dist/ is the live site, and is committed)
+dist-dev/
+
 # rhino3dm, downloaded by build.js on first build
 vendor/
 node_modules/

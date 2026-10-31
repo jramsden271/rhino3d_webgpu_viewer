@@ -490,16 +490,24 @@ The server is only for development; the built viewer does not need it.
 
 - http://localhost:8123/src/index.html runs the sources unbuilt, so a reload shows an edit straight
   away. It needs `vendor/`, so run `node build.js` once first.
-- http://localhost:8123/dist/index.html is the built viewer. Rebuild to see an edit.
+- http://localhost:8123/dist-dev/index.html is the built viewer. Rebuild to see an edit.
 - Adding `?model=/samples/x.3dm` to either opens a model straight away. No models come with the
   repository: create a `samples/` folder and put your own there (it and `*.3dm` files are git-ignored).
 
 ### Making a change
 
-Edit `src/`, then run `node build.js`, which regenerates `dist/index.html`. That file is
-what people use and it is committed, so commit it with the change to the sources.
+`main` is the live site, so work on the `develop` branch. Edit `src/`, then run `node build.js`,
+which writes `dist-dev/index.html` (git-ignored). Commit only the sources.
 
 To update rhino3dm, change `RHINO3DM_VERSION` in `build.js` and rebuild.
+
+### Releasing
+
+`dist/index.html` is what people use. It is committed, and changes only in a release:
+
+1. Merge `develop` into `main`.
+2. On `main`, run `node build.js --release`, which writes `dist/index.html`.
+3. Commit that file and push `main`. Cloudflare Pages then deploys it.
 
 ### Hosting
 
@@ -523,8 +531,9 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 ## Layout
 
 ```
-dist/index.html          the viewer (the only file anyone needs)
-build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist/
+dist/index.html          the released viewer (the only file anyone needs)
+dist-dev/index.html      development build (git-ignored)
+build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist-dev/, or dist/ with --release
 src/index.html, style.css  page and UI
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
