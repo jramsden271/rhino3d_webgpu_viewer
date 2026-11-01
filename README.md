@@ -73,7 +73,7 @@ no choosing: after the same fade, you start walking where you are. Once walking,
 camera follows the
 ground, climbing slopes and anything up to 1 m high (steps, kerbs, low walls); anything between
 1 m and head height blocks the way, and you slide along it. Over a drop you pause for a moment
-(so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings the view back to the horizontal, first jerking it down unless it already points 20° or more below. A fall with nothing
+(so small gaps between floors in a model don't trip you up) and then fall; landing after a real fall brings the view back to the horizontal, first jerking it down unless it already points 20° or more below. The view bobs gently as you walk or run on the ground. A fall with nothing
 below returns you to where you last stood, with the controls locked for a second. Only what is
 shown counts: hidden objects and layers are walked through, and so is vegetation (layers with
 the Vegetation magic material). The mouse wheel zooms by narrowing or widening the field of
@@ -87,7 +87,7 @@ Starting a walk opens the **Walk panel**. Closing it does not stop walking; pick
 camera list again to bring it back. Its **Speed** slider sets the walking speed, 0.5 to 15 m/s
 (1.4 m/s to start with; Shift runs at three times it), and turns collision
 detection off for walking through walls in demonstrations (you still follow the ground and
-climb steps). **Fly** turns gravity off: you hover wherever `E` and `Q` leave you, stay level
+climb steps). **Fly** turns gravity off, lifting you about 5 m after a quick crouch if you are standing: you hover wherever `E` and `Q` leave you, stay level
 when you walk off an edge, and land when the ground rises to meet you (`Space` does nothing
 while flying). Whether you are standing in sunlight shows in the
 [Thermal comfort](#thermal-comfort) panel. The settings are remembered in this browser, and the panel's **?** button lists the controls. Walking is not recorded in the undo history. Picking another camera stops it, through the same
@@ -391,8 +391,9 @@ here even though you can walk through them; glass counts as opaque. It reads:
     figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
     gives the same values on both) so the panel and the picture agree.
 
-The value, its category and the wind factor show first; **Inputs** opens to show the air
-temperature, humidity, wind, sun and radiant temperature that went into it.
+The value and its category show first; **Details** opens to show the wind factor, the simulated
+clouds option, and the air temperature, humidity, wind, sun and radiant temperature that went
+into it.
 
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.

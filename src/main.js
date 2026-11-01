@@ -20,9 +20,9 @@ const state = {
   weatherPanel: false,
   weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
-  // inputs: the Inputs section is open.
+  // details: the Details section is open.
   // clouds: count the simulated cloud over the camera, rather than the hour's average sun.
-  comfort: { panel: false, inputs: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5, clouds: prefs.comfortClouds === true },
+  comfort: { panel: false, details: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5, clouds: prefs.comfortClouds === true },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -2222,7 +2222,7 @@ function showWalkHelp() {
   Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>5</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
-    <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
+    <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off, lifting you a few metres if you are standing: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
 }
 
 function syncWalkPanel() {
@@ -2239,7 +2239,7 @@ function bindWalkPanel() {
   const S = walker.settings, changed = () => { syncWalkPanel(); savePrefs(); };
   $('walkSpeed').addEventListener('input', () => { S.speed = +$('walkSpeed').value; changed(); });
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
-  $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; changed(); canvas.focus(); });
+  $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; if (S.fly) walker.lift(); changed(); canvas.focus(); });
   $('walkHelp').addEventListener('click', showWalkHelp);
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   syncWalkPanel();
@@ -2351,9 +2351,9 @@ function syncComfortPanel() {
   $('comfortWind').value = C.wind;
   $('comfortWindOut').value = f(C.wind, 2);
   $('comfortWhen').value = `${$('sunDateOut').textContent} · ${fmtHour(state.sun.hour)}`;
-  $('comfortToggle').setAttribute('aria-expanded', String(C.inputs));
-  $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.inputs);
-  $('comfortInputs').hidden = !C.inputs;
+  $('comfortToggle').setAttribute('aria-expanded', String(C.details));
+  $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
+  $('comfortDetails').hidden = !C.details;
   const r = comfortNow();
   const [sunCls, sunHtml] = sunState(r);
   $('comfortSun').className = 'sun-state ' + sunCls;
@@ -2410,7 +2410,7 @@ function bindComfortPanel() {
   document.querySelector('[data-act="comfort"]').addEventListener('click', toggleComfortPanel);
   $('comfortClose').addEventListener('click', () => state.comfort.panel && toggleComfortPanel());
   $('comfortHelp').addEventListener('click', showComfortHelp);
-  $('comfortToggle').addEventListener('click', () => { state.comfort.inputs = !state.comfort.inputs; syncComfortPanel(); });
+  $('comfortToggle').addEventListener('click', () => { state.comfort.details = !state.comfort.details; syncComfortPanel(); });
   $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
   $('comfortClouds').checked = state.comfort.clouds;
   $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });

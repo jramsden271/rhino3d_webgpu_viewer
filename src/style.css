@@ -83,9 +83,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list button:hover { background: var(--hover); }
 .choice-list button[role="menuitemradio"][aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .choice-list button[role="menuitemcheckbox"] .label { flex: 1; }
-.choice-list .box { flex: none; position: relative; width: 14px; height: 14px; margin-right: -8px; border: 1px solid var(--muted); border-radius: 3px; }
-.choice-list button[aria-checked="true"] .box { background: var(--accent); border-color: var(--accent); }
-.choice-list button[aria-checked="true"] .box::after { content: ""; position: absolute; inset: 0; background: var(--surface-solid); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.7l4.5-5.4' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center / 100% no-repeat; }
+.choice-list .box { margin-right: -8px; }
 .choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
@@ -106,7 +104,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .layer-row[hidden] { display: none; }
 .layer-row.off .layer-name, .layer-row.inherited-off .layer-name { color: var(--muted); }
 .layer-row.inherited-off { opacity: 0.6; }
-.layer-row input { margin: 0; accent-color: var(--accent); }
 .caret { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--muted); flex: none; }
 .caret svg { width: 12px; height: 12px; transition: transform 0.12s; }
 .caret.collapsed svg { transform: rotate(-90deg); }
@@ -118,7 +115,6 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .lights-list { padding: 4px 0; }
 .light-row { display: flex; align-items: center; gap: 7px; padding: 4px 12px; font-size: 12.5px; }
 .light-row:hover { background: var(--hover); }
-.light-row input { margin: 0; accent-color: var(--accent); }
 .light-row .swatch { border-radius: 50%; }
 .light-row .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .light-row .light-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -194,6 +190,8 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .sun-read b { color: var(--text); font-weight: 600; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field[hidden] { display: none; }
+.field-details { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.field-details[hidden] { display: none; }
 .field-label { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .field-label output { font-weight: 400; font-variant-numeric: tabular-nums; }
 .field input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
@@ -204,8 +202,11 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .grid2 label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
 .grid2 input { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; width: 100%; font-variant-numeric: tabular-nums; }
 .grid2 input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
-.check input { accent-color: var(--accent); margin: 0; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer; }
+/* Every checkbox looks the same: real ones, and the .box drawn in menu items. */
+input[type="checkbox"]:not(.switch input), .box { appearance: none; flex: none; position: relative; width: 14px; height: 14px; margin: 0; border: 1px solid var(--muted); border-radius: 3px; cursor: pointer; }
+input[type="checkbox"]:not(.switch input):checked, [aria-checked="true"] > .box { background: var(--accent); border-color: var(--accent); }
+input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] > .box::after { content: ""; position: absolute; inset: 0; background: var(--surface-solid); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.7l4.5-5.4' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center / 100% no-repeat; }
 .sun-body .fine { font-size: 11.5px; color: var(--muted); }
 .switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
