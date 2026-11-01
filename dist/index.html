@@ -96,20 +96,28 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 
-.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: 300px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: min(var(--side-width, 300px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side.at-edge .panel, .side.at-edge .panel * { cursor: ew-resize; }
+.side.at-edge .panel::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); z-index: 1; }
 .panel { position: relative; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; }
 .panel[hidden] { display: none; }
-.layers-panel { flex: 1 1 auto; min-height: 140px; }
+.layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
 .sun-panel { flex: none; max-height: 100%; overflow-y: auto; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 12px; }
 .panel-actions .x { margin: -2px -6px -2px -4px; }
-.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; }
-.panel-foot { padding: 8px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); }
+.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; padding: 2px 4px; }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
 .layer-row:hover { background: var(--hover); }
 .layer-row[hidden] { display: none; }
+.layer-row.selected, .layer-row.selected:hover { background: var(--accent-soft); }
+.toolbar .btn[hidden] { display: none; }
+.panel-filter { padding: 8px 12px 4px; }
+.panel-filter input { width: 100%; font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.block-tag { background: none; cursor: pointer; font-family: inherit; }
+.block-tag:hover, .block-tag:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
+.block-tag.set { color: var(--accent); border-color: var(--accent); }
 .layer-row.off .layer-name, .layer-row.inherited-off .layer-name { color: var(--muted); }
 .layer-row.inherited-off { opacity: 0.6; }
 .caret { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--muted); flex: none; }
@@ -127,13 +135,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .light-row .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .light-row .light-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .light-row.off .light-name { color: var(--muted); }
-.light-row .x { font-size: 15px; padding: 0 4px; }
+.light-row .x { font-size: 15px; padding: 0 4px 0.24em; }
 .lights-group { padding: 8px 12px 3px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .lights-empty { padding: 8px 12px; font-size: 12px; color: var(--muted); }
 .layer-row.flash { animation: flash 1.2s ease-out; }
 @keyframes flash { 0%, 30% { background: var(--accent-soft); } 100% { background: transparent; } }
 
-.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
+/* The × glyph sits below the middle of its line, by about 0.12em: more padding below lifts it. */
+.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: calc(2px - 0.12em) 4px calc(2px + 0.12em); border-radius: 5px; }
 .x:hover { background: var(--hover); color: var(--text); }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
@@ -153,6 +162,11 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .pop-body .fine:empty { display: none; }
 .field-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12.5px; }
 .field-row[hidden] { display: none; }
+.stack-row { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.stack-row select { font: inherit; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.popover-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pop-body .stretch { justify-content: center; }
+.pop-body .fine .link { font-size: inherit; text-align: left; }
 .field-row select { font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
 .field-row input[type="color"] { width: 100%; height: 26px; border: 1px solid var(--border); border-radius: 6px; padding: 1px; background: var(--surface-solid); cursor: pointer; }
 .range { display: flex; align-items: center; gap: 8px; }
@@ -240,6 +254,22 @@ input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] 
 .btn.primary:disabled { filter: none; }
 .inspect-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 2px; }
 .inspect-actions .fine { font-size: 11px; color: var(--muted); }
+.compass { left: 14px; bottom: 14px; width: 68px; height: 68px; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.compass.dragging, .compass.dragging .compass-point { cursor: grabbing; }
+.compass svg { display: block; width: 100%; height: 100%; }
+.compass-tick { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+.compass-arrow { fill: var(--accent); stroke: none; }
+.compass-point { cursor: pointer; }
+.compass-point circle { fill: transparent; stroke: none; }
+.compass-point:hover circle { fill: var(--hover); }
+.compass-point text { fill: var(--text); stroke: none; font-size: 13px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+@media (max-width: 680px) { .compass { bottom: 64px; } } /* clear of the toolbar */
+.compass-overlay { position: fixed; left: 50%; top: 50%; width: min(60vmin, 480px); height: min(60vmin, 480px); transform: translate(-50%, -50%); opacity: 0.5; pointer-events: none; }
+.compass-overlay svg { display: block; width: 100%; height: 100%; }
+.compass-overlay-face { fill: var(--surface); stroke: var(--muted); stroke-width: 0.4; }
+.compass-overlay-centre { fill: var(--surface-solid); stroke: var(--text); stroke-width: 0.5; }
+.compass-overlay .compass-tick { stroke-width: 0.8; }
+.compass-overlay text { fill: var(--text); stroke: none; font-size: 6px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .unhide { left: 50%; bottom: 66px; transform: translateX(-50%); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; color: var(--text); }
 .unhide:hover { color: var(--accent); }
 .unhide[hidden] { display: none; }
@@ -387,6 +417,10 @@ body.walking .walk-frame { display: block; }
 .sun-weather dt { color: var(--muted); }
 .sun-weather dd { margin: 0; }
 .sun-weather b { font-weight: 600; }
+.wx-now { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-now > span { display: inline-flex; align-items: center; gap: 4px; }
+.wx-now svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; }
+.wx-now .needle { fill: var(--accent); stroke: none; }
 #sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 /* North angle in the file panel */
 .north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
@@ -448,21 +482,68 @@ body.walking .walk-frame { display: block; }
     <button class="btn toggle camera-btn mode-btn" id="btnMode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10.2 5.9A6.4 6.4 0 0 0 5.9 10.2l3.3 1c.1-2 .4-3.7 1-5.3z" style="fill:currentColor;stroke:none"/></svg><span id="modeName">Rendered</span></button>
     <span class="sep"></span>
     <span class="btn-combo" id="sunCombo"><button class="combo-icon" id="sunQuick" aria-pressed="false" title="Sunlight on/off"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><button class="btn toggle" data-act="sun" title="Sun panel: sunlight and shadows (S)">Sun</button></span>
-    <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: the weather file's clouds, sunshine and sky light, with the sun on"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 .25 8.5z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather panel: the weather file at the Sun panel's date and time">Weather</button></span>
+    <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: the weather file's clouds and, with the sun on, its sunshine and sky light"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 .25 8.5z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather panel: the weather file at the Sun panel's date and time">Weather</button></span>
     <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
+    <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
+
+  <div id="compass" class="chrome compass" role="img" aria-label="Compass" title="Drag to rotate the view">
+    <svg viewBox="-34 -34 68 68" aria-hidden="true">
+      <g id="compassDial">
+        <path class="compass-arrow" d="M0-12 6.5 11 0 7-6.5 11Z"/>
+        <g class="compass-point" data-bearing="90">
+          <title>East: double-click to face east</title>
+          <circle cx="24" cy="0" r="9"/>
+          <path class="compass-tick" d="M26 0h4"/>
+        </g>
+        <g class="compass-point" data-bearing="180">
+          <title>South: double-click to face south</title>
+          <circle cx="0" cy="24" r="9"/>
+          <path class="compass-tick" d="M0 26v4"/>
+        </g>
+        <g class="compass-point" data-bearing="270">
+          <title>West: double-click to face west</title>
+          <circle cx="-24" cy="0" r="9"/>
+          <path class="compass-tick" d="M-26 0h-4"/>
+        </g>
+        <g id="compassN" class="compass-point" data-bearing="0">
+          <title>North: double-click to face north</title>
+          <circle cx="0" cy="-21" r="11"/>
+          <text x="0" y="-21">N</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <div id="compassOverlay" class="compass-overlay" aria-hidden="true" hidden>
+    <svg viewBox="-34 -34 68 68">
+      <circle class="compass-overlay-face" r="33"/>
+      <g id="compassOverlayDial">
+        <path class="compass-arrow" d="M0-12 6.5 11 0 7-6.5 11Z" transform="scale(0.6)"/>
+        <path class="compass-tick" d="M26 0h4M0 26v4M-26 0h-4"/>
+        <text id="compassOverlayN" x="0" y="-27">N</text>
+      </g>
+      <circle class="compass-overlay-centre" r="1.2"/>
+    </svg>
+  </div>
 
   <div class="side">
   <aside id="layersPanel" class="chrome panel layers-panel" hidden>
     <div class="panel-head">
       <span>Layers</span>
-      <span class="panel-actions"><button class="link" data-layers="all">Show all</button><button class="link" data-layers="none">Hide all</button><button class="x" id="layersClose" aria-label="Close layers" title="Close (L)">×</button></span>
+      <span class="panel-actions"><button class="link" data-layers="all">Show all</button><button class="link" data-layers="none">Hide all</button><button class="x q" id="layersHelp" aria-label="About layers" title="About layers">?</button><button class="x" id="layersClose" aria-label="Close layers" title="Close (L)">×</button></span>
     </div>
     <div id="layerTree" class="layer-tree" role="tree"></div>
-    <div class="panel-foot">Shift-click a checkbox to isolate a layer · right-click a layer for more</div>
+  </aside>
+  <aside id="blocksPanel" class="chrome panel layers-panel" hidden>
+    <div class="panel-head">
+      <span>Block definitions</span>
+      <span class="panel-actions"><button class="link" data-blocks="all">Show all</button><button class="link" data-blocks="none">Hide all</button><button class="x q" id="blocksHelp" aria-label="About block definitions" title="About block definitions">?</button><button class="x" id="blocksClose" aria-label="Close block definitions" title="Close (K)">×</button></span>
+    </div>
+    <div class="panel-filter"><input type="search" id="blockFilter" placeholder="Filter blocks" aria-label="Filter blocks"></div>
+    <div id="blockList" class="layer-tree"></div>
   </aside>
 
   <section id="sunPanel" class="chrome panel sun-panel" hidden aria-label="Sun">
@@ -489,16 +570,19 @@ body.walking .walk-frame { display: block; }
   <section id="weatherPanel" class="chrome panel sun-panel" hidden aria-label="Weather">
     <div class="panel-head">
       <span>Weather</span>
-      <span class="panel-actions"><label class="switch" title="Weather on/off: the weather file's clouds, sunshine and sky light, with the sun on"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close weather panel" title="Close">×</button></span>
+      <span class="panel-actions"><label class="switch" title="Weather on/off: the weather file's clouds and, with the sun on, its sunshine and sky light"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close weather panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
-      <div class="field">
-        <div class="field-label"><span id="weatherSrc"></span><output id="weatherWhen" title="Date and time from the Sun panel"></output></div>
-        <div id="weatherBody" class="sun-weather"></div>
-      </div>
-      <div class="field" id="cloudSpeedField">
-        <div class="field-label"><span>Cloud speed</span><output id="cloudSpeedOut"></output></div>
-        <input type="range" id="cloudSpeed" min="0" max="100" step="1" title="The clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+      <div id="weatherBody" class="sun-weather"></div>
+      <div class="field" id="weatherMoreField">
+        <div class="field-label"><button class="field-toggle" id="weatherToggle" aria-controls="weatherDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>More</button></div>
+        <div id="weatherDetails" class="field-details" hidden>
+          <div id="weatherMore" class="sun-weather"></div>
+          <div class="field">
+            <div class="field-label"><span>Cloud speed</span><output id="cloudSpeedOut"></output></div>
+            <input type="range" id="cloudSpeed" min="0" max="100" step="1" title="The clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -564,6 +648,22 @@ body.walking .walk-frame { display: block; }
     </div>
   </div>
 
+  <div id="blockDialog" class="chrome popover" hidden role="dialog" aria-labelledby="blockTitle">
+    <div class="panel-head"><span id="blockTitle" class="popover-title"></span><button class="x" id="blockClose" aria-label="Close">×</button></div>
+    <div class="pop-body">
+      <label class="stack-row">Magic block <select id="blockMagic"></select></label>
+      <div class="fine" id="blockMagicHint"></div>
+      <label class="stack-row">Sub-elements <select id="blockSub"></select></label>
+      <div class="fine" id="blockHint"></div>
+      <button class="btn small stretch" id="blockApplySubs"></button>
+      <div class="fine" id="blockSubsHint"></div>
+      <div class="fine" id="blockLayers"></div>
+      <div class="fine" id="blockParents"></div>
+      <div class="fine">Applies to every instance of the block. Remembered in this browser; to save a .3dm copy, click the file name (top left).</div>
+      <div class="pop-actions"><span></span><button class="btn primary" id="blockDone">Done</button></div>
+    </div>
+  </div>
+
   <div id="inspectDot" class="inspect-dot" aria-hidden="true"></div>
   <div id="inspect" class="chrome inspect" hidden role="dialog" aria-labelledby="insTitle">
     <div class="inspect-head"><span class="swatch" id="insSwatch"></span><b id="insTitle"></b><button class="x" id="insClose" aria-label="Close">×</button></div>
@@ -626,20 +726,23 @@ body.walking .walk-frame { display: block; }
   <!-- The Controls dialog's content (toolbar ? button or the ? key) -->
   <template id="helpBody">
       <dl class="help-list">
-        <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
+        <dt>Orbit</dt><dd>Perspective and most named views: right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
+        <dt>Rotate</dt><dd>Top: right-drag around the middle of the window, as if it were a dial (a large compass marks the middle while you drag) · Elevation: right-drag left or right · both: drag the compass</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
-        <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>5</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
+        <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>4</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
         <dt>Messages</dt><dd>The bell (top left) keeps the messages about this model, until you dismiss them or open another model</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
+        <dt>Blocks</dt><dd>The Block definitions panel lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
+        <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>5</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>
 
@@ -795,6 +898,107 @@ function matchLayer(layers, i) {
 
 </script>
 <script>
+// Magic blocks: a library of geometry, hard coded here, that can replace every instance of a block
+// definition (Block definitions panel). Nothing in a block definition changes, and the original
+// geometry comes back when the setting is cleared. To add one, paste the entry printed by
+// tools/make-magic-block.js into MAGIC_BLOCKS.
+//
+// Each entry:
+//   id, name          id is what is remembered with the model, so it must not change
+//   fit               how an instance is sized from its source block. 'height': uniformly, to the
+//                     height of the source's box
+//   ground            the source's box reaches down to the ground below its centre, if it stops short
+//                     of it (trees need ground to grow from; see magicPlacement)
+//   randomRotation    each instance also gets its own fixed turn about the vertical
+//   parts             meshes in metres, with the anchor at (0, 0, 0), on a key of MAGIC_LAYERS
+//
+// A block's setting (state.blockMagic in main.js) is a record, { id }, so that per-block settings
+// can join it. Geometry that varies by date would go in further parts, or further entries.
+
+const MAGIC_LAYERS = {
+  foliage: { name: 'Foliage', rgb: [71 / 255, 142 / 255, 41 / 255] }, // the name makes it Vegetation (materials.js)
+  trunks: { name: 'Trunks', rgb: [97 / 255, 85 / 255, 46 / 255] }, // must match no magic material: "tree" would
+};
+const MAGIC_PARENT_LAYER = 'Magic blocks';
+
+const MAGIC_BLOCKS = [
+  { id: 'deciduous', name: 'Deciduous tree', fit: 'height', ground: true, randomRotation: true, parts: [
+    { layer: 'foliage',
+      pos: [-1.622,2.625,5.9,1.261,2.04,5.9,-1.236,-2,5.9,1.326,-2.145,5.9,0,-2.152,8.537,0,1.814,8.537,0,-1.249,4.014,0,1.231,4.041,2.3,0,4.575,2.784,0,7.53,-1.991,0,4.752,-3.186,0,7.53,-2.062,1.275,6.714,-1.533,0.948,8.408,-1.088,2.847,7.45,0.893,2.338,7.393,0,3.062,5.9,0.728,1.905,4.801,-0.754,1.975,4.761,-1.17,0.723,4.133,-1.913,1.182,5.218,-2.442,0,5.9,1.549,0.957,8.408,2.385,1.474,6.841,-1.896,-1.171,8.408,0,0,9,-1.897,-1.172,5.224,-2.354,-1.455,6.829,0,0,3.706,-1.17,-0.723,4.133,1.92,1.187,5.215,1.19,0.736,4.103,2.292,-1.417,6.805,1.988,-1.229,8.408,0.911,-2.384,7.423,-0.809,-2.117,7.252,0,-2.359,5.9,-0.724,-1.895,4.807,0.775,-2.028,4.73,1.355,-0.838,3.861,2.427,-1.5,5.121,2.565,0,5.9,-1.891,1.913,6.352,-1.747,2.045,7.206,-1.5,2.982,6.706,-2.351,0.538,8.051,-1.968,1.217,7.637,-2.443,0.736,7.17,-0.595,2.571,8.076,-1.409,1.948,8.033,-0.855,1.427,8.574,-0.584,3.418,6.715,-0.945,3.325,5.9,0.548,2.369,8.076,0,2.936,7.53,0.698,2.458,5.9,0.469,2.745,6.684,1.098,2.182,6.579,-0.452,2.648,5.238,-1.19,2.366,5.245,1.028,2.044,5.325,0.406,2.378,5.286,-0.378,1.633,4.358,0,2.04,4.723,0.377,1.627,4.363,-1.419,1.662,4.941,-1.757,1.778,5.52,-0.608,1.016,4.015,-0.999,1.381,4.391,-2.021,0.609,4.951,-1.613,0.997,4.614,-1.643,0.376,4.385,-2.057,1.271,5.9,-2.259,0,5.301,-2.239,0.619,5.543,-2.358,0.652,6.316,-2.808,0,6.724,1.613,1.889,7.106,1.751,1.772,6.319,0.788,1.316,8.574,1.274,1.761,8.03,2.889,0.87,7.245,2.273,1.405,7.722,2.426,0.555,8.051,-0.776,0.479,8.8,0,0.809,8.843,-2.962,-0.678,8.051,-1.788,0,8.537,0,-1.088,8.882,-0.91,-0.562,8.848,-1.003,-1.674,8.574,-2.61,-0.721,6.361,-3.227,-0.972,7.245,-2.02,-0.609,4.952,-2.257,-0.624,5.54,-1.695,-1.715,6.305,-2.061,-1.273,5.9,-1.629,-1.649,5.548,-1.23,0,4.042,-1.643,-0.376,4.385,0,0.64,3.796,-0.615,0.38,3.822,-0.609,-1.017,4.012,-0.616,-0.381,3.821,0,-0.646,3.778,0.998,1.379,4.393,0.61,1.018,4.01,1.645,1.664,5.545,1.38,1.616,4.968,1.754,0.401,4.282,1.635,1.011,4.596,2.113,0.637,4.908,1.86,-1.883,6.345,1.799,-2.106,7.219,1.143,-2.272,6.607,2.443,-0.559,8.051,2.361,-1.459,7.722,2.553,-0.769,7.227,0.563,-2.433,8.076,1.6,-2.212,8.033,1.108,-1.851,8.574,0.401,-2.35,6.571,0.658,-2.318,5.9,-0.526,-2.27,8.076,0,-2.325,7.385,-0.641,-2.257,5.9,-0.389,-2.277,6.55,-1.04,-2.068,6.544,0.387,-2.266,5.315,1.091,-2.17,5.29,-1.016,-2.02,5.332,-0.381,-2.231,5.325,0.392,-1.692,4.302,0,-2.014,4.738,-0.378,-1.632,4.359,1.666,-1.95,4.828,1.88,-1.902,5.495,0.647,-1.08,3.895,1.15,-1.59,4.166,2.599,-0.783,4.807,2.125,-1.313,4.419,1.995,-0.456,4.152,2.286,-1.413,5.9,2.512,0,5.234,2.61,-0.721,5.491,2.504,-0.692,6.342,2.726,0,6.7,1.003,-0.62,8.848,1.813,0,8.537,0.79,0.488,8.848,-1.577,-1.847,7.08,-1.386,-1.915,8.033,-2.573,-1.59,7.722,-0.996,-1.376,4.396,-1.376,-1.611,4.971,-1.611,-0.995,4.616,1.321,0,3.904,0.637,-0.394,3.748,0.622,0.384,3.799,2.642,0.73,6.366,2.339,0.646,5.527,2.123,1.312,5.9],
+      idx: [0,42,44,12,43,42,14,44,43,42,43,44,11,45,47,13,46,45,12,47,46,45,46,47,5,48,50,14,49,48,13,50,49,48,49,50,12,46,43,13,49,46,14,43,49,46,49,43,0,44,52,14,51,44,16,52,51,44,51,52,5,53,48,15,54,53,14,48,54,53,54,48,1,55,57,16,56,55,15,57,56,55,56,57,14,54,51,15,56,54,16,51,56,54,56,51,0,52,59,16,58,52,18,59,58,52,58,59,1,60,55,17,61,60,16,55,61,60,61,55,7,62,64,18,63,62,17,64,63,62,63,64,16,61,58,17,63,61,18,58,63,61,63,58,0,59,66,18,65,59,20,66,65,59,65,66,7,67,62,19,68,67,18,62,68,67,68,62,10,69,71,20,70,69,19,71,70,69,70,71,18,68,65,19,70,68,20,65,70,68,70,65,0,66,42,20,72,66,12,42,72,66,72,42,10,73,69,21,74,73,20,69,74,73,74,69,11,47,76,12,75,47,21,76,75,47,75,76,20,74,72,21,75,74,12,72,75,74,75,72,1,57,78,15,77,57,23,78,77,57,77,78,5,79,53,22,80,79,15,53,80,79,80,53,9,81,83,23,82,81,22,83,82,81,82,83,15,80,77,22,82,80,23,77,82,80,82,77,5,50,85,13,84,50,25,85,84,50,84,85,11,86,45,24,87,86,13,45,87,86,87,45,4,88,90,25,89,88,24,90,89,88,89,90,13,87,84,24,89,87,25,84,89,87,89,84,11,76,92,21,91,76,27,92,91,76,91,92,10,93,73,26,94,93,21,73,94,93,94,73,2,95,97,27,96,95,26,97,96,95,96,97,21,94,91,26,96,94,27,91,96,94,96,91,10,71,99,19,98,71,29,99,98,71,98,99,7,100,67,28,101,100,19,67,101,100,101,67,6,102,104,29,103,102,28,104,103,102,103,104,19,101,98,28,103,101,29,98,103,101,103,98,7,64,106,17,105,64,31,106,105,64,105,106,1,107,60,30,108,107,17,60,108,107,108,60,8,109,111,31,110,109,30,111,110,109,110,111,17,108,105,30,110,108,31,105,110,108,110,105,3,112,114,32,113,112,34,114,113,112,113,114,9,115,117,33,116,115,32,117,116,115,116,117,4,118,120,34,119,118,33,120,119,118,119,120,32,116,113,33,119,116,34,113,119,116,119,113,3,114,122,34,121,114,36,122,121,114,121,122,4,123,118,35,124,123,34,118,124,123,124,118,2,125,127,36,126,125,35,127,126,125,126,127,34,124,121,35,126,124,36,121,126,124,126,121,3,122,129,36,128,122,38,129,128,122,128,129,2,130,125,37,131,130,36,125,131,130,131,125,6,132,134,38,133,132,37,134,133,132,133,134,36,131,128,37,133,131,38,128,133,131,133,128,3,129,136,38,135,129,40,136,135,129,135,136,6,137,132,39,138,137,38,132,138,137,138,132,8,139,141,40,140,139,39,141,140,139,140,141,38,138,135,39,140,138,40,135,140,138,140,135,3,136,112,40,142,136,32,112,142,136,142,112,8,143,139,41,144,143,40,139,144,143,144,139,9,117,146,32,145,117,41,146,145,117,145,146,40,144,142,41,145,144,32,142,145,144,145,142,4,120,88,33,147,120,25,88,147,120,147,88,9,83,115,22,148,83,33,115,148,83,148,115,5,85,79,25,149,85,22,79,149,85,149,79,33,148,147,22,149,148,25,147,149,148,149,147,2,127,95,35,150,127,27,95,150,127,150,95,4,90,123,24,151,90,35,123,151,90,151,123,11,92,86,27,152,92,24,86,152,92,152,86,35,151,150,24,152,151,27,150,152,151,152,150,6,134,102,37,153,134,29,102,153,134,153,102,2,97,130,26,154,97,37,130,154,97,154,130,10,99,93,29,155,99,26,93,155,99,155,93,37,154,153,26,155,154,29,153,155,154,155,153,8,141,109,39,156,141,31,109,156,141,156,109,6,104,137,28,157,104,39,137,157,104,157,137,7,106,100,31,158,106,28,100,158,106,158,100,39,157,156,28,158,157,31,156,158,157,158,156,9,146,81,41,159,146,23,81,159,146,159,81,8,111,143,30,160,111,41,143,160,111,160,143,1,78,107,23,161,78,30,107,161,78,161,107,41,160,159,30,161,160,23,159,161,160,161,159] },
+    { layer: 'trunks',
+      pos: [0.3,0,0,0.187,0.234,0,-0.067,0.292,0,-0.27,0.13,0,-0.27,-0.13,0,-0.067,-0.292,0,0.187,-0.234,0,0.23,0,1.3,0.155,0.156,1.298,-0.015,0.195,1.297,-0.15,0.087,1.299,-0.15,-0.087,1.301,-0.015,-0.195,1.303,0.155,-0.156,1.302,0.16,0.04,3,0.1,0.165,2.999,-0.036,0.196,2.999,-0.144,0.109,3,-0.144,-0.029,3,-0.036,-0.116,3.001,0.1,-0.085,3.001,0.01,0.02,5.4,-0.013,0.067,5.4,-0.063,0.078,5.4,-0.104,0.046,5.4,-0.104,-0.006,5.4,-0.063,-0.038,5.4,-0.013,-0.027,5.4,-0.028,0.096,2.3,-0.06,-0.017,2.378,0.028,-0.096,2.3,0.06,0.017,2.222,1.069,0.375,3.2,1.042,0.3,3.245,1.105,0.25,3.2,1.131,0.326,3.155,1.97,0.588,4.4,1.961,0.564,4.412,1.981,0.55,4.4,1.991,0.573,4.388,-0.095,0.031,2.62,-0.02,-0.063,2.695,0.095,-0.031,2.62,0.02,0.063,2.545,0.249,0.98,3.52,0.296,0.914,3.563,0.372,0.94,3.52,0.326,1.007,3.477,0.546,1.752,4.72,0.56,1.73,4.731,0.584,1.74,4.72,0.57,1.762,4.709,-0.056,-0.083,2.94,0.057,-0.038,3.013,0.056,0.083,2.94,-0.057,0.038,2.867,-0.829,0.48,3.84,-0.752,0.506,3.881,-0.757,0.588,3.84,-0.835,0.562,3.799,-1.453,0.955,5.04,-1.428,0.962,5.051,-1.431,0.988,5.04,-1.456,0.98,5.029,0.018,-0.098,3.26,0.063,0.012,3.336,-0.018,0.098,3.26,-0.063,-0.012,3.184,-1.038,-0.258,4.16,-1.003,-0.185,4.204,-1.062,-0.13,4.16,-1.097,-0.203,4.116,-1.905,-0.372,5.36,-1.893,-0.35,5.372,-1.912,-0.333,5.36,-1.924,-0.356,5.348,0.098,-0.019,3.58,0.011,0.056,3.662,-0.098,0.019,3.58,-0.011,-0.056,3.498,-0.182,-1.28,4.48,-0.237,-1.225,4.528,-0.309,-1.255,4.48,-0.254,-1.31,4.432,-0.427,-2.308,5.68,-0.444,-2.289,5.693,-0.466,-2.3,5.68,-0.449,-2.319,5.667,0.071,0.07,3.9,-0.047,0.048,3.974,-0.071,-0.07,3.9,0.047,-0.048,3.826,0.749,-0.664,4.8,0.669,-0.674,4.843,0.657,-0.755,4.8,0.738,-0.744,4.757,1.293,-1.276,6,1.267,-1.278,6.011,1.264,-1.304,6,1.29,-1.301,5.989],
+      idx: [0,1,8,0,8,7,1,2,9,1,9,8,2,3,10,2,10,9,3,4,11,3,11,10,4,5,12,4,12,11,5,6,13,5,13,12,6,0,7,6,7,13,7,8,15,7,15,14,8,9,16,8,16,15,9,10,17,9,17,16,10,11,18,10,18,17,11,12,19,11,19,18,12,13,20,12,20,19,13,7,14,13,14,20,14,15,22,14,22,21,15,16,23,15,23,22,16,17,24,16,24,23,17,18,25,17,25,24,18,19,26,18,26,25,19,20,27,19,27,26,20,14,21,20,21,27,21,22,23,21,23,24,21,24,25,21,25,26,21,26,27,28,29,33,28,33,32,29,30,34,29,34,33,30,31,35,30,35,34,31,28,32,31,32,35,32,33,37,32,37,36,33,34,38,33,38,37,34,35,39,34,39,38,35,32,36,35,36,39,36,37,38,36,38,39,40,41,45,40,45,44,41,42,46,41,46,45,42,43,47,42,47,46,43,40,44,43,44,47,44,45,49,44,49,48,45,46,50,45,50,49,46,47,51,46,51,50,47,44,48,47,48,51,48,49,50,48,50,51,52,53,57,52,57,56,53,54,58,53,58,57,54,55,59,54,59,58,55,52,56,55,56,59,56,57,61,56,61,60,57,58,62,57,62,61,58,59,63,58,63,62,59,56,60,59,60,63,60,61,62,60,62,63,64,65,69,64,69,68,65,66,70,65,70,69,66,67,71,66,71,70,67,64,68,67,68,71,68,69,73,68,73,72,69,70,74,69,74,73,70,71,75,70,75,74,71,68,72,71,72,75,72,73,74,72,74,75,76,77,81,76,81,80,77,78,82,77,82,81,78,79,83,78,83,82,79,76,80,79,80,83,80,81,85,80,85,84,81,82,86,81,86,85,82,83,87,82,87,86,83,80,84,83,84,87,84,85,86,84,86,87,88,89,93,88,93,92,89,90,94,89,94,93,90,91,95,90,95,94,91,88,92,91,92,95,92,93,97,92,97,96,93,94,98,93,98,97,94,95,99,94,99,98,95,92,96,95,96,99,96,97,98,96,98,99] },
+  ] },
+  { id: 'palm', name: 'Palm tree', fit: 'height', ground: true, randomRotation: true, parts: [
+    { layer: 'foliage',
+      pos: [0.308,0.078,9.9,0.45,0.056,10.412,0.644,0.027,10.905,0.89,-0.01,11.374,1.184,-0.055,11.815,1.522,-0.106,12.221,1.902,-0.163,12.587,2.318,-0.226,12.911,0.701,0.465,10.833,0.568,-0.409,10.833,0.98,0.607,11.248,0.793,-0.626,11.248,1.291,0.636,11.666,1.082,-0.747,11.666,1.629,0.536,12.086,1.435,-0.751,12.086,1.991,0.318,12.499,1.845,-0.65,12.499,2.394,0.121,12.862,2.288,-0.58,12.862,2.824,-0.105,13.184,2.765,-0.491,13.184,0.039,0.189,9.872,-0.131,0.314,10.424,-0.355,0.478,10.947,-0.628,0.679,11.431,-0.948,0.914,11.87,-1.308,1.178,12.258,-1.704,1.469,12.587,-2.129,1.781,12.854,-0.61,0.117,10.884,-0.087,0.829,10.884,-0.998,0.177,11.315,-0.26,1.182,11.315,-1.369,0.355,11.73,-0.541,1.483,11.73,-1.707,0.664,12.131,-0.937,1.713,12.131,-2.014,1.09,12.506,-1.435,1.879,12.506,-2.366,1.516,12.81,-1.947,2.087,12.81,-2.726,1.978,13.053,-2.496,2.292,13.053,0.172,-0.05,9.844,0.195,-0.335,10.416,0.222,-0.686,10.951,0.255,-1.098,11.441,0.292,-1.564,11.878,0.333,-2.079,12.257,0.377,-2.634,12.573,0.424,-3.223,12.82,0.663,-0.651,10.894,-0.218,-0.721,10.894,0.877,-1.057,11.329,-0.366,-1.156,11.329,0.991,-1.526,11.742,-0.403,-1.637,11.742,0.984,-2.053,12.133,-0.313,-2.156,12.133,0.868,-2.63,12.493,-0.108,-2.707,12.493,0.781,-3.237,12.776,0.074,-3.293,12.776,0.671,-3.871,12.994,0.282,-3.902,12.994,0.264,0.209,9.816,0.503,0.46,10.399,0.797,0.767,10.929,1.138,1.126,11.393,1.522,1.528,11.783,1.939,1.965,12.092,2.382,2.43,12.313,2.843,2.912,12.442,0.477,1.073,10.88,1.117,0.463,10.88,0.696,1.565,11.289,1.598,0.704,11.289,1.032,2.028,11.655,2.044,1.062,11.655,1.493,2.44,11.974,2.434,1.542,11.974,2.06,2.801,12.237,2.768,2.125,12.237,2.624,3.197,12.399,3.137,2.707,12.399,3.213,3.583,12.473,3.495,3.314,12.473,0.011,0.079,9.788,-0.416,0.019,10.341,-0.913,-0.051,10.832,-1.47,-0.13,11.252,-2.077,-0.215,11.593,-2.724,-0.306,11.85,-3.399,-0.402,12.018,-4.09,-0.499,12.093,-0.864,-0.491,10.784,-0.987,0.385,10.784,-1.407,-0.75,11.147,-1.581,0.484,11.147,-2.014,-0.913,11.462,-2.209,0.472,11.462,-2.678,-0.957,11.728,-2.859,0.331,11.728,-3.384,-0.894,11.937,-3.521,0.075,11.937,-4.102,-0.859,12.046,-4.201,-0.157,12.046,-4.826,-0.8,12.067,-4.881,-0.414,12.067,0.289,0.023,9.759,0.659,-0.198,10.306,1.096,-0.459,10.781,1.589,-0.754,11.175,2.128,-1.076,11.477,2.699,-1.418,11.681,3.291,-1.771,11.782,3.889,-2.128,11.779,1.331,-0.085,10.737,0.878,-0.844,10.737,1.929,-0.231,11.073,1.289,-1.301,11.073,2.517,-0.494,11.348,1.8,-1.695,11.348,3.074,-0.884,11.561,2.407,-2,11.561,3.592,-1.381,11.703,3.09,-2.221,11.703,4.129,-1.859,11.73,3.765,-2.467,11.73,4.644,-2.353,11.659,4.444,-2.687,11.659,0.129,0.247,9.731,0.036,0.695,10.276,-0.072,1.213,10.751,-0.192,1.791,11.147,-0.322,2.417,11.458,-0.46,3.08,11.676,-0.603,3.766,11.797,-0.748,4.462,11.819,-0.507,1.138,10.705,0.358,1.318,10.705,-0.808,1.69,11.044,0.413,1.944,11.044,-1.015,2.312,11.327,0.354,2.597,11.327,-1.107,2.996,11.554,0.167,3.261,11.554,-1.094,3.724,11.716,-0.136,3.924,11.716,-1.109,4.456,11.77,-0.414,4.6,11.77,-1.098,5.188,11.73,-0.716,5.267,11.73,0.094,-0.035,9.703,-0.137,-0.505,10.216,-0.398,-1.037,10.646,-0.684,-1.621,10.984,-0.989,-2.243,11.223,-1.306,-2.889,11.357,-1.628,-3.547,11.384,-1.949,-4.201,11.303,-0.011,-1.252,10.603,-0.804,-0.863,10.603,-0.14,-1.927,10.882,-1.259,-1.378,10.882,-0.382,-2.594,11.092,-1.638,-1.978,11.092,-0.748,-3.229,11.233,-1.916,-2.656,11.233,-1.219,-3.824,11.299,-2.098,-3.393,11.299,-1.665,-4.426,11.248,-2.301,-4.114,11.248,-2.123,-4.998,11.096,-2.473,-4.826,11.096,0.294,0.167,9.675,0.824,0.434,10.133,1.411,0.73,10.492,2.042,1.048,10.742,2.7,1.379,10.878,3.369,1.716,10.896,4.032,2.05,10.795,4.672,2.372,10.579,1.241,1.139,10.451,1.639,0.35,10.451,1.803,1.625,10.641,2.363,0.512,10.641,2.438,2.03,10.745,3.067,0.781,10.745,3.139,2.329,10.767,3.724,1.167,10.767,3.883,2.523,10.703,4.324,1.649,10.703,4.591,2.729,10.514,4.91,2.095,10.514,5.27,2.892,10.221,5.446,2.544,10.221,0.015,0.138,9.647,-0.582,0.292,10.003,-1.234,0.461,10.231,-1.918,0.638,10.322,-2.605,0.816,10.272,-3.27,0.988,10.084,-3.885,1.148,9.764,-4.428,1.288,9.325,-1.383,0.043,10.193,-1.161,0.899,10.193,-2.129,0.049,10.22,-1.817,1.256,10.22,-2.851,0.158,10.135,-2.5,1.511,10.135,-3.516,0.38,9.946,-3.189,1.639,9.946,-4.1,0.698,9.656,-3.855,1.645,9.656,-4.614,0.97,9.239,-4.437,1.657,9.239,-5.025,1.241,8.726,-4.927,1.619,8.726,0.232,-0.031,9.619,0.531,-0.574,9.979,0.859,-1.17,10.203,1.203,-1.794,10.282,1.547,-2.419,10.214,1.877,-3.018,9.999,2.178,-3.565,9.649,2.438,-4.038,9.177,1.265,-0.991,10.169,0.491,-1.417,10.169,1.777,-1.544,10.184,0.685,-2.146,10.184,2.196,-2.147,10.079,0.971,-2.822,10.079,2.489,-2.782,9.862,1.35,-3.409,9.862,2.654,-3.416,9.54,1.797,-3.888,9.54,2.799,-3.958,9.088,2.178,-4.3,9.088,2.868,-4.414,8.541,2.526,-4.602,8.541,0.219,0.238,9.591,0.476,0.84,9.901,0.753,1.49,10.064,1.038,2.156,10.073,1.317,2.809,9.928,1.577,3.419,9.634,1.807,3.957,9.206,1.995,4.398,8.663,0.365,1.706,10.03,1.178,1.359,10.03,0.491,2.463,9.973,1.638,1.973,9.973,0.707,3.161,9.788,1.993,2.612,9.788,1.017,3.763,9.49,2.213,3.252,9.49,1.398,4.246,9.088,2.298,3.861,9.088,1.712,4.638,8.562,2.364,4.359,8.562,1.997,4.899,7.954,2.355,4.746,7.954,0.043,0.006,9.563,-0.448,-0.387,9.807,-0.966,-0.803,9.92,-1.492,-1.224,9.898,-2.004,-1.635,9.741,-2.481,-2.017,9.456,-2.904,-2.356,9.054,-3.255,-2.637,8.552,-0.729,-1.179,9.872,-1.282,-0.489,9.872,-1.154,-1.752,9.783,-1.934,-0.779,9.783,-1.629,-2.23,9.589,-2.504,-1.139,9.589,-2.144,-2.58,9.301,-2.958,-1.565,9.301,-2.673,-2.797,8.929,-3.285,-2.034,8.929,-3.11,-2.975,8.448,-3.554,-2.422,8.448,-3.475,-3.063,7.894,-3.718,-2.758,7.894,0.308,0.073,9.534,0.969,-0.048,9.631,1.635,-0.17,9.571,2.269,-0.287,9.359,2.84,-0.391,9.005,3.316,-0.478,8.529,3.673,-0.544,7.955,3.891,-0.584,7.313,1.783,0.252,9.519,1.624,-0.618,9.519,2.467,0.311,9.234,2.242,-0.915,9.234,3.063,0.279,8.836,2.81,-1.097,8.836,3.536,0.142,8.351,3.302,-1.137,8.351,3.865,-0.082,7.8,3.689,-1.044,7.8,4.055,-0.253,7.175,3.927,-0.951,7.175,4.085,-0.421,6.525,4.015,-0.805,6.525,0.079,0.226,9.506,-0.255,0.75,9.65,-0.599,1.287,9.668,-0.937,1.816,9.559,-1.257,2.317,9.327,-1.546,2.769,8.983,-1.793,3.155,8.539,-1.987,3.459,8.013,-1.002,1.098,9.607,-0.258,1.574,9.607,-1.501,1.541,9.43,-0.45,2.212,9.43,-1.89,2.009,9.161,-0.712,2.762,9.161,-2.142,2.493,8.814,-1.046,3.194,8.814,-2.255,2.969,8.4,-1.43,3.496,8.4,-2.335,3.345,7.896,-1.738,3.727,7.896,-2.333,3.638,7.339,-2.004,3.848,7.339,0.161,-0.05,9.478,0.165,-0.642,9.523,0.169,-1.229,9.428,0.173,-1.777,9.201,0.177,-2.258,8.852,0.179,-2.645,8.402,0.181,-2.917,7.874,0.182,-3.059,7.297,0.612,-1.292,9.363,-0.272,-1.298,9.363,0.797,-1.853,9.063,-0.45,-1.862,9.063,0.876,-2.342,8.672,-0.522,-2.352,8.672,0.83,-2.734,8.215,-0.47,-2.743,8.215,0.671,-3.006,7.713,-0.307,-3.013,7.713,0.537,-3.144,7.156,-0.172,-3.149,7.156,0.378,-3.139,6.59,-0.012,-3.141,6.59,0.264,0.208,9.45,0.669,0.631,9.431,1.058,1.037,9.267,1.406,1.401,8.968,1.692,1.699,8.553,1.898,1.914,8.049,2.01,2.031,7.486,2.022,2.044,6.901,0.79,1.396,9.197,1.428,0.785,9.197,1.016,1.895,8.823,1.916,1.032,8.823,1.253,2.251,8.363,2.263,1.284,8.363,1.495,2.434,7.849,2.434,1.534,7.849,1.721,2.436,7.31,2.427,1.759,7.31,1.823,2.348,6.743,2.335,1.858,6.743,1.839,2.134,6.201,2.12,1.864,6.201],
+      idx: [0,1,8,1,0,9,1,2,10,2,1,11,2,3,12,3,2,13,3,4,14,4,3,15,4,5,16,5,4,17,5,6,18,6,5,19,6,7,20,7,6,21,22,23,30,23,22,31,23,24,32,24,23,33,24,25,34,25,24,35,25,26,36,26,25,37,26,27,38,27,26,39,27,28,40,28,27,41,28,29,42,29,28,43,44,45,52,45,44,53,45,46,54,46,45,55,46,47,56,47,46,57,47,48,58,48,47,59,48,49,60,49,48,61,49,50,62,50,49,63,50,51,64,51,50,65,66,67,74,67,66,75,67,68,76,68,67,77,68,69,78,69,68,79,69,70,80,70,69,81,70,71,82,71,70,83,71,72,84,72,71,85,72,73,86,73,72,87,88,89,96,89,88,97,89,90,98,90,89,99,90,91,100,91,90,101,91,92,102,92,91,103,92,93,104,93,92,105,93,94,106,94,93,107,94,95,108,95,94,109,110,111,118,111,110,119,111,112,120,112,111,121,112,113,122,113,112,123,113,114,124,114,113,125,114,115,126,115,114,127,115,116,128,116,115,129,116,117,130,117,116,131,132,133,140,133,132,141,133,134,142,134,133,143,134,135,144,135,134,145,135,136,146,136,135,147,136,137,148,137,136,149,137,138,150,138,137,151,138,139,152,139,138,153,154,155,162,155,154,163,155,156,164,156,155,165,156,157,166,157,156,167,157,158,168,158,157,169,158,159,170,159,158,171,159,160,172,160,159,173,160,161,174,161,160,175,176,177,184,177,176,185,177,178,186,178,177,187,178,179,188,179,178,189,179,180,190,180,179,191,180,181,192,181,180,193,181,182,194,182,181,195,182,183,196,183,182,197,198,199,206,199,198,207,199,200,208,200,199,209,200,201,210,201,200,211,201,202,212,202,201,213,202,203,214,203,202,215,203,204,216,204,203,217,204,205,218,205,204,219,220,221,228,221,220,229,221,222,230,222,221,231,222,223,232,223,222,233,223,224,234,224,223,235,224,225,236,225,224,237,225,226,238,226,225,239,226,227,240,227,226,241,242,243,250,243,242,251,243,244,252,244,243,253,244,245,254,245,244,255,245,246,256,246,245,257,246,247,258,247,246,259,247,248,260,248,247,261,248,249,262,249,248,263,264,265,272,265,264,273,265,266,274,266,265,275,266,267,276,267,266,277,267,268,278,268,267,279,268,269,280,269,268,281,269,270,282,270,269,283,270,271,284,271,270,285,286,287,294,287,286,295,287,288,296,288,287,297,288,289,298,289,288,299,289,290,300,290,289,301,290,291,302,291,290,303,291,292,304,292,291,305,292,293,306,293,292,307,308,309,316,309,308,317,309,310,318,310,309,319,310,311,320,311,310,321,311,312,322,312,311,323,312,313,324,313,312,325,313,314,326,314,313,327,314,315,328,315,314,329,330,331,338,331,330,339,331,332,340,332,331,341,332,333,342,333,332,343,333,334,344,334,333,345,334,335,346,335,334,347,335,336,348,336,335,349,336,337,350,337,336,351,352,353,360,353,352,361,353,354,362,354,353,363,354,355,364,355,354,365,355,356,366,356,355,367,356,357,368,357,356,369,357,358,370,358,357,371,358,359,372,359,358,373] },
+    { layer: 'trunks',
+      pos: [0.36,0,0,0.224,0.281,0,-0.08,0.351,0,-0.324,0.156,0,-0.324,-0.156,0,-0.08,-0.351,0,0.224,-0.281,0,0.29,0,0.9,0.192,0.203,0.898,-0.028,0.253,0.897,-0.204,0.113,0.899,-0.204,-0.113,0.901,-0.028,-0.253,0.903,0.192,-0.203,0.902,0.34,0.05,4.8,0.257,0.222,4.798,0.071,0.264,4.797,-0.078,0.145,4.799,-0.078,-0.045,4.801,0.071,-0.164,4.803,0.257,-0.122,4.802,0.38,0.09,8.2,0.29,0.278,8.198,0.087,0.324,8.198,-0.076,0.194,8.199,-0.076,-0.014,8.201,0.087,-0.144,8.202,0.29,-0.098,8.202,0.59,0.09,9,0.424,0.434,8.998,0.052,0.519,8.997,-0.246,0.281,8.999,-0.246,-0.101,9.001,0.052,-0.339,9.003,0.424,-0.254,9.002,0.36,0.1,9.9,0.285,0.256,9.898,0.115,0.295,9.898,-0.02,0.187,9.899,-0.02,0.013,9.901,0.115,-0.095,9.902,0.285,-0.056,9.902],
+      idx: [0,1,8,0,8,7,1,2,9,1,9,8,2,3,10,2,10,9,3,4,11,3,11,10,4,5,12,4,12,11,5,6,13,5,13,12,6,0,7,6,7,13,7,8,15,7,15,14,8,9,16,8,16,15,9,10,17,9,17,16,10,11,18,10,18,17,11,12,19,11,19,18,12,13,20,12,20,19,13,7,14,13,14,20,14,15,22,14,22,21,15,16,23,15,23,22,16,17,24,16,24,23,17,18,25,17,25,24,18,19,26,18,26,25,19,20,27,19,27,26,20,14,21,20,21,27,21,22,29,21,29,28,22,23,30,22,30,29,23,24,31,23,31,30,24,25,32,24,32,31,25,26,33,25,33,32,26,27,34,26,34,33,27,21,28,27,28,34,28,29,36,28,36,35,29,30,37,29,37,36,30,31,38,30,38,37,31,32,39,31,39,38,32,33,40,32,40,39,33,34,41,33,41,40,34,28,35,34,35,41,35,36,37,35,37,38,35,38,39,35,39,40,35,40,41] },
+  ] },
+];
+const MAGIC_BY_ID = Object.fromEntries(MAGIC_BLOCKS.map((b) => [b.id, b]));
+
+// The scene's layers for magic blocks, added after the file's own so its layer numbers still apply,
+// each with a material of its colour. The Layers panel leaves them out until they are in use.
+function addMagicLayers(layers, materials) {
+  const parent = layers.length;
+  const layer = (name, rgb, parentIndex, id) => {
+    const material = materials.length;
+    materials.push({ index: material, name, rgb, alpha: 1, magic: true });
+    layers.push({ index: layers.length, id, parentId: '', name, fullPath: parentIndex < 0 ? name : `${MAGIC_PARENT_LAYER}::${name}`, rgb, visible: true, material, count: 0,
+      parent: parentIndex, materialName: name, materialRgb: rgb, materialAlpha: 1, magic: true });
+    return layers.length - 1;
+  };
+  layer(MAGIC_PARENT_LAYER, [0.5, 0.5, 0.5], -1, 'magic-layer');
+  return Object.fromEntries(Object.entries(MAGIC_LAYERS).map(([key, l]) => [key, layer(l.name, l.rgb, parent, `magic-layer-${key}`)]));
+}
+
+// A library entry's meshes in the model's units (unit: model units per metre).
+function magicMeshes(block, unit) {
+  if (block.unit !== unit) {
+    block.meshes = block.parts.map((p) => {
+      const pos = Float32Array.from(p.pos, (v) => v * unit), idx = Uint32Array.from(p.idx);
+      return { layer: p.layer, pos, idx, nrm: smoothNormals(pos, idx) };
+    });
+    block.unit = unit;
+    let top = 0;
+    for (const p of block.parts) for (let i = 2; i < p.pos.length; i += 3) top = Math.max(top, p.pos[i]);
+    block.height = top * unit;
+  }
+  return block.meshes;
+}
+
+// Where the ground is looked for under an instance of a block whose box is [x0, y0, z0, x1, y1, z1]
+// in its own coordinates, with transform xf: from a tenth of the way up the box at its centre in
+// plan, as a block's base often sits a little way into the ground. Also the box's height range.
+function magicSource(box, xf) {
+  const [x0, y0, z0, x1, y1, z1] = box, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
+  let lo = Infinity, hi = -Infinity;
+  for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) {
+    const w = xf[8] * x + xf[9] * y + xf[10] * z + xf[11];
+    lo = Math.min(lo, w); hi = Math.max(hi, w);
+  }
+  return { x: xf[0] * cx + xf[1] * cy + xf[2] * cz + xf[3], y: xf[4] * cx + xf[5] * cy + xf[6] * cz + xf[7], lo, hi, top: lo + (hi - lo) * 0.1 };
+}
+
+// The transform that places a library entry for an instance: anchored at the source's centre in plan,
+// upright, and turned as the instance is. The height comes from the source's box, extended down to
+// the ground if the entry asks for that and the box stops short of it. ground: the height found, or
+// null (none below, or not looked for yet), when the box is used as it is. A source with no height
+// (a 2D symbol) gets the entry at its real size. seed: -1..1, stable for the instance.
+function magicPlacement(block, source, xf, ground, seed) {
+  const base = block.ground && ground != null ? Math.min(source.lo, ground) : source.lo;
+  const height = source.hi - base;
+  const s = height > block.height * 1e-3 ? height / block.height : 1;
+  const yaw = Math.atan2(xf[4], xf[0]) + (block.randomRotation ? seed * Math.PI : 0), c = Math.cos(yaw) * s, n = Math.sin(yaw) * s;
+  return new Float64Array([c, -n, 0, source.x, n, c, 0, source.y, 0, 0, s, base, 0, 0, 0, 1]);
+}
+
+</script>
+<script>
 // Converts a parsed rhino3dm File3dm into flat, GPU-ready batches grouped by layer + colour.
 //
 // Precision: everything is expressed relative to `origin` (the model bounding-box centre).
@@ -803,6 +1007,7 @@ function matchLayer(layers, i) {
 // JS doubles. This keeps site-coordinate models (e.g. 6-digit eastings) free of float jitter.
 
 const MAX_BATCH_VERTS = 4_000_000;
+const CHUNKS_ACROSS = 32; // grid cells across the model (a square site; a long thin one has fewer)
 const EDGE_COS = Math.cos((30 * Math.PI) / 180);
 const MAX_EDGE_TRIS = 2_000_000; // skip crease detection on enormous single meshes
 const DEFAULT_MATERIAL = { name: '', rgb: [0.85, 0.84, 0.81], alpha: 1 }; // warm off-white
@@ -818,7 +1023,7 @@ const rgbOf = (c) => [c.r / 255, c.g / 255, c.b / 255];
 class Acc {
   constructor(kind, key, layers, color, mat, vc, cls, matSet, layer, refs) {
     Object.assign(this, { kind, key, layers, color, mat, vc, cls, matSet, layer, cLayer: refs.cLayer, cMatLayer: refs.cMatLayer, mLayer: refs.mLayer });
-    this.pos = []; this.nrm = []; this.col = []; this.idx = []; this.oid = [];
+    this.pieces = []; // what was added: { pos, oid, box, and for a mesh nrm, idx (from 0), col }
     this.nv = 0; this.ni = 0;
   }
 }
@@ -838,21 +1043,73 @@ class Batcher {
     return a;
   }
 
+  // Each batch's geometry goes in order of grid cell, with b.ranges saying where each cell's part is
+  // ([first index or vertex, count, cell] in turn), so a view can draw only the cells it can see.
+  // The cells' boxes are in batches.cells, shared by all the batches.
   finish() {
-    const all = this.done.concat([...this.open.values()]);
-    return all.filter((a) => a.nv > 0).map((a) => {
+    const all = this.done.concat([...this.open.values()]).filter((a) => a.nv > 0);
+    const cells = chunkCells(all);
+    const batches = all.map((a) => {
       const b = { kind: a.kind, layers: a.layers, layer: a.layer, color: a.color, mat: a.mat, vc: a.vc, cls: a.cls, matSet: a.matSet,
         cLayer: a.cLayer, cMatLayer: a.cMatLayer, mLayer: a.mLayer, count: a.ni || a.nv };
-      b.position = concat(Float32Array, a.pos, a.nv * 3);
-      b.objectId = concat(Uint32Array, a.oid, a.nv);
+      const parts = a.pieces.sort((p, q) => p.cell - q.cell), ranges = [];
+      let first = 0, last = -1;
+      for (const p of parts) {
+        const n = a.ni ? p.idx.length : p.pos.length / 3;
+        if (p.cell === last) ranges[ranges.length - 2] += n;
+        else ranges.push(first, n, p.cell);
+        first += n; last = p.cell;
+      }
+      b.ranges = Uint32Array.from(ranges);
+      b.position = concat(Float32Array, parts.map((p) => p.pos), a.nv * 3);
+      b.objectId = concat(Uint32Array, parts.map((p) => p.oid), a.nv);
       if (a.kind === 'mesh') {
-        b.normal = concat(Int16Array, a.nrm, a.nv * 4);
-        b.index = concat(Uint32Array, a.idx, a.ni);
-        if (a.vc) b.vcolor = concat(Uint8Array, a.col, a.nv * 4);
+        b.normal = concat(Int16Array, parts.map((p) => p.nrm), a.nv * 4);
+        const index = (b.index = new Uint32Array(a.ni));
+        let o = 0, base = 0;
+        for (const { idx, pos } of parts) {
+          for (let i = 0; i < idx.length; i++) index[o + i] = idx[i] + base;
+          o += idx.length; base += pos.length / 3;
+        }
+        if (a.vc) b.vcolor = concat(Uint8Array, parts.map((p) => p.col), a.nv * 4);
       }
       return b;
     });
+    batches.cells = cells;
+    return batches;
   }
+}
+
+// Sets each piece's cell, and returns the cells' boxes (6 floats each). A piece goes in the cell its
+// middle falls in, on a grid coarse enough for it: each grid's cells are 4 times as wide as the last's,
+// so that a wide piece does not stretch the box of a small cell. Cells are numbered as they are met,
+// not along the grid: an order along it would draw far things first from some directions, and the
+// surfaces drawn over them later would cost much more shading.
+function chunkCells(accs) {
+  const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+  const pieces = accs.flatMap((a) => a.pieces);
+  for (const { box } of pieces) if (box[0] <= box[3]) for (let k = 0; k < 2; k++) { mn[k] = Math.min(mn[k], box[k]); mx[k] = Math.max(mx[k], box[k + 3]); }
+  const w = mx[0] - mn[0], d = mx[1] - mn[1];
+  const size = Math.max(Math.sqrt(w * d) / CHUNKS_ACROSS, Math.max(w, d) / (4 * CHUNKS_ACROSS), 1e-6);
+  const found = new Map(), boxes = [];
+  for (const p of pieces) {
+    // A box with nothing valid in it (bad coordinates) is never culled.
+    const b = p.box[0] <= p.box[3] ? p.box : [-Infinity, -Infinity, -Infinity, Infinity, Infinity, Infinity];
+    const wide = Math.max(b[3] - b[0], b[4] - b[1]);
+    let level = 0, s = size;
+    while (wide > 2 * s && s < 1e30) { level++; s *= 4; }
+    const key = isFinite(wide) ? `${level}|${Math.floor(((b[0] + b[3]) / 2 - mn[0]) / s)}|${Math.floor(((b[1] + b[4]) / 2 - mn[1]) / s)}` : 'all';
+    let id = found.get(key);
+    if (id === undefined) {
+      found.set(key, (id = boxes.length));
+      boxes.push([...b]);
+    } else for (let k = 0; k < 3; k++) { boxes[id][k] = Math.min(boxes[id][k], b[k]); boxes[id][k + 3] = Math.max(boxes[id][k + 3], b[k + 3]); }
+    p.cell = id;
+  }
+  // A little larger, so rounding on the GPU cannot leave geometry just outside its box.
+  const out = new Float32Array(boxes.length * 6), m = size * 0.01;
+  boxes.forEach((b, i) => { for (let k = 0; k < 3; k++) { out[i * 6 + k] = b[k] - m; out[i * 6 + k + 3] = b[k + 3] + m; } });
+  return out;
 }
 
 function concat(T, parts, n) {
@@ -1082,10 +1339,11 @@ async function extractScene(rhino, doc, onProgress) {
     l.materialRgb = m ? m.rgb : DEFAULT_MATERIAL.rgb;
     l.materialAlpha = m ? m.alpha : 1;
   }
+  const magicLayers = addMagicLayers(layers, materials);
 
   // Attribute snapshot: plain values, so items and block definitions outlive the document.
   // cs colour source (0 layer, 1 object, 2 material, 3 parent); ms material source (0 layer,
-  // 1 object, 2 parent); oc object colour; mi object material index.
+  // 1 object, 3 parent); oc object colour; mi object material index.
   const attrInfo = (a) => ({ layer: a.layerIndex, cs: a.colorSource.value, oc: rgbOf(a.objectColor), ms: a.materialSource.value, mi: a.materialIndex, name: a.name || '' });
   const userText = (a) => {
     try { return (a.getUserStrings() || []).filter(([k]) => !k.startsWith('$')); } catch (e) { return []; }
@@ -1214,7 +1472,7 @@ async function extractScene(rhino, doc, onProgress) {
     }
     items.push(it);
   }
-  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items,
+  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
     stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
 }
 
@@ -1228,6 +1486,10 @@ const mulRM = (a, b) => {
 // Stable pseudo-random value in -1..1, used to vary colour between objects / block instances.
 const seedOf = (a, b, c) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return (s - Math.floor(s)) * 2 - 1; };
 
+// A block definition's setting for its sub-elements, chosen in the viewer: the sources that replace
+// each sub-element's own. Without one, they are as in the file.
+const SUB_SOURCES = { byParent: { cs: 3, ms: 3 }, byLayer: { cs: 0, ms: 0 } };
+
 // An object's colour and material from its attributes, its layer, and (inside a block) the
 // enclosing instance's resolved look. Also records where each came from, so that layer edits made
 // in the viewer apply without a rebuild: cLayer = the colour is that layer's display colour;
@@ -1237,7 +1499,7 @@ function resolveLook(scene, ai, parent) {
   const L = scene.layers[ai.layer] ? ai.layer : 0, layer = scene.layers[L] || { rgb: [0, 0, 0], material: -1 };
   let mi, mLayer = -1;
   if (ai.ms === 1) mi = ai.mi;
-  else if (ai.ms === 2 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
+  else if (ai.ms === 3 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
   else { mi = layer.material; mLayer = L; }
   const mat = scene.materials[mi] || DEFAULT_MATERIAL;
   if (mat === DEFAULT_MATERIAL) mi = -1;
@@ -1247,6 +1509,60 @@ function resolveLook(scene, ai, parent) {
   else if (ai.cs === 3 && parent) ({ rgb, cLayer, cMatLayer } = parent);
   else cLayer = L;
   return { rgb, mat, mi, matSet: mat !== DEFAULT_MATERIAL, cLayer, cMatLayer, mLayer };
+}
+
+// The block definitions in use, those a top-level instance reaches: id -> { id, name, tops (object
+// indexes of its top-level instances), kids and parents (definition ids), layers (of its own
+// objects), copies (in the whole model, counting those inside other blocks) }.
+function blockTable(scene) {
+  const { defs, items, layers } = scene, out = new Map();
+  for (const [id, def] of defs) {
+    const inner = def.entries.filter((e) => e.k === 'inst' && defs.has(e.idef)).map((e) => e.idef);
+    out.set(id, { id, name: def.name || '(unnamed block)', tops: [], kids: [...new Set(inner)], parents: [], copies: 0,
+      layers: [...new Set(def.entries.map((e) => e.ai.layer))].filter((l) => layers[l]) });
+  }
+  for (const b of out.values()) for (const k of b.kids) out.get(k).parents.push(b.id);
+  items.forEach((it, i) => { if (it.k === 'inst') out.get(it.idef)?.tops.push(i); });
+  const active = new Set(); // a damaged file could have a block contain itself
+  const count = (id, n) => {
+    if (active.has(id)) return;
+    active.add(id);
+    out.get(id).copies += n;
+    for (const e of defs.get(id).entries) if (e.k === 'inst' && out.has(e.idef)) count(e.idef, n);
+    active.delete(id);
+  };
+  for (const b of out.values()) if (b.tops.length) count(b.id, b.tops.length);
+  return out;
+}
+
+// A block definition's box in its own coordinates, sub-blocks included ([x0, y0, z0, x1, y1, z1]), or
+// null if it holds no geometry.
+function defBox(scene, id) {
+  const boxes = (scene.defBoxes ||= new Map());
+  if (boxes.has(id)) return boxes.get(id);
+  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], active = new Set();
+  const take = (p, xf) => {
+    for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) {
+      const v = xf[k * 4] * p[i] + xf[k * 4 + 1] * p[i + 1] + xf[k * 4 + 2] * p[i + 2] + xf[k * 4 + 3];
+      if (v < b[k]) b[k] = v;
+      if (v > b[k + 3]) b[k + 3] = v;
+    }
+  };
+  const walk = (defId, xf) => {
+    const def = scene.defs.get(defId);
+    if (!def || active.has(defId)) return;
+    active.add(defId);
+    for (const e of def.entries) {
+      if (e.k === 'inst') walk(e.idef, mulRM(xf, e.xf));
+      else if (e.k === 'mesh') for (const part of e.parts) take(part.pos, xf);
+      else take(e.k === 'line' ? e.segs : e.p, xf);
+    }
+    active.delete(defId);
+  };
+  walk(id, new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+  const box = b[0] <= b[3] ? b : null;
+  boxes.set(id, box);
+  return box;
 }
 
 // Directions to look for a batch's outermost vertices in, both ways along each: most of them level,
@@ -1292,6 +1608,16 @@ function buildBatches(scene) {
   const specialOf = scene.specialOf || ((l) => matchLayer(layers, l)?.id || 0);
   const specials = layers.map((_, l) => specialOf(l));
   const special = (look) => (look.mLayer >= 0 ? specials[look.mLayer] || 0 : 0);
+  // The block settings made in the viewer: a definition's sub-element setting, and whether it is
+  // shown. A hidden block's top-level instances stay in the batches, hidden by their object flags.
+  const subSetting = scene.subSetting || (() => null), blockShown = scene.blockShown || (() => true);
+  // The magic block replacing a definition (magicblocks.js), if any. The ground under its instances
+  // is found on the GPU, so not during a build: an instance not yet in scene.magicGround is placed
+  // without it, and magicMissing tells the caller to look it up and build again.
+  const magicOf = scene.magicOf || (() => null), unit = 1 / (scene.metresPerUnit || 1);
+  const magicGround = (scene.magicGround ||= new Map());
+  scene.magicPoints = new Map();
+  scene.magicMissing = false;
 
   let rec = null; // the item being emitted
   // Geometry that needs no transform (xf null) is the same on every rebuild, so its bounding
@@ -1307,6 +1633,7 @@ function buildBatches(scene) {
   const growBox = (p, c) => {
     const b = c ? (c.box ||= boxOf(p)) : boxOf(p), mn = rec.min, mx = rec.max;
     for (let k = 0; k < 3; k++) { if (b[k] < mn[k]) mn[k] = b[k]; if (b[k + 3] > mx[k]) mx[k] = b[k + 3]; }
+    return b;
   };
   const oids = (c, n, objId) => {
     if (!c) return new Uint32Array(n).fill(objId);
@@ -1323,53 +1650,70 @@ function buildBatches(scene) {
     // Vegetation is usually low-poly and faceted; smooth shading reads as soft foliage.
     const nrm = cls === MAT_VEGETATION ? (part.smooth ||= smoothNormals(part.pos, part.idx)) : part.nrm;
     const p = xformPoints(part.pos, xf), c = cacheOf(part, 'meshCache', xf);
-    growBox(p, c);
+    const box = growBox(p, c);
     rec.triangles += part.idx.length / 3;
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
     if (c && (c.nrmFrom !== nrm || c.seed !== seed)) Object.assign(c, { packed: packNormals(nrm, part.pos, part.idx, null, seed), nrmFrom: nrm, seed });
-    a.nrm.push(c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed));
+    const piece = { pos: p, oid: oids(c, n, objId), nrm: c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed), idx: part.idx, box };
     if (vc) {
       const c8 = new Uint8Array(n * 4), stride = part.col.length / n;
       for (let i = 0; i < n; i++) {
         c8[i * 4] = part.col[i * stride] * 255; c8[i * 4 + 1] = part.col[i * stride + 1] * 255;
         c8[i * 4 + 2] = part.col[i * stride + 2] * 255; c8[i * 4 + 3] = 255;
       }
-      a.col.push(c8);
+      piece.col = c8;
     }
-    const idx = new Uint32Array(part.idx.length);
-    for (let i = 0; i < idx.length; i++) idx[i] = part.idx[i] + a.nv;
-    a.idx.push(idx);
-    a.nv += n; a.ni += idx.length;
-    stats.triangles += idx.length / 3;
-    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part);
+    a.pieces.push(piece);
+    a.nv += n; a.ni += part.idx.length;
+    stats.triangles += part.idx.length / 3;
+    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part, box);
   };
-  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null) => {
+  // box: a mesh's edges lie on the mesh, so they take its box.
+  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null, box = null) => {
     const n = segs.length / 3;
     if (!n) return;
     const a = batcher.get(kind, layerSet, kind === 'edge' ? [0, 0, 0, 1] : colorKey(look.rgb), null, false, n, cls, look.matSet, layer,
       kind === 'edge' ? { cLayer: -1, cMatLayer: -1, mLayer: look.mLayer } : look);
     const p = xformPoints(segs, xf), c = holder && cacheOf(holder, kind + 'Cache', xf);
-    if (kind !== 'edge') growBox(p, c);
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
+    a.pieces.push({ pos: p, oid: oids(c, n, objId), box: box || growBox(p, c) });
     a.nv += n;
   };
   const emitPoint = (pt, layerSet, look, xf, objId) => {
     const a = batcher.get('point', layerSet, colorKey(look.rgb), null, false, 1, 0, false, layerSet[0], look);
     const p = xformPoints(pt, xf);
-    growBox(p);
-    a.pos.push(p);
-    a.oid.push(new Uint32Array([objId]));
+    a.pieces.push({ pos: p, oid: new Uint32Array([objId]), box: growBox(p) });
     a.nv += 1;
     stats.points++;
   };
+  const emitMagic = (block, idefId, xf, layerChain, depth, objId) => {
+    const box = defBox(scene, idefId);
+    if (!box) return;
+    const meshes = magicMeshes(block, unit), source = magicSource(box, xf);
+    let ground = null;
+    if (block.ground) {
+      const key = `${source.x.toFixed(3)},${source.y.toFixed(3)},${source.top.toFixed(3)}`;
+      scene.magicPoints.set(key, source);
+      if (magicGround.has(key)) ground = magicGround.get(key);
+      else scene.magicMissing = true;
+    }
+    const seed = seedOf(source.x, source.y, source.lo), place = magicPlacement(block, source, xf, ground, seed);
+    if (depth === 0) rec.magicXf = place;
+    for (const m of meshes) {
+      const L = scene.magicLayers[m.layer], look = resolveLook(scene, { layer: L, cs: 0, oc: [0, 0, 0], ms: 0, mi: -1 }, null);
+      layers[L].count++;
+      emitMesh(m, [...new Set([...layerChain, L])].sort((a, b) => a - b), look, place, special(look), seed, objId, L);
+    }
+  };
+  const expanding = new Set(); // a damaged file could have a block contain itself
   const instantiate = (idefId, xf, parentLook, layerChain, depth, objId) => {
     const def = defs.get(idefId);
-    if (!def || depth > 24) return;
-    const seed = seedOf(xf[3], xf[7], xf[11]);
+    if (!def || depth > 24 || expanding.has(idefId)) return;
+    const magic = magicOf(idefId);
+    if (magic) { emitMagic(magic, idefId, xf, layerChain, depth, objId); return; }
+    expanding.add(idefId);
+    const seed = seedOf(xf[3], xf[7], xf[11]), sources = SUB_SOURCES[subSetting(idefId)];
     for (const e of def.entries) {
-      const look = resolveLook(scene, e.ai, parentLook);
+      if (e.k === 'inst' && !blockShown(e.idef)) continue;
+      const look = resolveLook(scene, sources ? { ...e.ai, ...sources } : e.ai, parentLook);
       const ls = [...new Set([...layerChain, e.ai.layer])].sort((a, b) => a - b);
       if (layers[e.ai.layer]) layers[e.ai.layer].count++;
       if (e.k === 'inst') {
@@ -1382,10 +1726,12 @@ function buildBatches(scene) {
       else if (e.k === 'line') { stats.curves++; emitLines('line', e.segs, ls, look, xf, objId); }
       else if (e.k === 'point') emitPoint(e.p, ls, look, xf, objId);
     }
+    expanding.delete(idefId);
   };
 
   items.forEach((it, objId) => {
     rec = it;
+    it.magicXf = null;
     it.min = [Infinity, Infinity, Infinity]; it.max = [-Infinity, -Infinity, -Infinity]; it.triangles = 0;
     it.layer = it.ai.layer;
     const look = resolveLook(scene, it.ai, null), ls = [it.ai.layer];
@@ -2474,6 +2820,16 @@ const Z_UP = [0, 0, 1];
 const PITCH_LIMIT = (89.99 * Math.PI) / 180;
 const DEFAULT_FOV = (40 * Math.PI) / 180;
 const FIT_MARGIN = 1.15; // zoom extents: leaves the model clear of the toolbars
+const LEVEL_TOLERANCE = 1e-4; // radians: a camera this close to straight down or level counts as it
+
+// How a camera may move, from its projection and tilt: a parallel camera looking straight down turns
+// like a dial ('top'), a parallel camera looking level turns left and right ('elevation'), and any
+// other orbits freely ('orbit').
+const movementRules = (c) => {
+  if (c.ortho && c.pitch > PITCH_LIMIT - LEVEL_TOLERANCE) return 'top';
+  if (c.ortho && Math.abs(c.pitch) < LEVEL_TOLERANCE) return 'elevation';
+  return 'orbit';
+};
 
 class Camera {
   constructor() {
@@ -2559,11 +2915,7 @@ class Camera {
     const views = {
       perspective: [-60, 28, false],
       top: [-90, 89.99, true],
-      bottom: [-90, -89.99, true],
-      front: [-90, 0, true],
-      back: [90, 0, true],
-      right: [0, 0, true],
-      left: [180, 0, true],
+      elevation: [-90, 0, true],
     };
     const [y, p, o] = views[name];
     this.yaw = y * deg; this.pitch = p * deg; this.ortho = o; this.fov = DEFAULT_FOV;
@@ -2607,9 +2959,10 @@ class Camera {
     this.pitch = newPitch;
   }
 
-  // dx, dy in CSS pixels; viewHeight is the canvas height in CSS pixels.
-  pan(dx, dy, viewHeight) {
-    const wpp = (2 * this.halfHeight) / viewHeight;
+  // dx, dy in CSS pixels; viewHeight is the canvas height in CSS pixels. depth: how far ahead of the
+  // eye the point being dragged is, so that it stays under the pointer (a perspective view only).
+  pan(dx, dy, viewHeight, depth = this.distance) {
+    const wpp = (2 * (this.ortho ? this.distance : depth) * Math.tan(this.fov / 2)) / viewHeight;
     this.target = V3.add(this.target, V3.add(V3.scale(this.right, -dx * wpp), V3.scale(this.up, dy * wpp)));
   }
 
@@ -2617,6 +2970,12 @@ class Camera {
   planePoint(nx, ny) {
     const h = this.halfHeight;
     return V3.add(this.target, V3.add(V3.scale(this.right, nx * h * this.aspect), V3.scale(this.up, ny * h)));
+  }
+
+  // Point under NDC (x, y) at this depth ahead of the eye.
+  pointAtDepth(nx, ny, depth) {
+    const q = this.planePoint(nx, ny);
+    return this.ortho ? q : V3.add(this.eye, V3.scale(V3.sub(q, this.eye), depth / this.distance));
   }
 
   // Scale the eye-target configuration about the world point q.
@@ -2783,6 +3142,66 @@ class ChoiceList {
 
   item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
   setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
+}
+
+</script>
+<script>
+// Row selection for the side panels' lists. A click selects one row, Ctrl-click adds or removes a
+// row, and Shift-click selects the rows from the last one clicked to this one. Clicks on a row's own
+// controls (checkboxes, buttons) are left to them, and a click on empty space clears the selection.
+//
+//   const rows = new RowSelection();
+//   rows.bind(listElement);            // once
+//   rows.setRows([{ key, row }, ...]); // whenever the list is rebuilt: rows in order; row.hidden leaves one out of ranges
+
+class RowSelection {
+  constructor() { this.rows = []; this.keys = new Set(); this.anchor = null; }
+
+  bind(list) {
+    list.addEventListener('click', (e) => {
+      if (e.target.closest('input, button')) return;
+      const el = e.target.closest('.layer-row'), r = el && this.rows.find((x) => x.row === el);
+      if (r) this.click(r.key, e); else this.set([]);
+    });
+  }
+
+  setRows(rows) { this.rows = rows; this.keys = new Set(); this.anchor = null; }
+
+  has(key) { return this.keys.has(key); }
+
+  // The selected keys, in list order.
+  list() { return this.rows.filter((r) => this.keys.has(r.key)).map((r) => r.key); }
+
+  set(keys, anchor = keys[0] ?? null) {
+    this.keys = new Set(keys);
+    this.anchor = anchor;
+    for (const { key, row } of this.rows) row.classList.toggle('selected', this.keys.has(key));
+  }
+
+  click(key, e) {
+    const shown = this.rows.filter((r) => !r.row.hidden).map((r) => r.key);
+    const from = shown.indexOf(this.anchor), to = shown.indexOf(key);
+    if (e.shiftKey && from >= 0 && to >= 0) {
+      this.set(shown.slice(Math.min(from, to), Math.max(from, to) + 1), this.anchor);
+    } else if (e.ctrlKey || e.metaKey) {
+      const keys = new Set(this.keys);
+      if (keys.has(key)) keys.delete(key); else keys.add(key);
+      this.set([...keys], key);
+    } else this.set([key]);
+  }
+
+  // What an action on this row applies to: the selection if the row is in it; otherwise the row
+  // alone, which becomes the selection.
+  take(key) {
+    if (!this.keys.has(key)) this.set([key]);
+    return this.list();
+  }
+
+  // Rows that have been collapsed or filtered away leave the selection.
+  keepShown() {
+    const shown = this.rows.filter((r) => !r.row.hidden && this.keys.has(r.key)).map((r) => r.key);
+    if (shown.length !== this.keys.size) this.set(shown, shown.includes(this.anchor) ? this.anchor : shown[0] ?? null);
+  }
 }
 
 </script>
@@ -3180,6 +3599,7 @@ class Walker {
 // pivots, and sun lighting with cascaded shadow maps.
 
 const CASCADES = 4;
+const AO_DIV = 2;                // the occlusion is worked out at 1/AO_DIV of the window's width and height
 const SHADOW_SIZE = 2048;
 const MAX_LAMPS = 8;
 const LAMP_SHADOW_SIZE = 512;
@@ -3241,7 +3661,7 @@ struct Frame {
   skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
   stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
-  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
+  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene), w = draw the sky
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
   marker: vec4f,    // where walking would start: xyz centre, w = radius (model units, 0 = none)
   shadow: array<mat4x4f, ${CASCADES}>,
@@ -3420,8 +3840,8 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
 }
 @fragment fn fsBg(in: BgOut) -> @location(0) vec4f {
   let screen = mix(F.bgBot.rgb, F.bgTop.rgb, in.ndc.y * 0.5 + 0.5);
-  if (F.sunDir.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
-  // Sun lighting in perspective: a real sky. Gradient by elevation of the view ray, plus the sun.
+  if (F.skySun.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
+  // A real sky in perspective, for the sun or the weather. Gradient by elevation of the view ray, plus the sun.
   let t = F.camRight.w;
   let dir = normalize(F.viewDir.xyz + F.camRight.xyz * in.ndc.x * t * F.camUp.w + F.camUp.xyz * in.ndc.y * t);
   var col = mix(F.bgBot.rgb, F.bgTop.rgb, pow(clamp(dir.z, 0.0, 1.0), 0.55));
@@ -3436,7 +3856,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   col += starField(dir) * night * (1.0 - 0.6 * F.moon.w * moonUp) * smoothstep(0.0, 0.12, dir.z);
   col = mix(col, F.bgBot.rgb * 0.94, smoothstep(0.0, -0.08, dir.z));   // below the horizon
   let sky = col;
-  let above = smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);
+  let above = F.sunDir.w * smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);   // none with the sun off
   let d = max(dot(dir, L), 0.0);
   // A low sun is orange-red, and so is the glow around it.
   let high = smoothstep(0.0, 0.25, L.z);
@@ -3739,6 +4159,30 @@ fn whitewash(p: vec3f, n: vec3f, c: vec3f, px: f32) -> vec3f {
   return mix(c * (1.0 - 0.07 * wash), vec3f(0.66, 0.65, 0.62), thin * 0.12);
 }
 
+// The occlusion at a pixel, from its smaller texture: the four texels around the pixel. Where they
+// differ, each counts as far as it lies on this same surface, so that shading does not bleed across
+// edges. Most pixels are in even shading and do not need that look at the prepass.
+fn aoAt(pos: vec2f, wp: vec3f, n: vec3f) -> f32 {
+  let q = pos / ${AO_DIV}.0 - 0.5;
+  let c = vec2i(floor(q));
+  let f = q - floor(q);
+  let lim = vec2i(textureDimensions(aoTex)) - 1;
+  let t = array<vec2i, 4>(clamp(c, vec2i(0), lim), clamp(c + vec2i(1, 0), vec2i(0), lim), clamp(c + vec2i(0, 1), vec2i(0), lim), clamp(c + vec2i(1, 1), vec2i(0), lim));
+  let a = vec4f(textureLoad(aoTex, t[0], 0).r, textureLoad(aoTex, t[1], 0).r, textureLoad(aoTex, t[2], 0).r, textureLoad(aoTex, t[3], 0).r);
+  let w0 = vec4f((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+  if (max(max(a.x, a.y), max(a.z, a.w)) - min(min(a.x, a.y), min(a.z, a.w)) < 0.03) { return dot(a, w0); }
+  let full = vec2i(textureDimensions(gbuf)) - 1;
+  let d = dot(wp - F.eye.xyz, F.viewDir.xyz);
+  var w = w0;
+  for (var i = 0; i < 4; i++) {
+    let g = textureLoad(gbuf, min(t[i] * ${AO_DIV} + vec2i(1), full), 0);
+    w[i] *= exp(-abs(g.w - d) / (abs(d) * 0.02 + 1e-6)) * (max(dot(g.xyz, n), 0.0) + 0.01);
+  }
+  let total = w.x + w.y + w.z + w.w;
+  if (total > 1e-4) { return dot(a, w) / total; }
+  return dot(a, w0);
+}
+
 // Water: wind ripples (analytic wave normals), sky reflection with Fresnel, sun glint.
 fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   let p = in.wp.xy * F.misc.y;                     // metres
@@ -3771,7 +4215,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   let fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
   let R = reflect(-V, n);
   var ao = 1.0;
-  if (F.opts.z > 0.5) { ao = mix(1.0, textureLoad(aoTex, vec2i(in.pos.xy), 0).r, 0.6); }
+  if (F.opts.z > 0.5) { ao = mix(1.0, aoAt(in.pos.xy, in.wp, flatN), 0.6); }
   // The layer's water colour. The sun term is what shows shadows: in shallow water they fall on
   // the lit floor beneath. Shade dims the reflection a little too (the caster hides some sky).
   let body = toLinear(B.mat.rgb) * (lt.ambient * 1.2 * ao + lt.direct * 0.3);
@@ -3895,7 +4339,7 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   var ao = 1.0;
   var conv = 0.0;
   if (F.opts.z > 0.5 && F.opts.x == 0.0 && alpha >= 1.0) {
-    ao = textureLoad(aoTex, vec2i(in.pos.xy), 0).r;
+    ao = aoAt(in.pos.xy, in.wp, normalize(faceN));
     if (cls != 2 && cls != 3) { let se = softEdge(in.pos.xy, in.wp, dwx, dwy, n); n = se.n; conv = se.conv; }
   }
   let lt = lighting(in.wp, n, wrap);
@@ -3984,7 +4428,7 @@ struct AO {
   eye: vec4f, fwd: vec4f, right: vec4f, up: vec4f,
   proj: vec4f,    // tan(fov/2), aspect, parallel (1/0), parallel half-height
   params: vec4f,  // radius as a fraction of view depth, max radius (world), strength, -
-  size: vec4f,    // width, height
+  size: vec4f,    // width, height of the window (and of the prepass)
   kernel: array<vec4f, 16>,
 };
 @group(0) @binding(0) var<uniform> A: AO;
@@ -4003,11 +4447,14 @@ fn worldPos(px: vec2f, d: f32) -> vec3f {
   return A.eye.xyz + A.fwd.xyz * d + A.right.xyz * (ndc.x * h * A.proj.y) + A.up.xyz * (ndc.y * h);
 }
 
+// The prepass (window sized) under a texel of the smaller textures these passes draw into.
+fn prepass(p: vec2i) -> vec4f { return textureLoad(gbuf, min(p * ${AO_DIV} + vec2i(1), vec2i(A.size.xy) - 1), 0); }
+
 @fragment fn fsAO(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let g = textureLoad(gbuf, vec2i(pos.xy), 0);
+  let g = prepass(vec2i(pos.xy));
   if (g.w <= 0.0) { return vec4f(1.0); }
   let n = g.xyz;
-  let P = worldPos(pos.xy, g.w);
+  let P = worldPos(pos.xy * ${AO_DIV}.0, g.w);
   var scale = g.w;
   if (A.proj.z > 0.5) { scale = A.proj.w / A.proj.x; }
   let R = min(scale * A.params.x, A.params.y);
@@ -4038,15 +4485,15 @@ fn worldPos(px: vec2f, d: f32) -> vec3f {
 
 @fragment fn fsBlur(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = vec2i(pos.xy);
-  let g = textureLoad(gbuf, p, 0);
+  let g = prepass(p);
   if (g.w <= 0.0) { return vec4f(1.0); }
-  let lim = vec2i(A.size.xy) - 1;
+  let lim = vec2i(textureDimensions(aoIn)) - 1;
   var sum = 0.0;
   var wsum = 0.0;
   for (var y = -2; y <= 2; y++) {
     for (var x = -2; x <= 2; x++) {
       let q = clamp(p + vec2i(x, y), vec2i(0), lim);
-      let gq = textureLoad(gbuf, q, 0);
+      let gq = prepass(q);
       if (gq.w <= 0.0) { continue; }
       let w = exp(-abs(gq.w - g.w) / (g.w * 0.02)) * max(dot(gq.xyz, g.xyz), 0.0);
       sum += textureLoad(aoIn, q, 0).r * w;
@@ -4149,6 +4596,8 @@ class Renderer {
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.ctx.configure({ device, format: this.format, alphaMode: 'opaque' });
     this.batches = [];
+    this.cells = new Float32Array(0);
+    this.cellVis = new Uint8Array(0);
     this.dirty = true;
     this.onLost = null;
     device.lost.then((info) => this.onLost?.(info));
@@ -4285,8 +4734,10 @@ class Renderer {
     this.depthTex = dev.createTexture({ size: [w, h], format: DEPTH, sampleCount: MSAA, usage: RA });
     this.gbufTex = dev.createTexture({ size: [w, h], format: 'rgba32float', usage: RA | TB });
     this.gdepthTex = dev.createTexture({ size: [w, h], format: DEPTH, usage: RA });
-    this.aoRawTex = dev.createTexture({ size: [w, h], format: 'r8unorm', usage: RA | TB });
-    this.aoTex = dev.createTexture({ size: [w, h], format: 'r8unorm', usage: RA | TB | GPUTextureUsage.COPY_SRC });
+    // The soft edges read the prepass, so it stays the window's size; the occlusion itself need not.
+    const ao = [Math.ceil(w / AO_DIV), Math.ceil(h / AO_DIV)];
+    this.aoRawTex = dev.createTexture({ size: ao, format: 'r8unorm', usage: RA | TB });
+    this.aoTex = dev.createTexture({ size: ao, format: 'r8unorm', usage: RA | TB | GPUTextureUsage.COPY_SRC });
 
     const aoView = this.aoTex.createView();
     this.makeFrameBindGroups();
@@ -4346,12 +4797,13 @@ class Renderer {
     });
     pass.setPipeline(this.pipes.gbuf);
     pass.setBindGroup(0, this.gbufFrameBG);
+    this.cull(s.viewProj);
     for (const b of this.batches) {
-      if (!b.visible || b.kind !== 'mesh' || (s.mode === 1 && b.transparent)) continue;
+      if (!b.visible || b.kind !== 'mesh' || (s.mode === 1 && b.transparent) || !this.seen(b)) continue;
       pass.setBindGroup(1, this.batchBG, [b.offset]);
       pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.nrm); pass.setVertexBuffer(2, b.gpu.oid);
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
-      pass.drawIndexed(b.count);
+      this.drawCells(pass, b);
     }
     pass.end();
     for (const [pipe, bg, target] of [[this.aoPipe, this.aoBG, this.aoRawTex], [this.blurPipe, this.blurBG, this.aoTex]]) {
@@ -4361,6 +4813,45 @@ class Renderer {
       pass.draw(3);
       pass.end();
     }
+  }
+
+  // Decides which cells of the model (see Batcher.finish) the view m can see, for the draws that
+  // follow. depth: test against the near and far planes too (not for the main view: edges are pulled
+  // towards the eye, and nothing much lies only beyond those planes).
+  cull(m, depth = false) {
+    const box = this.cells, vis = this.cellVis, n = depth ? 6 : 4;
+    // Planes from the matrix's rows: -w <= x <= w, -w <= y <= w, 0 <= z <= w.
+    const P = [m[3] + m[0], m[7] + m[4], m[11] + m[8], m[15] + m[12], m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12],
+      m[3] + m[1], m[7] + m[5], m[11] + m[9], m[15] + m[13], m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13],
+      m[2], m[6], m[10], m[14], m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]];
+    for (let c = 0, b = 0; c < vis.length; c++, b += 6) {
+      let inside = 1;
+      for (let i = 0, p = 0; i < n; i++, p += 4) {
+        const x = P[p] > 0 ? box[b + 3] : box[b], y = P[p + 1] > 0 ? box[b + 4] : box[b + 1], z = P[p + 2] > 0 ? box[b + 5] : box[b + 2];
+        if (P[p] * x + P[p + 1] * y + P[p + 2] * z + P[p + 3] < 0) { inside = 0; break; }
+      }
+      vis[c] = inside;
+    }
+  }
+
+  // Does the last cull() leave anything of this batch to draw?
+  seen(b) {
+    const r = b.ranges, vis = this.cellVis;
+    for (let i = 2; i < r.length; i += 3) if (vis[r[i]]) return true;
+    return false;
+  }
+
+  // Draws what the last cull() left of a batch, as few draws as neighbouring cells allow.
+  drawCells(pass, b) {
+    const r = b.ranges, vis = this.cellVis, indexed = b.kind === 'mesh';
+    let first = 0, n = 0;
+    for (let i = 0; i < r.length; i += 3) {
+      if (!vis[r[i + 2]]) continue;
+      if (n && first + n === r[i]) { n += r[i + 1]; continue; }
+      if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
+      first = r[i]; n = r[i + 1];
+    }
+    if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
   }
 
   clearModel() {
@@ -4373,6 +4864,8 @@ class Renderer {
   setModel(batches) {
     this.clearModel();
     this.geomVersion++;
+    this.cells = batches.cells;
+    this.cellVis = new Uint8Array(batches.cells.length / 6);
     const dev = this.device, U = GPUBufferUsage;
     const upload = (arr, usage) => {
       const size = Math.ceil(arr.byteLength / 4) * 4;
@@ -4469,7 +4962,7 @@ class Renderer {
     f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
     f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
-    f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
+    f.set(sun ? [...sun.sunDir, 1] : [0, 0, 1, s.skyOnly ? 1 : 0], 96);
     // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:
     // far from the file's origin (map coordinates), float precision would break up fine grain.
     const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];
@@ -4490,26 +4983,28 @@ class Renderer {
     this.device.queue.writeBuffer(buf, 0, f);
   }
 
-  // Render each cascade's depth map from the sun.
-  // Skipped when nothing it depends on has changed since the last time (e.g. while only the
-  // clouds drift): the same sun and camera, so the same matrices, and the same geometry.
+  // Render each cascade's depth map from the sun, skipping any whose matrix and geometry are as last
+  // time. The clouds can drift without any being redrawn, and walking usually redraws only the
+  // nearest, since the matrices snap to whole texels and the far ones have large texels.
   renderShadows(enc, sh, geom) {
-    const key = `${geom}|${sh.mats.map((m) => Array.prototype.join.call(m)).join('|')}`;
-    if (this.shadowKey === key) return;
-    this.shadowKey = key;
+    const keys = sh.mats.map((m) => `${geom}|${Array.prototype.join.call(m)}`), old = this.shadowKeys || [];
+    if (keys.every((k, c) => k === old[c])) return;
+    this.shadowKeys = keys;
     const data = new Float32Array(CASCADES * 64);
     sh.mats.forEach((m, c) => data.set(m, c * 64));
     this.device.queue.writeBuffer(this.shadowBuf, 0, data);
     for (let c = 0; c < CASCADES; c++) {
+      if (keys[c] === old[c]) continue;
+      this.cull(sh.mats[c]);
       const pass = enc.beginRenderPass({ colorAttachments: [],
         depthStencilAttachment: { view: this.shadowLayers[c], depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
       pass.setPipeline(this.shadowPipe);
       pass.setBindGroup(0, this.shadowBG, [c * 256]);
       for (const b of this.batches) {
-        if (!b.visible || b.kind !== 'mesh' || !b.castsShadow) continue;
+        if (!b.visible || b.kind !== 'mesh' || !b.castsShadow || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
     }
@@ -4546,11 +5041,12 @@ class Renderer {
       pass.setPipeline(this.shadowPipe);
       pass.setBindGroup(0, this.lampShadowBG, [j.layer * 256]);
       const [x, y, z] = j.p;
+      this.cull(j.m);
       for (const b of casters) {
-        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R) continue;
+        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
     }
@@ -4580,28 +5076,31 @@ class Renderer {
     pass.setBindGroup(0, this.frameBG);
     pass.setPipeline(P.bg);
     pass.draw(3);
+    this.cull(s.viewProj);
 
     const vis = this.batches.filter((b) => b.visible);
     const meshes = vis.filter((b) => b.kind === 'mesh');
     const transparentMode = (b) => s.xray || (s.mode === 1 && b.transparent);
     const drawMesh = (b) => {
+      if (!this.seen(b)) return;
       pass.setPipeline(transparentMode(b) ? (b.vc ? P.meshVCT : P.meshT) : b.vc ? P.meshVC : P.mesh);
       pass.setBindGroup(1, this.batchBG, [b.offset]);
       pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.nrm);
       if (b.vc) pass.setVertexBuffer(2, b.gpu.col);
       pass.setVertexBuffer(b.vc ? 3 : 2, b.gpu.oid);
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
-      pass.drawIndexed(b.count);
+      this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
     for (const b of vis) {
       // Edges on water and foliage are noise, so they are hidden when those materials apply.
       const softEdge = b.kind === 'edge' && ((s.mode === 1 && (b.effCls === MAT_WATER || b.effCls === MAT_VEGETATION)) || (s.mode === 2 && b.effCls === MAT_WATER));
       if ((b.kind === 'edge' && s.showEdges && !softEdge) || (b.kind === 'line' && s.showCurves)) {
+        if (!this.seen(b)) continue;
         pass.setPipeline(s.xray ? P.lineX : P.line);
         pass.setBindGroup(1, this.batchBG, [b.offset]);
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
-        pass.draw(b.count);
+        this.drawCells(pass, b);
       } else if (b.kind === 'point' && s.showPoints) {
         pass.setPipeline(s.xray ? P.pointX : P.point);
         pass.setBindGroup(1, this.batchBG, [b.offset]);
@@ -4631,7 +5130,8 @@ class Renderer {
       const cx = ((px + 0.5) / this.width) * 2 - 1, cy = 1 - ((py + 0.5) / this.height) * 2;
       const W = this.width, H = this.height, pm = new Float64Array(16);
       pm[0] = W; pm[5] = H; pm[10] = 1; pm[15] = 1; pm[12] = -W * cx; pm[13] = -H * cy;
-      this.writeFrame(this.pickFrameBuf, M4.mul(pm, viewProj), s);
+      const vp = M4.mul(pm, viewProj);
+      this.writeFrame(this.pickFrameBuf, vp, s);
       const enc = this.device.createCommandEncoder();
       const pass = enc.beginRenderPass({
         colorAttachments: [{ view: this.pickColor.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
@@ -4639,11 +5139,12 @@ class Renderer {
       });
       pass.setPipeline(this.pipes.pick);
       pass.setBindGroup(0, this.pickFrameBG);
+      this.cull(vp, true);
       for (const b of this.batches) {
-        if (!b.visible || b.kind !== 'mesh') continue;
+        if (!b.visible || b.kind !== 'mesh' || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
       enc.copyTextureToBuffer({ texture: this.pickColor }, { buffer: this.pickRead, bytesPerRow: 256 }, [1, 1]);
@@ -4679,16 +5180,10 @@ class Renderer {
       this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
       this.probeBGs = null;
     }
-    // Rebuilt when the object flags buffer is replaced (it grows with the model). The screen-sized
-    // textures are not bound (the pick pipeline reads neither): a resize destroys them, and a
-    // bind group still holding one made every probe fail, leaving the walker with a stale map.
+    // Rebuilt when the object flags buffer is replaced (it grows with the model).
     if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
       this.probeFlagsBuf = this.objFlagsBuf;
-      const none = this.noGbuf.createView();
-      this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
-        { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] }));
+      this.probeBGs = this.probeBufs.map((buffer) => this.probeBindGroup(buffer));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
@@ -4698,9 +5193,7 @@ class Renderer {
     });
     views.forEach((v, i) => dev.queue.writeBuffer(this.probeBufs[i], 0, Float32Array.from(v.vp)));
 
-    const R = Math.max(q.half, q.reach);
-    const near = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION
-      && b.min[0] <= q.x + R && b.max[0] >= q.x - R && b.min[1] <= q.y + R && b.max[1] >= q.y - R && b.min[2] <= q.top && b.max[2] >= q.bottom);
+    const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION);
     // Should the GPU reject this work, the read-back buffer still holds the previous result (for
     // somewhere else): resolve null then, so the walker asks again rather than trusting it.
     dev.pushErrorScope('validation');
@@ -4714,10 +5207,12 @@ class Renderer {
       pass.setViewport(...v.rect, 0, 1);
       pass.setScissorRect(...v.rect);
       pass.setBindGroup(0, this.probeBGs[i]);
-      for (const b of near) {
+      this.cull(v.vp, true);
+      for (const b of solid) {
+        if (!this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
     });
     pass.end();
@@ -4737,9 +5232,75 @@ class Renderer {
       return { ground: all.subarray(0, G * G * 4), walls };
     }, () => null).finally(() => { this.probeBusy = false; });
   }
+
+  // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys
+  // them, and a bind group still holding one made every probe fail, leaving the walker with a stale map.
+  probeBindGroup(buffer) {
+    const none = this.noGbuf.createView();
+    return this.device.createBindGroup({ layout: this.frameLayout, entries: [
+      { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
+      { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+      { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] });
+  }
+
+  // The ground below many points at once, by the same rules as probe(): the highest visible surface
+  // below each point ({ x, y, top }), down to `bottom`, leaving out vegetation and any batch `skip`
+  // says to. Each point looks straight down through one texel of half size `half`. Resolves to an
+  // array of heights, null where there is nothing (or if the GPU rejected the work).
+  groundBelow(points, bottom, half, skip) {
+    const run = async () => {
+      const out = new Array(points.length).fill(null);
+      if (!this.batches.length) return out;
+      const dev = this.device, S = PROBE.groundBatch, U = GPUBufferUsage;
+      if (!this.groundTex) {
+        const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+        this.groundTex = dev.createTexture({ size: [S, S], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.groundDepth = dev.createTexture({ size: [S, S], format: DEPTH, usage: RA });
+        this.groundRead = dev.createBuffer({ size: S * S * 16, usage: U.MAP_READ | U.COPY_DST });
+        this.groundBuf = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
+      }
+      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION && !skip(b));
+      const group = this.probeBindGroup(this.groundBuf), color = this.groundTex.createView(), depth = this.groundDepth.createView();
+      for (let from = 0; from < points.length; from += S * S) {
+        const n = Math.min(S * S, points.length - from);
+        dev.pushErrorScope('validation');
+        for (let i = 0; i < n; i++) {
+          const p = points[from + i], vp = M4.mul(M4.ortho(half, 1, 0, Math.max(p.top - bottom, half)), M4.lookAt([p.x, p.y, p.top], [p.x, p.y, p.top - 1], [0, 1, 0]));
+          dev.queue.writeBuffer(this.groundBuf, 0, Float32Array.from(vp));
+          const enc = dev.createCommandEncoder(), load = i ? 'load' : 'clear';
+          const pass = enc.beginRenderPass({
+            colorAttachments: [{ view: color, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: load, storeOp: 'store' }],
+            depthStencilAttachment: { view: depth, depthClearValue: 0, depthLoadOp: load, depthStoreOp: 'store' },
+          });
+          pass.setPipeline(this.pipes.pick);
+          pass.setViewport(i % S, Math.floor(i / S), 1, 1, 0, 1);
+          pass.setScissorRect(i % S, Math.floor(i / S), 1, 1);
+          pass.setBindGroup(0, group);
+          this.cull(vp, true);
+          for (const b of solid) {
+            if (!this.seen(b)) continue;
+            pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+            pass.setIndexBuffer(b.gpu.idx, 'uint32');
+            this.drawCells(pass, b);
+          }
+          pass.end();
+          if (i === n - 1) enc.copyTextureToBuffer({ texture: this.groundTex }, { buffer: this.groundRead, bytesPerRow: S * 16 }, [S, S]);
+          dev.queue.submit([enc.finish()]);
+        }
+        const failed = await dev.popErrorScope();
+        await this.groundRead.mapAsync(GPUMapMode.READ);
+        const v = new Float32Array(this.groundRead.getMappedRange());
+        if (!failed) for (let i = 0; i < n; i++) if (v[i * 4 + 3] > 0) out[from + i] = v[i * 4 + 2];
+        this.groundRead.unmap();
+      }
+      return out;
+    };
+    this.groundQueue = (this.groundQueue || Promise.resolve()).then(run, run);
+    return this.groundQueue;
+  }
 }
 
-const PROBE = { ground: 128, wallW: 32, wallH: 16 };
+const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };
 
 </script>
 <script>
@@ -4749,10 +5310,10 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
-  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
+  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
   // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
@@ -4763,6 +5324,7 @@ const state = {
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
   weatherPanel: false,
+  weatherMore: false, // the Weather panel's More section is open
   weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // details: the Details section is open.
@@ -4781,6 +5343,7 @@ state.sun = {
 const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
+state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -4875,7 +5438,7 @@ function frameState() {
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
   s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
   s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
-  s.time = (performance.now() / 1000) % 3600;
+  s.time = anim.time;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
@@ -4900,6 +5463,18 @@ function frameState() {
     if ((light.up > 0 || byMoon) && !state.xray) {
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
+  } else if (!camera.ortho) {
+    // With the sun off, the weather's clouds still drift across a neutral day's sky, whatever the
+    // date and time. The model keeps its usual light, so no cloud shadows. Orthographic views draw
+    // no clouds, so they keep the usual backdrop.
+    const wx = currentSky(NEUTRAL_ALTITUDE);
+    if (wx) {
+      const light = sunLight(NEUTRAL_ALTITUDE);
+      overcastSky(light, wx.cover);
+      s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
+      s.skyOnly = true;
+      s.clouds = { cover: wx.cover, drift: clouds.drift, haze: 1 };
+    }
   }
   return s;
 }
@@ -4909,6 +5484,7 @@ function frameState() {
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
 const clouds = { drift: [0, 0], last: 0, speed: prefs.cloudSpeed >= 0 && prefs.cloudSpeed <= CLOUD_SPEED_MAX ? prefs.cloudSpeed : 10 };
+const NEUTRAL_ALTITUDE = 45; // the sun's height (degrees) whose sky colours are shown with the sun off
 
 // The weather as the sky and light show it: null without a weather file or with the weather
 // switched off (the Weather button's icon or the switch on its panel).
@@ -4937,8 +5513,8 @@ function overcastSky(light, cover) {
 function driftClouds(now) {
   const dt = Math.min(0.1, (now - (clouds.last || now)) / 1000);
   clouds.last = now;
-  if (!state.sun.on || !site.epw || !clouds.speed) return false;
-  const wx = currentSky(sunPosition().altitude);
+  if (!site.epw || !clouds.speed || (!state.sun.on && camera.ortho)) return false;
+  const wx = currentSky(state.sun.on ? sunPosition().altitude : NEUTRAL_ALTITUDE);
   if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
   const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
   // Wrapped well before the noise's coordinates lose precision; a jump every few hundred km.
@@ -4952,22 +5528,28 @@ function sunOpts() {
 }
 function sunPosition() { return solarPosition(sunOpts()); }
 
+// The water's clock, stopped while Animations is off, and when the last frame was drawn.
+const anim = { time: 0, last: performance.now(), drawn: 0 };
+const ANIM_FRAME = 30; // ms between frames drawn only for the animations: about 30 a second, as they need no more
+
 function loop() {
-  // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
-  // untouched page does not keep the GPU busy.
-  if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
-  // Drifting clouds likewise.
-  if (model && performance.now() - lastInput < 15000 && driftClouds(performance.now())) {
-    renderer.dirty = true;
-    // A cloud may have moved over the camera.
-    if (state.comfort.panel && state.comfort.clouds && performance.now() - comfortAt > 200) { comfortAt = performance.now(); syncComfortPanel(); }
-  }
+  const now = performance.now();
+  if (state.animations) anim.time = (anim.time + (now - anim.last) / 1000) % 3600;
+  anim.last = now;
+  // Water ripples and drifting clouds animate while someone is using the viewer; after 15 s idle
+  // they freeze so an untouched page does not keep the GPU busy.
+  const live = model && state.animations && now - lastInput < 15000;
+  const drifting = live && driftClouds(now);
+  if (live && (drifting || renderer.hasWater(state.mode)) && now - anim.drawn >= ANIM_FRAME) renderer.dirty = true;
+  // A cloud may have moved over the camera.
+  if (drifting && state.comfort.panel && state.comfort.clouds && now - comfortAt > 200) { comfortAt = now; syncComfortPanel(); }
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
   }
   if (renderer.dirty) {
-    renderer.dirty = false; renderer.draw(frameState()); positionInspector();
+    anim.drawn = now;
+    renderer.dirty = false; renderer.draw(frameState()); positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
   }
   requestAnimationFrame(loop);
@@ -5035,11 +5617,14 @@ async function openBytes(name, bytes, handle = null) {
     }
     model = m;
     layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
+    state.blockOff = new Set();
     model.name = name;
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
+    model.blocks = blockTable(m);
+    model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
     state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
@@ -5063,9 +5648,13 @@ async function openBytes(name, bytes, handle = null) {
     $('undoRedo').hidden = false;
     $('fileDialog').hidden = true;
     $('matDialog').hidden = true;
+    $('blockDialog').hidden = true;
     applyLayerVisibility();
     buildLayerTree();
+    buildBlockList();
+    if (nestedBlockOff()) await rebuildModel();
     applyLayerMaterials(false);
+    await settleMagicGround();
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
@@ -5150,6 +5739,7 @@ function layerEffective(i) {
 
 function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
+  recheckMagicGround();
   saveViewState();
   redraw();
 }
@@ -5187,22 +5777,25 @@ function buildLayerTree() {
         const desc = (k) => { keep.add(k); kids[k].forEach(desc); };
         desc(i);
         layerOn = L.map((_, k) => keep.has(k));
-      } else layerOn[i] = cb.checked;
+      } else for (const l of layerRows.has(i) ? layerRows.list() : [i]) layerOn[l] = cb.checked;
       applyLayerVisibility();
       refreshRows();
     });
     row.querySelector('.caret').addEventListener('click', () => {
       collapsed.has(i) ? collapsed.delete(i) : collapsed.add(i);
       refreshRows();
+      layerRows.keepShown();
     });
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(i, row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
       const at = e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]; // context-menu key
-      openLayerMenu(i, hasKids ? subtree(i) : null, at);
+      const picked = layerRows.take(i), tree = [...new Set(picked.flatMap(subtree))];
+      openLayerMenu(picked, tree.length > picked.length ? tree : null, at);
     });
     tree.appendChild(row);
-    rows.push({ i, row, cb });
+    rows.push({ key: i, i, row, cb });
     kids[i].forEach((k) => add(k, depth + 1));
   };
   const subtree = (i) => { const out = [i]; for (let n = 0; n < out.length; n++) out.push(...kids[out[n]]); return out; };
@@ -5230,6 +5823,7 @@ function buildLayerTree() {
     }
   }
   refreshRows();
+  layerRows.setRows(rows);
   buildLayerTree.refresh = refreshRows;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
@@ -5237,27 +5831,29 @@ function buildLayerTree() {
     refreshRows();
     const r = rows.find((x) => x.i === i);
     if (!r) return;
-    r.row.scrollIntoView({ block: 'center' });
-    r.row.classList.remove('flash'); void r.row.offsetWidth; r.row.classList.add('flash');
+    layerRows.set([i]);
+    flashRow(r.row);
   };
 }
 
-// Right-click menu for a layer row. `tree` is the layer and all its sub-layers, or null when it
-// has none (the sub-layer items are then left out). Selection takes visible objects only.
-function openLayerMenu(i, tree, [x, y]) {
+function flashRow(row) {
+  row.scrollIntoView({ block: 'center' });
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+}
+
+// Right-click menu for the selected layer rows. `tree` is those layers and all their sub-layers, or
+// null when they have none (the sub-layer items are then left out). Selection takes visible objects
+// only.
+function openLayerMenu(picked, tree, [x, y]) {
   const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
-    return model.objects.flatMap((o, id) => (set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
+    return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
-  const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
-  const own = visibleOn([i]), all = tree && visibleOn(tree);
-  showMenu(L[i].fullPath, [
+  const own = visibleOn(picked), all = tree && visibleOn(tree);
+  showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
-    '-',
-    { label: 'Show all', run: () => setOn(true) },
-    { label: 'Hide all', run: () => setOn(false) },
   ].filter(Boolean), [x, y]);
 }
 
@@ -5289,6 +5885,245 @@ function showMenu(titleText, items, [x, y]) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+
+function showLayersHelp() {
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
+    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+    ${ROW_SELECT_HELP('layers')}
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+}
+
+function showBlocksHelp() {
+  Dialog.open({ title: 'Block definitions', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
+    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
+    <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
+    ${ROW_SELECT_HELP('blocks')}
+    <p>Clicking a tag on a selected row sets all the selected blocks.</p>
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Blocks
+//
+// The block definitions in use (model.blocks, see blockTable in extract.js). Each has a setting for
+// where its sub-elements get their colour and material (state.blockSub: definition id -> 'byParent'
+// or 'byLayer', none meaning as in the file). As in Rhino this belongs to the definition, so it is
+// shared by all its instances; it does not reach its sub-blocks unless applied to them. It is a
+// change to the model, like a layer's material. Turning a block off (state.blockOff) hides every copy
+// of it, like turning a layer off: a copy shows if it and every block around it are on. An object is
+// visible only if its layer is on, it isn't hidden, and (for a block instance) its block is on.
+
+const SUB_SETTINGS = [
+  ['default', 'As in the file', 'Each sub-element keeps the colour and material source it has in the file.'],
+  ['byParent', 'By parent: inherit from the block instance', 'Each sub-element takes its colour and material from the block instance. To change those, select an instance and set its Colour or Material.'],
+  ['byLayer', 'By layer: use each sub-element’s own layer', 'Each sub-element takes its colour and material from the layer it is on, not the layer of the block instance.'],
+];
+const layerRows = new RowSelection(), blockRows = new RowSelection();
+const blockSetting = (id) => state.blockSub[id] || 'default';
+const blockMagic = (id) => MAGIC_BY_ID[state.blockMagic[id]?.id] || null;
+const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
+const nestedBlockOff = () => [...state.blockOff].some((id) => model.blocks.get(id).parents.length);
+const objectOff = (i) => { const o = model.objects[i]; return state.hidden.has(i) || (o.k === 'inst' && state.blockOff.has(o.idef)); };
+
+// Everything inside these blocks, at any depth, other than the blocks themselves.
+function subBlocks(ids) {
+  const seen = new Set(ids), out = [], todo = [...ids];
+  while (todo.length) {
+    for (const k of model.blocks.get(todo.pop()).kids) if (!seen.has(k)) { seen.add(k); out.push(k); todo.push(k); }
+  }
+  return out;
+}
+
+// The blocks at the top of those containing this one (none if it isn't inside another).
+function topParents(id) {
+  const seen = new Set([id]), out = [], todo = [id];
+  while (todo.length) {
+    for (const p of model.blocks.get(todo.pop()).parents) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      todo.push(p);
+      if (!model.blocks.get(p).parents.length) out.push(p);
+    }
+  }
+  return out.sort((a, b) => model.blocks.get(a).name.localeCompare(model.blocks.get(b).name, undefined, { numeric: true }));
+}
+
+// Whether any copy of a block can show, given its own tick and the blocks around it.
+function blockReachable(id, seen = new Set()) {
+  if (state.blockOff.has(id) || seen.has(id)) return false;
+  seen.add(id);
+  const b = model.blocks.get(id);
+  return b.tops.length > 0 || b.parents.some((p) => !blockMagic(p) && blockReachable(p, seen));
+}
+
+function buildBlockList() {
+  const list = $('blockList');
+  list.innerHTML = '';
+  $('blockFilter').value = '';
+  const sorted = [...model.blocks.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  blockRows.setRows(sorted.map((b) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row block-row';
+    row.title = b.name;
+    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.querySelector('.layer-name').textContent = b.name;
+    const cb = row.querySelector('input');
+    cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
+    row.querySelector('.block-tag').addEventListener('click', () => openBlockDialog(blockRows.take(b.id), row));
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openBlockDialog(blockRows.take(b.id), row); });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      openBlockMenu(blockRows.take(b.id), row, e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]); // context-menu key
+    });
+    list.appendChild(row);
+    return { key: b.id, row, cb, name: b.name.toLowerCase() };
+  }));
+  document.querySelector('[data-toggle="blocks"]').hidden = !model.blocks.size;
+  if (state.blocks && !model.blocks.size) toggle('blocks');
+  refreshBlockList();
+}
+
+function refreshBlockList() {
+  const filter = $('blockFilter').value.trim().toLowerCase();
+  for (const { key, row, cb, name } of blockRows.rows) {
+    const on = !state.blockOff.has(key), set = blockSetting(key), tag = row.querySelector('.block-tag');
+    cb.checked = on;
+    row.hidden = !name.includes(filter);
+    row.classList.toggle('off', !on);
+    row.classList.toggle('inherited-off', on && !blockReachable(key));
+    const magic = blockMagic(key);
+    tag.textContent = magic ? 'magic' : set;
+    tag.classList.toggle('set', !!magic || set !== 'default');
+    tag.title = `${magic ? `Magic block: ${magic.name}` : SUB_SETTINGS.find(([id]) => id === set)[1]}. Click to change.`;
+  }
+  blockRows.keepShown();
+}
+
+async function setBlocksOn(ids, on) {
+  for (const id of ids) { if (on) state.blockOff.delete(id); else state.blockOff.add(id); }
+  // Instances of a hidden block leave the selection; copies inside other blocks need a rebuild.
+  const nested = ids.some((id) => model.blocks.get(id).parents.length);
+  state.sel.ids = state.sel.ids.filter((i) => !objectOff(i));
+  if (nested) await rebuildModel(); else pushObjectFlags();
+  showInspector();
+  refreshBlockList();
+  renderFileInfo();
+  saveViewState();
+}
+
+// Select these blocks' rows, showing them all if the filter leaves any out.
+function revealBlocks(ids) {
+  const rows = blockRows.rows.filter((r) => ids.includes(r.key));
+  if (rows.some((r) => r.row.hidden)) { $('blockFilter').value = ''; refreshBlockList(); }
+  blockRows.set(ids);
+  if (ids.length === 1 && rows[0]) flashRow(rows[0].row);
+  return rows[0]?.row;
+}
+
+// Right-click menu for the selected block rows.
+function openBlockMenu(ids, row, at) {
+  const instances = ids.flatMap((id) => model.blocks.get(id).tops).filter((i) => !objectOff(i) && layerEffective(model.objects[i].layer));
+  const subs = subBlocks(ids);
+  showMenu(ids.length > 1 ? `${ids.length} blocks` : model.blocks.get(ids[0]).name, [
+    { label: 'Select instances', n: instances.length, run: () => selectObjects(instances) },
+    subs.length && { label: 'Select sub-blocks', n: subs.length, run: () => revealBlocks([...ids, ...subs]) },
+    '-',
+    { label: 'Block settings…', run: () => openBlockDialog(ids, row) },
+  ].filter(Boolean), at);
+}
+
+// The window for these blocks' magic block and sub-element setting.
+let blockDialogIds = [];
+function openBlockDialog(ids, anchor) {
+  blockDialogIds = ids;
+  syncBlockDialog();
+  placePopover($('blockDialog'), anchor, 'blocksPanel');
+}
+
+function syncBlockDialog() {
+  const ids = blockDialogIds, one = ids.length === 1 ? model.blocks.get(ids[0]) : null;
+  const values = new Set(ids.map(blockSetting)), value = values.size === 1 ? [...values][0] : null, subs = subBlocks(ids);
+  $('blockTitle').textContent = $('blockTitle').title = one ? one.name : `${ids.length} blocks`;
+  const magics = new Set(ids.map((id) => blockMagic(id)?.id || 'none')), magic = magics.size === 1 ? [...magics][0] : null, anyMagic = ids.some(blockMagic);
+  $('blockMagic').innerHTML = (magic ? '' : '<option value="" selected disabled>Mixed</option>') +
+    [['none', 'None'], ...MAGIC_BLOCKS.map((b) => [b.id, b.name])].map(([id, label]) => `<option value="${id}"${id === magic ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockMagicHint').textContent = !anyMagic ? '' : `Replaces every instance, sized to the height of the block.${ids.some((id) => blockMagic(id) && model.blocks.get(id).parents.length) ? ' In a saved copy, instances inside other blocks stay as they are, as block definitions aren’t changed.' : ''}`;
+  $('blockSub').disabled = anyMagic;
+  $('blockSub').innerHTML = (value ? '' : '<option value="" selected disabled>Mixed</option>') +
+    SUB_SETTINGS.map(([id, label]) => `<option value="${id}"${id === value ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockHint').textContent = anyMagic ? 'A magic block’s colours and materials come from its own layers.' : value ? SUB_SETTINGS.find(([id]) => id === value)[2] : 'These blocks have different settings.';
+  const apply = $('blockApplySubs');
+  apply.textContent = subs.length ? `Apply setting to sub-blocks (${subs.length})` : 'Apply setting to sub-blocks';
+  apply.disabled = !subs.length || !value || anyMagic;
+  apply.title = !subs.length ? 'No sub-blocks inside' : anyMagic ? 'Doesn’t apply to a magic block' : !value ? 'Choose one setting first' : '';
+  $('blockSubsHint').textContent = subs.length && !anyMagic ?'The setting doesn’t change sub-blocks until applied to them, and applying it changes them everywhere they are used.' : '';
+  const links = (items, heading) => (items.length ? `${heading}: ${items.slice(0, 6).join(', ')}${items.length > 6 ? ` and ${items.length - 6} more` : ''}` : '');
+  const layers = [...new Set(ids.flatMap((id) => { const m = blockMagic(id); return m ? m.parts.map((p) => model.magicLayers[p.layer]) : model.blocks.get(id).layers; }))];
+  $('blockLayers').innerHTML = links(layers.map((l) => `<button class="link" data-layer="${l}">${escapeHtml(model.layers[l].fullPath)}</button>`), 'Sub-element layers');
+  $('blockParents').innerHTML = one ? links(topParents(one.id).map(blockLink), `Top-level parent block${topParents(one.id).length > 1 ? 's' : ''}`) : '';
+}
+
+async function setBlockSetting(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'default') delete state.blockSub[id]; else state.blockSub[id] = value; }
+  await rebuildModel();
+  saveEdits();
+  afterBlockChange();
+}
+
+async function setBlockMagic(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'none') delete state.blockMagic[id]; else state.blockMagic[id] = { id: value }; }
+  await rebuildModel();
+  saveEdits();
+  buildLayerTree();
+  afterBlockChange();
+}
+
+function afterBlockChange() {
+  refreshBlockList();
+  if (!$('blockDialog').hidden) syncBlockDialog();
+  if (state.sel.ids.length) showInspector();
+  renderFileInfo();
+}
+
+function bindBlocksPanel() {
+  blockRows.bind($('blockList'));
+  $('blockFilter').addEventListener('input', refreshBlockList);
+  $('blockList').addEventListener('scroll', closeLayerMenu);
+  $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
+  $('blocksHelp').addEventListener('click', showBlocksHelp);
+  document.querySelectorAll('[data-blocks]').forEach((b) => b.addEventListener('click', () => {
+    if (model) setBlocksOn(blockRows.rows.filter((r) => !r.row.hidden).map((r) => r.key), b.dataset.blocks === 'all');
+  }));
+  const close = () => { $('blockDialog').hidden = true; };
+  $('blockClose').addEventListener('click', close);
+  $('blockDone').addEventListener('click', close);
+  $('blockMagic').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockMagic(blockDialogIds, e.target.value, `Change magic block (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
+  $('blockSub').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockSetting(blockDialogIds, e.target.value, `Change sub-element setting (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
+  $('blockApplySubs').addEventListener('click', () => {
+    const subs = subBlocks(blockDialogIds);
+    setBlockSetting(subs, blockSetting(blockDialogIds[0]), `Apply sub-element setting to ${subs.length} sub-block${subs.length > 1 ? 's' : ''}`);
+  });
+  $('blockDialog').addEventListener('click', (e) => {
+    const block = e.target.closest('[data-block]'), layer = e.target.closest('[data-layer]');
+    if (block) openBlockDialog([block.dataset.block], revealBlocks([block.dataset.block]));
+    if (layer) {
+      if (!state.layers) toggle('layers');
+      buildLayerTree.reveal(+layer.dataset.layer);
+    }
+  });
+}
+
 function bindLayerMenu() {
   const menu = $('layerMenu');
   window.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeLayerMenu(); }, true);
@@ -5312,12 +6147,14 @@ function bindLayerMenu() {
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
 // layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
-// in extract.js). Everything is remembered in this browser per model, and can be written into a
+// in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
+// state.blockMagic: block definition id -> its magic block, { id } (see magicblocks.js).
+// Everything is remembered in this browser per model, and can be written into a
 // copy of the .3dm.
 
 const rgbHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {} });
+const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, blockSub: {}, blockMagic: {} });
 Object.assign(state, NO_EDITS());
 
 // Swatches and dialogs show materials in Rendered view and display colours otherwise.
@@ -5387,15 +6224,15 @@ const oldMaterialsKey = () => model && `3dm-viewer:materials:${model.name}:${mod
 // Layers whose material or magic material was set in the viewer.
 const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...Object.keys(state.layerSpecial)]);
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
-  obj: Object.keys(state.objEdits).length });
+  obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length, magic: Object.keys(state.blockMagic).length });
 
 function saveEdits() {
   const n = editCount(), north = state.sun.north;
   try {
     localStorage.removeItem(oldMaterialsKey());
-    if (n.mat + n.col + n.obj || north !== fileNorth()) {
-      const { layerMat, layerColor, layerSpecial, objEdits } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, north }));
+    if (n.mat + n.col + n.obj + n.blocks + n.magic || north !== fileNorth()) {
+      const { layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic } = state;
+      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic, north }));
     } else localStorage.removeItem(editsKey());
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
@@ -5424,6 +6261,48 @@ async function rebuildModel() {
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
+  await settleMagicGround();
+}
+
+function pushMagicBatches() {
+  renderer.setModel(buildBatches(model));
+  applyLayerVisibility();
+  applyLayerMaterials(false);
+  pushObjectFlags();
+}
+
+// Rebuild if a build placed magic blocks whose ground isn't known yet. Their source blocks are gone
+// from the batches by then, and magic blocks are left out of the look down, so neither is taken for
+// ground. Resolves once they stand on it.
+async function settleMagicGround() {
+  if (!model.magicMissing) return;
+  await lookForMagicGround([...model.magicPoints].filter(([key]) => !model.magicGround.has(key)));
+  pushMagicBatches();
+}
+
+// Finds the ground under [key, point] entries and records it. Returns whether any of it moved.
+async function lookForMagicGround(entries) {
+  const u = 1 / model.metresPerUnit, bottom = Math.min(...renderer.batches.map((b) => b.min[2])) - u;
+  const found = await renderer.groundBelow(entries.map(([, p]) => p), bottom, 0.05 * u, (b) => model.layers[b.layer]?.magic);
+  let moved = false;
+  entries.forEach(([key], i) => {
+    const was = model.magicGround.get(key), z = found[i];
+    if (was === undefined || (was == null) !== (z == null) || Math.abs(was - z) > 0.01 * u) moved = true;
+    model.magicGround.set(key, z);
+  });
+  return moved;
+}
+
+// What is visible decides what is ground, so look again when that may have changed, and rebuild only
+// if a magic block has to move.
+let groundTimer = 0;
+function recheckMagicGround() {
+  if (!model?.magicPoints?.size) return;
+  clearTimeout(groundTimer);
+  groundTimer = setTimeout(async () => {
+    const seen = model;
+    if (seen?.magicPoints?.size && await lookForMagicGround([...seen.magicPoints]) && seen === model) pushMagicBatches();
+  }, 200);
 }
 
 // Put the objects back as they are in the file, then apply attribute changes (object id ->
@@ -5448,7 +6327,7 @@ function applyObjectEdits(objEdits = {}) {
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits,
+const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, blockSub: state.blockSub, blockMagic: state.blockMagic,
   north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
@@ -5490,16 +6369,18 @@ async function stepHistory(redo) {
 
 // Make the given edit state current, rebuilding only if objects or foliage normals change.
 async function restoreEdits(e) {
-  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits);
+  const magicChange = JSON.stringify(state.blockMagic) !== JSON.stringify(e.blockMagic);
+  const objectsChange = magicChange || JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits) || JSON.stringify(state.blockSub) !== JSON.stringify(e.blockSub);
   const vegBefore = model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
-  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial) });
+  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial), blockSub: structuredClone(e.blockSub), blockMagic: structuredClone(e.blockMagic) });
   const vegChange = vegBefore !== model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
   if (objectsChange) applyObjectEdits(e.objEdits);
   if (objectsChange || vegChange) await rebuildModel();
+  if (magicChange) buildLayerTree();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
-  if (state.sel.ids.length) showInspector();
+  afterBlockChange();
   pushObjectFlags();
 }
 
@@ -5520,16 +6401,22 @@ function loadEdits() {
     if (!(id in state.layerSpecial)) state.layerSpecial[id] = t;
     state.layerMat[id] = t === MAT_WATER ? { alpha: m.alpha, gloss: m.gloss } : { rgb: m.rgb, alpha: m.alpha, gloss: m.gloss };
   }
-  model.specialOf = layerSpecialId;
+  for (const [id, set] of Object.entries(e.blockSub || {})) if (model.blocks.has(id) && SUB_SOURCES[set]) state.blockSub[id] = set;
+  for (const [id, set] of Object.entries(e.blockMagic || {})) if (model.blocks.has(id) && MAGIC_BY_ID[set?.id]) state.blockMagic[id] = set;
+  Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id), magicOf: blockMagic });
+  // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
+  for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
   applyObjectEdits(e.objEdits);
   model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
   if (n.col) parts.push(`colours on ${n.col} layer${n.col > 1 ? 's' : ''}`);
   if (n.mat) parts.push(`materials on ${n.mat} layer${n.mat > 1 ? 's' : ''}`);
   if (n.obj) parts.push(`${n.obj.toLocaleString()} object${n.obj > 1 ? 's' : ''} changed`);
+  if (n.blocks) parts.push(`sub-element settings on ${n.blocks.toLocaleString()} block${n.blocks > 1 ? 's' : ''}`);
+  if (n.magic) parts.push(`magic blocks on ${n.magic.toLocaleString()} block${n.magic > 1 ? 's' : ''}`);
   if (model.savedNorth != null && model.savedNorth !== fileNorth()) parts.push('the north angle');
   model.restored = parts;
-  return n.obj > 0 || Object.keys(state.layerSpecial).length > 0;
+  return n.obj > 0 || n.blocks > 0 || n.magic > 0 || Object.keys(state.layerSpecial).length > 0;
 }
 
 // Layer visibility, hidden objects and the cameras are the state of looking at a model rather than
@@ -5547,7 +6434,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -5557,19 +6444,26 @@ function restoreLayersAndHidden(saved) {
     const i = model.objectIndex.get(id);
     if (i != null) state.hidden.add(i);
   }
+  for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) model.restored.push('layer visibility');
+  if (state.blockOff.size) model.restored.push('block visibility');
 }
 
 function restoreCameras(saved) {
   const finite = (...v) => v.every(Number.isFinite);
   const valid = (c) => c && Array.isArray(c.target) && c.target.length === 3 && finite(...c.target, c.yaw, c.pitch) && c.distance > 0 && c.fov > 0 && c.fov < Math.PI && typeof c.ortho === 'boolean';
   if (!valid(saved.camera)) return;
-  viewCams = Object.fromEntries(Object.entries(saved.cams || {}).filter(([id, c]) => isCameraId(id) && valid(c)));
-  viewNow = isCameraId(saved.view) ? saved.view : null;
-  camera.restore(saved.camera);
+  // Saved before Elevation replaced Front and Right, and when a parallel view could be tilted into
+  // a free view: those come back as Elevation, and as Perspective.
+  const cams = { ...saved.cams }, wasFlat = saved.view === 'front' || saved.view === 'right';
+  cams.elevation ||= (wasFlat && cams[saved.view]) || cams.front || cams.right;
+  viewCams = Object.fromEntries(Object.entries(cams).filter(([id, c]) => isCameraId(id) && valid(c)));
+  const view = wasFlat ? 'elevation' : saved.view;
+  if (isCameraId(view)) { viewNow = view; camera.restore(saved.camera); }
+  else if (viewCams.perspective) camera.restore(viewCams.perspective);
   syncToolbar();
   redraw();
 }
@@ -5611,11 +6505,55 @@ function openMaterialDialog(i, anchor) {
     $('matReset').hidden = !state.layerColor[l.id];
   }
   syncMaterialDialog();
+  placePopover(dlg, anchor, 'layersPanel');
+}
+
+// Show a window beside a side panel, level with the row it belongs to.
+function placePopover(dlg, anchor, panel) {
   dlg.hidden = false;
-  // Place it beside the layers panel, level with the swatch.
-  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $('layersPanel').getBoundingClientRect();
+  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $(panel).getBoundingClientRect();
   dlg.style.top = Math.max(12, Math.min(window.innerHeight - d.height - 12, r.top - 40)) + 'px';
   dlg.style.left = Math.max(12, (side.width ? side.left : r.left) - d.width - 10) + 'px';
+}
+
+// The right-hand panels share a column, whose width is set by dragging the left edge of any of them
+// (double-click for the default). Remembered between sessions. Phones use the full window width.
+const SIDE_WIDTH = 300, SIDE_EDGE = 6; // px; SIDE_EDGE: how close to the edge a drag can start
+state.sideWidth = SIDE_WIDTH;
+function setSideWidth(w) {
+  state.sideWidth = Math.round(Math.max(SIDE_WIDTH, Math.min(w, window.innerWidth * 0.6)));
+  document.querySelector('.side').style.setProperty('--side-width', state.sideWidth + 'px');
+  // Windows beside the column move with it.
+  for (const [dlg, panel] of [[$('matDialog'), $('layersPanel')], [$('blockDialog'), $('blocksPanel')]]) {
+    if (!dlg.hidden && !panel.hidden) dlg.style.left = Math.max(12, panel.getBoundingClientRect().left - dlg.offsetWidth - 10) + 'px';
+  }
+}
+
+function bindSideResize() {
+  const side = document.querySelector('.side');
+  const edgePanel = (e) => {
+    const p = e.target.closest?.('.panel');
+    return p && !window.matchMedia('(max-width: 720px)').matches && e.clientX - p.getBoundingClientRect().left <= SIDE_EDGE ? p : null;
+  };
+  let from = null;
+  side.addEventListener('pointermove', (e) => {
+    if (from) setSideWidth(from.width + from.x - e.clientX);
+    else side.classList.toggle('at-edge', !!edgePanel(e));
+  });
+  side.addEventListener('pointerleave', () => { if (!from) side.classList.remove('at-edge'); });
+  side.addEventListener('pointerdown', (e) => {
+    const p = e.button === 0 && edgePanel(e);
+    if (!p) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.setPointerCapture(e.pointerId);
+    from = { x: e.clientX, width: side.offsetWidth };
+  }, true);
+  const end = () => { if (from) { from = null; savePrefs(); } };
+  side.addEventListener('pointerup', end);
+  side.addEventListener('pointercancel', end);
+  side.addEventListener('dblclick', (e) => { if (edgePanel(e)) { setSideWidth(SIDE_WIDTH); savePrefs(); } });
+  if (prefs.sideWidth > SIDE_WIDTH) setSideWidth(prefs.sideWidth);
 }
 
 // Top-level objects on a layer whose colour (or material) does not come from the layer, so a
@@ -5700,12 +6638,13 @@ function bindMaterialDialog() {
   });
   $('matOwn').addEventListener('click', (e) => {
     if (e.target.id !== 'matSelectOwn') return;
-    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !state.hidden.has(id)));
+    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !objectOff(id)));
   });
 }
 
 // Write a copy of the .3dm with the viewer's changes (the original is never touched): layer
-// colours, a Rhino material for each layer set in the viewer and object colour/material sources.
+// colours, a Rhino material for each layer set in the viewer, object colour/material sources,
+// block sub-element settings and magic blocks (writeMagicBlocks).
 async function downloadCopy() {
   if (!model || !model.bytes) return;
   try {
@@ -5731,7 +6670,7 @@ async function downloadCopy() {
       layer.renderMaterialIndex = mats.count - 1;
     }
     const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
-    const MS = [rhino.ObjectMaterialSource.MaterialFromLayer, rhino.ObjectMaterialSource.MaterialFromObject, rhino.ObjectMaterialSource.MaterialFromParent];
+    const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
     // Objects whose attributes changed.
     for (const it of model.objects) {
       if (!state.objEdits[it.id]) continue;
@@ -5743,6 +6682,16 @@ async function downloadCopy() {
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
     }
+    // Block sub-element settings: in the file these are the sources of the definition's own objects.
+    const idefs = doc.instanceDefinitions();
+    for (const [id, set] of Object.entries(state.blockSub)) {
+      const src = SUB_SOURCES[set];
+      for (const oid of idefs.findId(id)?.getObjectIds() || []) {
+        const a = objs.findId(oid)?.attributes();
+        if (a) { a.colorSource = CS[src.cs]; a.materialSource = MS[src.ms]; }
+      }
+    }
+    const keptNested = writeMagicBlocks(rhino, doc, rgba);
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
     const out = doc.toByteArray();
@@ -5752,12 +6701,67 @@ async function downloadCopy() {
     a.download = model.name.replace(/\.3dm$/i, '') + ' - viewer edits.3dm';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    if (keptNested.length) notice(`Saved with the original geometry inside other blocks, as block definitions aren’t changed: ${keptNested.join(', ')}.`, false, 8000);
   } catch (e) {
     console.error(e);
     notice(`Could not write the file: ${e.message || e}`, true);
   } finally {
     hideBusy();
   }
+}
+
+// In a copy, top-level instances replaced by a magic block become instances of a new block definition
+// holding it, on new layers, with the attributes the instances had. No existing definition changes,
+// so the replaced ones stay, and instances inside other blocks stay as they are.
+// Returns the names of the blocks left with such instances.
+function writeMagicBlocks(rhino, doc, rgba) {
+  const used = new Map(); // magic block -> top-level instances
+  for (const it of model.objects) {
+    const magic = it.k === 'inst' && it.magicXf && blockMagic(it.idef);
+    if (magic) used.set(magic, [...(used.get(magic) || []), it]);
+  }
+  const lt = doc.layers(), mats = doc.materials(), idefs = doc.instanceDefinitions(), objs = doc.objects();
+  const names = new Set(), layerIndex = {};
+  for (let i = 0; i < idefs.count; i++) names.add(idefs.get(i).name);
+  let parentId = null;
+  const fileLayer = (key) => {
+    if (layerIndex[key] != null) return layerIndex[key];
+    if (!parentId) {
+      const p = new rhino.Layer();
+      Object.assign(p, { name: MAGIC_PARENT_LAYER, color: rgba([0.5, 0.5, 0.5]) });
+      parentId = lt.get(lt.add(p)).id;
+    }
+    const i = model.magicLayers[key], m = new rhino.Material(), l = new rhino.Layer();
+    m.name = model.layers[i].name;
+    m.diffuseColor = rgba(layerLook(i).rgb);
+    mats.add(m);
+    Object.assign(l, { name: model.layers[i].name, parentLayerId: parentId, color: rgba(layerDisplayRgb(i)), renderMaterialIndex: mats.count - 1 });
+    return (layerIndex[key] = lt.add(l));
+  };
+  for (const [magic, items] of used) {
+    const meshes = [], attrs = [];
+    for (const part of magicMeshes(magic, 1 / model.metresPerUnit)) {
+      const mesh = new rhino.Mesh(), a = new rhino.ObjectAttributes();
+      for (let i = 0; i < part.pos.length; i += 3) mesh.vertices().add(part.pos[i], part.pos[i + 1], part.pos[i + 2]);
+      for (let i = 0; i < part.idx.length; i += 3) mesh.faces().addTriFace(part.idx[i], part.idx[i + 1], part.idx[i + 2]);
+      mesh.normals().computeNormals();
+      a.layerIndex = fileLayer(part.layer);
+      meshes.push(mesh); attrs.push(a);
+    }
+    let name = `Magic block - ${magic.name}`;
+    for (let k = 2; names.has(name); k++) name = `Magic block - ${magic.name} ${k}`;
+    names.add(name);
+    const defId = idefs.get(idefs.add(name, '', '', '', [0, 0, 0], meshes, attrs)).id;
+    for (const it of items) {
+      const o = objs.findId(it.id);
+      if (!o) continue;
+      const a = o.attributes(), p = it.magicXf, xf = new rhino.Transform(1);
+      objs.delete(it.id);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) xf[`m${r}${c}`] = p[r * 4 + c] + (c === 3 ? model.origin[r] : 0);
+      objs.addInstanceObject(new rhino.InstanceReference(defId, xf), a);
+    }
+  }
+  return Object.keys(state.blockMagic).filter((id) => model.blocks.get(id).parents.some((p) => !blockMagic(p))).map((id) => model.blocks.get(id).name);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -5770,6 +6774,7 @@ async function downloadCopy() {
 
 state.sel = { ids: [], p: null };
 state.hidden = new Set();
+state.blockOff = new Set();
 let objFlags = new Uint32Array(0);
 
 function resetObjectState() {
@@ -5782,9 +6787,13 @@ function resetObjectState() {
   syncHiddenButton();
 }
 
+let flagsHidden = '';
 function pushObjectFlags() {
+  const hidden = `${state.hidden.size},${state.blockOff.size}`;
+  if (hidden !== flagsHidden) { flagsHidden = hidden; recheckMagicGround(); }
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
+  if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
   for (const id of state.sel.ids) objFlags[id] |= 2;
   renderer.setObjectFlags(objFlags);
   redraw();
@@ -5818,13 +6827,13 @@ function selectObjects(ids, p = null) {
 
 // Ctrl+A: every visible object (not hidden, on a layer that is on).
 function selectAll() {
-  selectObjects(model.objects.flatMap((o, id) => (!state.hidden.has(id) && layerEffective(o.layer) ? [id] : [])));
+  selectObjects(model.objects.flatMap((o, id) => (!objectOff(id) && layerEffective(o.layer) ? [id] : [])));
 }
 
 const UNIT_ABBR = { Meters: 'm', Millimeters: 'mm', Centimeters: 'cm', Kilometers: 'km', Feet: 'ft', Inches: 'in' };
 const fmtLen = (v) => (Math.abs(v) >= 100 ? v.toFixed(1) : v.toPrecision(3));
 const COLOR_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent'], [2, 'By material']];
-const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [2, 'By parent']];
+const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent']];
 const materialLabel = (mi) => (mi >= 0 && model.materials[mi] ? model.materials[mi].name || `Material ${mi + 1}` : 'Default material');
 
 // The colour (Shaded view) or material (Rendered view) source control for the selection: a
@@ -5842,7 +6851,7 @@ function sourceControl(objs) {
   }
   if (src === 1 && isMat) {
     const mi = same((o) => o.ai.mi) ? (model.materials[objs[0].ai.mi] ? objs[0].ai.mi : -1) : null;
-    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
+    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.filter((m) => !m.magic).map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
   }
   html += '</div>';
   // What it resolves to (single object), and what "by parent" means for blocks.
@@ -5857,7 +6866,7 @@ function sourceControl(objs) {
       html += `<div class="fine">${chip(shownRgb(look))}${rgbHex(shownRgb(look))}</div>`;
     }
   }
-  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this applies to the parts inside it that are set to “By parent”.</div>';
+  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Block definitions panel.</div>';
   return html;
 }
 
@@ -5878,7 +6887,7 @@ function showInspector() {
     title = o.name || o.block || o.type;
     swatch = o.look ? rgbHex(showsMaterial() ? shownMaterialRgb(o.look) : shownRgb(o.look)) : 'var(--accent)';
     rows = [
-      ['Type', o.block ? `Block · ${escapeHtml(o.block)}` : escapeHtml(o.type), true],
+      ['Type', o.k === 'inst' ? `Block · ${blockLink(o.idef)}` : escapeHtml(o.type), true],
       ['Layer', layerLink(o.layer), true],
       srcRow,
       ['Size', sizeText],
@@ -5892,12 +6901,12 @@ function showInspector() {
       for (const o of objs) m.set(key(o), (m.get(key(o)) || 0) + 1);
       return [...m.entries()].sort((a, b) => b[1] - a[1]);
     };
-    const types = count((o) => (o.block ? `Block · ${o.block}` : o.type));
+    const types = count((o) => (o.k === 'inst' ? o.idef : o.type));
     const layers = count((o) => o.layer);
     title = `${objs.length} objects selected`;
     swatch = 'var(--accent)';
     rows = [
-      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
+      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${model.blocks.has(t) ? `Block · ${blockLink(t)}` : escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
       ['Layers', layers.slice(0, 4).map(([l]) => layerLink(l)).join('<br>') + (layers.length > 4 ? `<br>and ${layers.length - 4} more` : ''), true],
       srcRow,
       ['Extent', sizeText],
@@ -6006,6 +7015,11 @@ function bindInspector() {
       if (!state.layers) toggle('layers');
       buildLayerTree.reveal(+b.dataset.layer);
     }
+    const block = e.target.closest('[data-block]');
+    if (block) {
+      if (!state.blocks) toggle('blocks');
+      revealBlocks([block.dataset.block]);
+    }
     const code = e.target.closest('code');
     if (code) navigator.clipboard?.writeText(code.textContent).then(() => { code.classList.add('copied'); setTimeout(() => code.classList.remove('copied'), 900); });
   });
@@ -6035,7 +7049,7 @@ function renderFileInfo() {
     s.curves && ['Curves', fmt(s.curves)],
     s.points && ['Points', fmt(s.points)],
     s.instances && ['Block instances', fmt(s.instances)],
-    ['Layers', fmt(model.layers.length)],
+    ['Layers', fmt(model.layers.filter((l) => !l.magic).length)],
     ['Location', loc ? `${loc.lat.toFixed(4)}°, ${loc.lon.toFixed(4)}°` : 'Not set'],
     hiddenTypes && ['Not shown', hiddenTypes],
     missing && ['No render mesh', missing],
@@ -6048,9 +7062,12 @@ function renderFileInfo() {
   if (n.col) saved.push(`Colours set on ${plural(n.col, 'layer')}`);
   if (n.mat) saved.push(`Materials set on ${plural(n.mat, 'layer')}`);
   if (n.obj) saved.push(`${plural(n.obj, 'object')} with changed colour or material`);
+  if (n.blocks) saved.push(`Sub-element settings on ${plural(n.blocks, 'block')}`);
+  if (n.magic) saved.push(`Magic blocks on ${plural(n.magic, 'block')}`);
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
+  if (state.blockOff.size) changes.push('Block visibility changed');
   if (state.sun.north !== fileNorth()) changes.push('North angle changed');
   if (document.activeElement !== $('fileNorth')) $('fileNorth').value = state.sun.north;
   $('fileNorthInfo').textContent = `Degrees anticlockwise from the model’s +X axis to north (90: +Y is north). ${loc ? `The file’s is ${+fileNorth().toFixed(1)}°, from its ${loc.source}.` : 'The file does not set one; 90 is the default.'}`;
@@ -6069,15 +7086,16 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours and materials, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
-  if (n.mat + n.col + n.obj || state.sun.north !== north) recordUndo('Revert changes');
+  if (n.mat + n.col + n.obj + n.blocks + n.magic || state.sun.north !== north) recordUndo('Revert changes');
   setSun({ north });
-  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
+  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length || n.blocks || n.magic || nestedBlockOff();
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
+  state.blockOff.clear();
   state.sel = { ids: [], p: null };
   $('inspect').hidden = true; inspectPin = null;
   layerOn = model.layers.map((l) => l.visible);
@@ -6088,9 +7106,10 @@ async function revertChanges() {
   applyLayerVisibility();
   applyLayerMaterials();
   buildLayerTree.refresh?.();
+  if (n.magic) buildLayerTree();
+  afterBlockChange();
   pushObjectFlags();
   syncHiddenButton();
-  renderFileInfo();
 }
 
 // The open model's north angle: the file's own (Rhino sun settings or Earth anchor), else 90.
@@ -6221,6 +7240,7 @@ function bindSunPanel() {
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
+  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
   $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncSunPanel(); redraw(); });
   $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
   $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
@@ -6242,10 +7262,10 @@ function toggleWeatherPanel() {
 function syncWeather(month, day) {
   if (!state.weatherPanel) return;
   const el = $('weatherBody'), e = site.epw;
-  $('weatherSrc').textContent = e ? e.location.name || e.fileName : 'No weather file';
-  $('weatherSrc').title = e ? e.fileName : '';
-  $('weatherWhen').value = `${day} ${MONTHS[month - 1]} · ${fmtHour(state.sun.hour)}`;
-  $('cloudSpeedField').hidden = !e;
+  $('weatherMoreField').hidden = !e;
+  $('weatherToggle').setAttribute('aria-expanded', String(state.weatherMore));
+  $('weatherToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherMore);
+  $('weatherDetails').hidden = !state.weatherMore;
   $('cloudSpeed').value = clouds.speed;
   $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
   if (!e) {
@@ -6256,12 +7276,16 @@ function syncWeather(month, day) {
   const sky = weatherSky(e, state.sun.doy, state.sun.hour, activeLocation() ? sunPosition().altitude : 30);
   const cloud = !sky || sky.source === 'none' ? '—'
     : `<b>${Math.round(sky.cover * 10)}</b>/10 <span class="fine">${sky.source === 'observed' ? 'observed' : 'from radiation'}</span>`;
-  const wind = w.windSpeed === null ? '—' : w.windSpeed < 0.05 ? '<b>Calm</b>'
-    : `<b>${v(w.windSpeed, 1)}</b> m/s${w.windDirection === null ? '' : ` from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°)`}`;
-  el.innerHTML = `<dl class="wx">
-    <dt>Air temperature</dt><dd><b>${v(w.dryBulb, 1)}</b> °C</dd>
-    <dt>Relative humidity</dt><dd><b>${v(w.relativeHumidity)}</b>%</dd>
-    <dt>Wind</dt><dd>${wind}</dd>
+  const reading = (x, d, unit) => (x === null ? '—' : `<span><b>${x.toFixed(d)}</b>${unit}</span>`);
+  const blowing = w.windSpeed >= 0.05 && w.windDirection !== null; // null >= 0.05 is false
+  const windTitle = blowing ? `Wind from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°). The arrow points the way it blows, with north up.` : 'Wind';
+  // The file gives the direction the wind comes from; the arrow points the way it goes.
+  const needle = blowing ? `<path class="needle" transform="rotate(${(w.windDirection + 180).toFixed(1)} 12 12)" d="M12 5.5 15.5 18 12 15.6 8.5 18Z"/>` : '';
+  el.innerHTML = `<div class="wx-now">
+    <span title="Air temperature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg>${reading(w.dryBulb, 1, ' °C')}</span>
+    <span title="Relative humidity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.7 5.66 5.66a8 8 0 1 1-11.31 0Z"/></svg>${reading(w.relativeHumidity, 0, '%')}</span>
+    <span title="${windTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/>${needle}</svg>${w.windSpeed !== null && w.windSpeed < 0.05 ? '<b>Calm</b>' : reading(w.windSpeed, 1, ' m/s')}</span></div>`;
+  $('weatherMore').innerHTML = `<dl class="wx">
     <dt>Cloud cover</dt><dd title="${sky?.source === 'radiation' ? 'This file has no usable cloud observations, so the cover is estimated from the share of diffuse light, by day, and filled in overnight' : 'Total sky cover from the weather file'}">${cloud}</dd>
     <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
     <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
@@ -6518,7 +7542,7 @@ function openLocationDialog() {
 // Pointer / keyboard input
 
 const pointers = new Map();
-let drag = null, pivot = null, lastWheelPick = null, clickTimer = 0;
+let drag = null, pivot = null, wheelZoom = null, clickTimer = 0;
 
 const toDevice = (e) => {
   const r = canvas.getBoundingClientRect();
@@ -6531,6 +7555,10 @@ const toNdc = (e) => {
 // Resolves to { p: world point, id: object index } for the surface under the pointer, or null.
 const pickAt = (e) => (model ? renderer.pick(...toDevice(e), camera.viewProj(), frameState()) : Promise.resolve(null));
 const pickPoint = (e) => pickAt(e).then((h) => h && h.p);
+// camera.distance has no fixed relation to what is on screen: zooming about a point scales it, and
+// orbiting leaves it. So a drag finds how far away the surface it grabbed is, and leaves drag.depth
+// unset over empty space, where the camera's distance is all there is to go on.
+const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.depth = V3.dot(V3.sub(p, camera.eye), camera.forward); });
 
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -6546,18 +7574,21 @@ function bindPointer() {
       canvas.classList.add('dragging');
     } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
-      // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
-      // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
-      const flat = camera.ortho && viewNow;
-      const orbit = (!flat && (e.pointerType === 'touch' || (e.button === 2 && !e.shiftKey))) || (e.button === 0 && e.altKey);
-      const pan = !orbit;
-      drag = { mode: pan ? 'pan' : 'orbit', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      // Alt + left orbits for trackpads; on touch screens one finger orbits. Top-down and level
+      // parallel views keep their tilt: right-drag turns them about Z instead, and one finger pans.
+      const rules = viewRules(), rightDrag = e.pointerType !== 'touch' && e.button === 2 && !e.shiftKey;
+      const orbit = rules === 'orbit' && (e.pointerType === 'touch' || rightDrag || (e.button === 0 && e.altKey));
+      const mode = orbit ? 'orbit' : rightDrag ? rules : 'pan';
+      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
       pivot = null;
-      if (!pan) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      else if (mode === 'pan') pickDepth(e, drag);
       canvas.classList.add('dragging');
     } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
+      pickDepth({ clientX: drag.cx, clientY: drag.cy }, drag);
     }
+    syncCompassOverlay();
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -6568,9 +7599,11 @@ function bindPointer() {
     if (!drag) return;
     if (drag.mode === 'pinch' && pointers.size === 2) {
       const p = pinchInfo(), r = canvas.getBoundingClientRect();
-      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height);
+      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height, drag.depth);
       const ndc = [((p.cx - r.left) / r.width) * 2 - 1, 1 - ((p.cy - r.top) / r.height) * 2];
-      camera.zoomAt(drag.dist / p.dist, camera.planePoint(...ndc));
+      const before = camera.distance;
+      camera.zoomAt(drag.dist / p.dist, drag.depth ? camera.pointAtDepth(...ndc, drag.depth) : camera.planePoint(...ndc));
+      if (drag.depth) drag.depth *= camera.distance / before;
       Object.assign(drag, p);
       redraw();
       return;
@@ -6579,11 +7612,10 @@ function bindPointer() {
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
     if (drag.mode === 'look') walker.turn(dx, dy);
-    else if (drag.mode === 'orbit') {
-      camera.orbit(dx, dy, pivot);
-      if (camera.ortho) viewNow = null;
-      syncToolbar();
-    } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
+    else if (drag.mode === 'orbit') camera.orbit(dx, dy, pivot);
+    else if (drag.mode === 'top') turnByDial(e);
+    else if (drag.mode === 'elevation') camera.yaw -= dx * 0.006;
+    else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height, drag.depth);
     redraw();
   });
 
@@ -6598,8 +7630,9 @@ function bindPointer() {
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: walker.active ? 'look' : 'orbit', x: p.x, y: p.y, moved: true };
+      drag = { mode: walker.active ? 'look' : viewRules() === 'orbit' ? 'orbit' : 'pan', x: p.x, y: p.y, moved: true };
     }
+    syncCompassOverlay();
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -6612,15 +7645,19 @@ function bindPointer() {
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
-    let q = null;
-    if (lastWheelPick && now - lastWheelPick.t < 600 && Math.hypot(e.clientX - lastWheelPick.x, e.clientY - lastWheelPick.y) < 4) q = lastWheelPick.p;
-    else {
-      const wx = e.clientX, wy = e.clientY;
-      lastWheelPick = { t: now, x: wx, y: wy, p: null };
-      pickPoint(e).then((p) => { if (lastWheelPick && lastWheelPick.x === wx && lastWheelPick.y === wy) lastWheelPick.p = p; });
+    // A burst of wheel events zooms about the surface under the pointer. The first waits for the
+    // pick, as the camera's distance can put the plane through its target far behind that surface.
+    if (!wheelZoom || now - wheelZoom.t >= 600 || Math.hypot(e.clientX - wheelZoom.x, e.clientY - wheelZoom.y) >= 4) {
+      const z = (wheelZoom = { t: now, x: e.clientX, y: e.clientY, ready: false, p: null, factor: 1, ndc: toNdc(e) });
+      pickPoint(e).catch(() => null).then((p) => {
+        Object.assign(z, { p, ready: true });
+        camera.zoomAt(z.factor, p || camera.planePoint(...z.ndc));
+        redraw();
+      });
     }
-    if (lastWheelPick) lastWheelPick.t = now;
-    camera.zoomAt(factor, q || camera.planePoint(...toNdc(e)));
+    wheelZoom.t = now;
+    if (!wheelZoom.ready) { wheelZoom.factor *= factor; return; }
+    camera.zoomAt(factor, wheelZoom.p || camera.planePoint(...toNdc(e)));
     redraw();
   }, { passive: false });
 
@@ -6629,6 +7666,92 @@ function bindPointer() {
     const p = await pickPoint(e);
     if (p) animateFocus(p); else zoomExtents();
   });
+}
+
+// The compass: turned so that its arrow points to north on the screen, with the N kept upright.
+// The way the view faces along the ground is the yaw + 180°, at any pitch.
+function syncCompass() {
+  const r = (camera.yaw * 180) / Math.PI + 180 - state.sun.north;
+  $('compassDial').setAttribute('transform', `rotate(${r})`);
+  $('compassN').setAttribute('transform', `rotate(${-r} 0 -21)`);
+  $('compassOverlayDial').setAttribute('transform', `rotate(${r})`);
+  $('compassOverlayN').setAttribute('transform', `rotate(${-r} 0 -27)`);
+}
+
+// While the window is a dial, a large see-through compass shows where the dial's middle is.
+function syncCompassOverlay() {
+  $('compassOverlay').hidden = drag?.mode !== 'top';
+}
+
+// Turns the view the short way round to face a compass bearing (degrees clockwise from north),
+// keeping its tilt: around the middle of the view, or on the spot when walking.
+function faceBearing(bearing) {
+  if (!model) return;
+  const from = camera.yaw, to = ((state.sun.north - bearing) * Math.PI) / 180 - Math.PI;
+  const turn = wrapAngle(to - from);
+  if (Math.abs(turn) < 1e-4) return;
+  const t0 = performance.now(), dur = 260;
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / dur), k = 1 - Math.pow(1 - t, 3);
+    setHeading(from + turn * k);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function setHeading(yaw) {
+  const eye = camera.eye;
+  camera.yaw = yaw;
+  if (walker.active) camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+  redraw();
+}
+
+const wrapAngle = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+
+// The pointer's angle around the middle of an element, as on a dial. Too near the middle, the angle
+// means little.
+function dialAngle(el, e) {
+  const r = el.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
+  return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
+}
+
+// Right-drag in a view looking straight down: the whole window is a dial, like the compass.
+function turnByDial(e) {
+  const a = dialAngle(canvas, e);
+  if (a === null) return;
+  if (drag.at !== null) camera.yaw += wrapAngle(a - drag.at);
+  drag.at = a;
+}
+
+// Dragging the compass turns it like a dial, and the view with it. The drag only starts once the
+// pointer has moved, so double-clicks still reach the N and the ticks, and it carries on outside
+// the compass, where the angle is easier to control.
+function bindCompass() {
+  const el = $('compass');
+  let drag = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: dialAngle(el, e), moved: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+      drag.moved = true;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('dragging');
+    }
+    const a = dialAngle(el, e);
+    if (a === null) return;
+    if (drag.at !== null) setHeading(camera.yaw + wrapAngle(a - drag.at));
+    drag.at = a;
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    el.classList.remove('dragging');
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
 }
 
 function pinchInfo() {
@@ -6786,11 +7909,11 @@ function onKey(e) {
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'), 5: () => pickView('walk'),
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
-    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
+    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
@@ -6803,18 +7926,20 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-// Top, Front, Right, Perspective and the file's named views each keep their own camera: leaving
-// one remembers it, and coming back restores it. The first visit, or picking the view you are in,
-// gives the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
-// viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
-// walking and orbiting in perspective. Orbiting a parallel view makes it a free view that
-// belongs to none. Walk is listed with them but has no camera of its own: see startWalk.
+// Top, Elevation, Perspective and the file's named views each keep their own camera: leaving one
+// remembers it, and coming back restores it. The first visit, or picking the view you are in, gives
+// the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
+// viewNow is the view the camera belongs to: the last one picked. Walk is listed with them but has
+// no camera of its own: see startWalk.
 let viewNow = 'perspective', viewCams = {};
+// How the view moves (see movementRules). A named view keeps the rules of its saved camera, so that
+// orbiting one up to straight down or through level doesn't catch it there.
+const viewRules = () => { const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
 function pickView(id) {
   if (id === 'walk') { startWalk(); return; }
   if (walker.active) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
-  if (viewNow && viewNow !== id) viewCams[viewNow] = camera.snapshot();
+  if (viewNow !== id) viewCams[viewNow] = camera.snapshot();
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
   viewNow = id;
   if (!saved && !named) { setView(id, true); return; }
@@ -6824,7 +7949,7 @@ function pickView(id) {
 }
 
 // The toolbar's Camera menu. Picking leaves it open, to compare views.
-const CAMERAS = [['top', 'Top', '1'], ['front', 'Front', '2'], ['right', 'Right', '3'], ['perspective', 'Perspective', '4']];
+const CAMERAS = [['top', 'Top', '1'], ['elevation', 'Elevation', '2'], ['perspective', 'Perspective', '3']];
 const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
 const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
 let cameraList = null, cameraMenu = null;
@@ -6846,15 +7971,15 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '5' }] }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }] }]);
 }
 
 function syncCameraMenu() {
   const walking = walker.active || walker.placing;
   cameraList?.setActive(walking ? 'walk' : viewNow);
   const name = walking ? 'Walk' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
-  $('cameraName').textContent = name || 'Free view';
-  $('btnCamera').title = name ? `Camera: ${name}` : 'Camera: a free view';
+  $('cameraName').textContent = name;
+  $('btnCamera').title = `Camera: ${name}`;
 }
 // Walking starts from Walk in the camera list, which usually first asks where to start: the figure
 // follows the cursor, a marker shows the spot under it, and a click there starts walking (as Street
@@ -6964,7 +8089,7 @@ function startWalkAt(e) {
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>5</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>4</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off, lifting you a few metres if you are standing: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
@@ -7170,6 +8295,7 @@ const RENDER_TOGGLES = [
   { id: 'showEdges', label: 'Edges', hint: 'E' },
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
   { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
+  { id: 'animations', label: 'Animations', title: 'Water ripples and drifting clouds. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];
@@ -7217,6 +8343,10 @@ function toggle(key) {
   state[key] = !state[key];
   savePrefs();
   if (key === 'layers') $('layersPanel').hidden = !state.layers;
+  if (key === 'blocks') {
+    $('blocksPanel').hidden = !state.blocks;
+    if (!state.blocks) $('blockDialog').hidden = true;
+  }
   syncToolbar();
   redraw();
 }
@@ -7314,9 +8444,15 @@ function bindUi() {
   document.querySelector('[data-act="sun"]').addEventListener('click', toggleSunPanel);
   $('sunCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleSunPanel(); }); // the gaps round the icon
   $('sunQuick').addEventListener('click', () => setSun({ on: !state.sun.on }));
+  document.querySelectorAll('.compass-point').forEach((p) => p.addEventListener('dblclick', () => faceBearing(+p.dataset.bearing)));
+  bindCompass();
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
+  $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
+  layerRows.bind($('layerTree'));
+  bindBlocksPanel();
+  bindSideResize();
   renderRecent();
   $('btnUndo').addEventListener('click', () => stepHistory(false));
   $('btnRedo').addEventListener('click', () => stepHistory(true));
@@ -7326,7 +8462,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
