@@ -145,9 +145,10 @@ class Camera {
     this.pitch = newPitch;
   }
 
-  // dx, dy in CSS pixels; viewHeight is the canvas height in CSS pixels.
-  pan(dx, dy, viewHeight) {
-    const wpp = (2 * this.halfHeight) / viewHeight;
+  // dx, dy in CSS pixels; viewHeight is the canvas height in CSS pixels. depth: how far ahead of the
+  // eye the point being dragged is, so that it stays under the pointer (a perspective view only).
+  pan(dx, dy, viewHeight, depth = this.distance) {
+    const wpp = (2 * (this.ortho ? this.distance : depth) * Math.tan(this.fov / 2)) / viewHeight;
     this.target = V3.add(this.target, V3.add(V3.scale(this.right, -dx * wpp), V3.scale(this.up, dy * wpp)));
   }
 
@@ -155,6 +156,12 @@ class Camera {
   planePoint(nx, ny) {
     const h = this.halfHeight;
     return V3.add(this.target, V3.add(V3.scale(this.right, nx * h * this.aspect), V3.scale(this.up, ny * h)));
+  }
+
+  // Point under NDC (x, y) at this depth ahead of the eye.
+  pointAtDepth(nx, ny, depth) {
+    const q = this.planePoint(nx, ny);
+    return this.ortho ? q : V3.add(this.eye, V3.scale(V3.sub(q, this.eye), depth / this.distance));
   }
 
   // Scale the eye-target configuration about the world point q.

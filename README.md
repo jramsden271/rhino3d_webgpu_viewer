@@ -29,8 +29,8 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | --- | --- | --- |
 | Orbit (around the point under the cursor) | Perspective and most named views: right-drag, Alt + left-drag · one finger | |
 | Rotate about Z | Top: right-drag around the middle of the window · Elevation: right-drag left or right | |
-| Pan | Left- or middle-drag, Shift + right-drag · two fingers · in Top and Elevation also one finger | |
-| Zoom (towards the cursor) | Wheel · pinch | |
+| Pan (the surface you grab stays under the cursor) | Left- or middle-drag, Shift + right-drag · two fingers · in Top and Elevation also one finger | |
+| Zoom (towards the surface under the cursor, slowing to a stop at it) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |

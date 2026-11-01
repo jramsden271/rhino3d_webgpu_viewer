@@ -2236,7 +2236,7 @@ function openLocationDialog() {
 // Pointer / keyboard input
 
 const pointers = new Map();
-let drag = null, pivot = null, lastWheelPick = null, clickTimer = 0;
+let drag = null, pivot = null, wheelZoom = null, clickTimer = 0;
 
 const toDevice = (e) => {
   const r = canvas.getBoundingClientRect();
@@ -2249,6 +2249,10 @@ const toNdc = (e) => {
 // Resolves to { p: world point, id: object index } for the surface under the pointer, or null.
 const pickAt = (e) => (model ? renderer.pick(...toDevice(e), camera.viewProj(), frameState()) : Promise.resolve(null));
 const pickPoint = (e) => pickAt(e).then((h) => h && h.p);
+// camera.distance has no fixed relation to what is on screen: zooming about a point scales it, and
+// orbiting leaves it. So a drag finds how far away the surface it grabbed is, and leaves drag.depth
+// unset over empty space, where the camera's distance is all there is to go on.
+const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.depth = V3.dot(V3.sub(p, camera.eye), camera.forward); });
 
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -2272,9 +2276,11 @@ function bindPointer() {
       drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
       pivot = null;
       if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      else if (mode === 'pan') pickDepth(e, drag);
       canvas.classList.add('dragging');
     } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
+      pickDepth({ clientX: drag.cx, clientY: drag.cy }, drag);
     }
     syncCompassOverlay();
   });
@@ -2287,9 +2293,11 @@ function bindPointer() {
     if (!drag) return;
     if (drag.mode === 'pinch' && pointers.size === 2) {
       const p = pinchInfo(), r = canvas.getBoundingClientRect();
-      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height);
+      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height, drag.depth);
       const ndc = [((p.cx - r.left) / r.width) * 2 - 1, 1 - ((p.cy - r.top) / r.height) * 2];
-      camera.zoomAt(drag.dist / p.dist, camera.planePoint(...ndc));
+      const before = camera.distance;
+      camera.zoomAt(drag.dist / p.dist, drag.depth ? camera.pointAtDepth(...ndc, drag.depth) : camera.planePoint(...ndc));
+      if (drag.depth) drag.depth *= camera.distance / before;
       Object.assign(drag, p);
       redraw();
       return;
@@ -2301,7 +2309,7 @@ function bindPointer() {
     else if (drag.mode === 'orbit') camera.orbit(dx, dy, pivot);
     else if (drag.mode === 'top') turnByDial(e);
     else if (drag.mode === 'elevation') camera.yaw -= dx * 0.006;
-    else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
+    else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height, drag.depth);
     redraw();
   });
 
@@ -2331,15 +2339,19 @@ function bindPointer() {
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
-    let q = null;
-    if (lastWheelPick && now - lastWheelPick.t < 600 && Math.hypot(e.clientX - lastWheelPick.x, e.clientY - lastWheelPick.y) < 4) q = lastWheelPick.p;
-    else {
-      const wx = e.clientX, wy = e.clientY;
-      lastWheelPick = { t: now, x: wx, y: wy, p: null };
-      pickPoint(e).then((p) => { if (lastWheelPick && lastWheelPick.x === wx && lastWheelPick.y === wy) lastWheelPick.p = p; });
+    // A burst of wheel events zooms about the surface under the pointer. The first waits for the
+    // pick, as the camera's distance can put the plane through its target far behind that surface.
+    if (!wheelZoom || now - wheelZoom.t >= 600 || Math.hypot(e.clientX - wheelZoom.x, e.clientY - wheelZoom.y) >= 4) {
+      const z = (wheelZoom = { t: now, x: e.clientX, y: e.clientY, ready: false, p: null, factor: 1, ndc: toNdc(e) });
+      pickPoint(e).catch(() => null).then((p) => {
+        Object.assign(z, { p, ready: true });
+        camera.zoomAt(z.factor, p || camera.planePoint(...z.ndc));
+        redraw();
+      });
     }
-    if (lastWheelPick) lastWheelPick.t = now;
-    camera.zoomAt(factor, q || camera.planePoint(...toNdc(e)));
+    wheelZoom.t = now;
+    if (!wheelZoom.ready) { wheelZoom.factor *= factor; return; }
+    camera.zoomAt(factor, wheelZoom.p || camera.planePoint(...toNdc(e)));
     redraw();
   }, { passive: false });
 
