@@ -98,7 +98,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 12px; }
 .panel-actions .x { margin: -2px -6px -2px -4px; }
-.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; }
+.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; padding: 2px 4px; }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
 .layer-row:hover { background: var(--hover); }
@@ -127,13 +127,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .light-row .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .light-row .light-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .light-row.off .light-name { color: var(--muted); }
-.light-row .x { font-size: 15px; padding: 0 4px; }
+.light-row .x { font-size: 15px; padding: 0 4px 0.24em; }
 .lights-group { padding: 8px 12px 3px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .lights-empty { padding: 8px 12px; font-size: 12px; color: var(--muted); }
 .layer-row.flash { animation: flash 1.2s ease-out; }
 @keyframes flash { 0%, 30% { background: var(--accent-soft); } 100% { background: transparent; } }
 
-.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
+/* The × glyph sits below the middle of its line, by about 0.12em: more padding below lifts it. */
+.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: calc(2px - 0.12em) 4px calc(2px + 0.12em); border-radius: 5px; }
 .x:hover { background: var(--hover); color: var(--text); }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
