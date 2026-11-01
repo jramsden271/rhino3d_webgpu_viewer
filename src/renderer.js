@@ -2,6 +2,7 @@
 // pivots, and sun lighting with cascaded shadow maps.
 
 const CASCADES = 4;
+const AO_DIV = 2;                // the occlusion is worked out at 1/AO_DIV of the window's width and height
 const SHADOW_SIZE = 2048;
 const MAX_LAMPS = 8;
 const LAMP_SHADOW_SIZE = 512;
@@ -63,7 +64,7 @@ struct Frame {
   skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
   stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
-  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
+  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene), w = draw the sky
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
   marker: vec4f,    // where walking would start: xyz centre, w = radius (model units, 0 = none)
   shadow: array<mat4x4f, ${CASCADES}>,
@@ -242,8 +243,8 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
 }
 @fragment fn fsBg(in: BgOut) -> @location(0) vec4f {
   let screen = mix(F.bgBot.rgb, F.bgTop.rgb, in.ndc.y * 0.5 + 0.5);
-  if (F.sunDir.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
-  // Sun lighting in perspective: a real sky. Gradient by elevation of the view ray, plus the sun.
+  if (F.skySun.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
+  // A real sky in perspective, for the sun or the weather. Gradient by elevation of the view ray, plus the sun.
   let t = F.camRight.w;
   let dir = normalize(F.viewDir.xyz + F.camRight.xyz * in.ndc.x * t * F.camUp.w + F.camUp.xyz * in.ndc.y * t);
   var col = mix(F.bgBot.rgb, F.bgTop.rgb, pow(clamp(dir.z, 0.0, 1.0), 0.55));
@@ -258,7 +259,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   col += starField(dir) * night * (1.0 - 0.6 * F.moon.w * moonUp) * smoothstep(0.0, 0.12, dir.z);
   col = mix(col, F.bgBot.rgb * 0.94, smoothstep(0.0, -0.08, dir.z));   // below the horizon
   let sky = col;
-  let above = smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);
+  let above = F.sunDir.w * smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);   // none with the sun off
   let d = max(dot(dir, L), 0.0);
   // A low sun is orange-red, and so is the glow around it.
   let high = smoothstep(0.0, 0.25, L.z);
@@ -561,6 +562,30 @@ fn whitewash(p: vec3f, n: vec3f, c: vec3f, px: f32) -> vec3f {
   return mix(c * (1.0 - 0.07 * wash), vec3f(0.66, 0.65, 0.62), thin * 0.12);
 }
 
+// The occlusion at a pixel, from its smaller texture: the four texels around the pixel. Where they
+// differ, each counts as far as it lies on this same surface, so that shading does not bleed across
+// edges. Most pixels are in even shading and do not need that look at the prepass.
+fn aoAt(pos: vec2f, wp: vec3f, n: vec3f) -> f32 {
+  let q = pos / ${AO_DIV}.0 - 0.5;
+  let c = vec2i(floor(q));
+  let f = q - floor(q);
+  let lim = vec2i(textureDimensions(aoTex)) - 1;
+  let t = array<vec2i, 4>(clamp(c, vec2i(0), lim), clamp(c + vec2i(1, 0), vec2i(0), lim), clamp(c + vec2i(0, 1), vec2i(0), lim), clamp(c + vec2i(1, 1), vec2i(0), lim));
+  let a = vec4f(textureLoad(aoTex, t[0], 0).r, textureLoad(aoTex, t[1], 0).r, textureLoad(aoTex, t[2], 0).r, textureLoad(aoTex, t[3], 0).r);
+  let w0 = vec4f((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+  if (max(max(a.x, a.y), max(a.z, a.w)) - min(min(a.x, a.y), min(a.z, a.w)) < 0.03) { return dot(a, w0); }
+  let full = vec2i(textureDimensions(gbuf)) - 1;
+  let d = dot(wp - F.eye.xyz, F.viewDir.xyz);
+  var w = w0;
+  for (var i = 0; i < 4; i++) {
+    let g = textureLoad(gbuf, min(t[i] * ${AO_DIV} + vec2i(1), full), 0);
+    w[i] *= exp(-abs(g.w - d) / (abs(d) * 0.02 + 1e-6)) * (max(dot(g.xyz, n), 0.0) + 0.01);
+  }
+  let total = w.x + w.y + w.z + w.w;
+  if (total > 1e-4) { return dot(a, w) / total; }
+  return dot(a, w0);
+}
+
 // Water: wind ripples (analytic wave normals), sky reflection with Fresnel, sun glint.
 fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   let p = in.wp.xy * F.misc.y;                     // metres
@@ -593,7 +618,7 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
   let fres = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
   let R = reflect(-V, n);
   var ao = 1.0;
-  if (F.opts.z > 0.5) { ao = mix(1.0, textureLoad(aoTex, vec2i(in.pos.xy), 0).r, 0.6); }
+  if (F.opts.z > 0.5) { ao = mix(1.0, aoAt(in.pos.xy, in.wp, flatN), 0.6); }
   // The layer's water colour. The sun term is what shows shadows: in shallow water they fall on
   // the lit floor beneath. Shade dims the reflection a little too (the caster hides some sky).
   let body = toLinear(B.mat.rgb) * (lt.ambient * 1.2 * ao + lt.direct * 0.3);
@@ -717,7 +742,7 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   var ao = 1.0;
   var conv = 0.0;
   if (F.opts.z > 0.5 && F.opts.x == 0.0 && alpha >= 1.0) {
-    ao = textureLoad(aoTex, vec2i(in.pos.xy), 0).r;
+    ao = aoAt(in.pos.xy, in.wp, normalize(faceN));
     if (cls != 2 && cls != 3) { let se = softEdge(in.pos.xy, in.wp, dwx, dwy, n); n = se.n; conv = se.conv; }
   }
   let lt = lighting(in.wp, n, wrap);
@@ -806,7 +831,7 @@ struct AO {
   eye: vec4f, fwd: vec4f, right: vec4f, up: vec4f,
   proj: vec4f,    // tan(fov/2), aspect, parallel (1/0), parallel half-height
   params: vec4f,  // radius as a fraction of view depth, max radius (world), strength, -
-  size: vec4f,    // width, height
+  size: vec4f,    // width, height of the window (and of the prepass)
   kernel: array<vec4f, 16>,
 };
 @group(0) @binding(0) var<uniform> A: AO;
@@ -825,11 +850,14 @@ fn worldPos(px: vec2f, d: f32) -> vec3f {
   return A.eye.xyz + A.fwd.xyz * d + A.right.xyz * (ndc.x * h * A.proj.y) + A.up.xyz * (ndc.y * h);
 }
 
+// The prepass (window sized) under a texel of the smaller textures these passes draw into.
+fn prepass(p: vec2i) -> vec4f { return textureLoad(gbuf, min(p * ${AO_DIV} + vec2i(1), vec2i(A.size.xy) - 1), 0); }
+
 @fragment fn fsAO(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let g = textureLoad(gbuf, vec2i(pos.xy), 0);
+  let g = prepass(vec2i(pos.xy));
   if (g.w <= 0.0) { return vec4f(1.0); }
   let n = g.xyz;
-  let P = worldPos(pos.xy, g.w);
+  let P = worldPos(pos.xy * ${AO_DIV}.0, g.w);
   var scale = g.w;
   if (A.proj.z > 0.5) { scale = A.proj.w / A.proj.x; }
   let R = min(scale * A.params.x, A.params.y);
@@ -860,15 +888,15 @@ fn worldPos(px: vec2f, d: f32) -> vec3f {
 
 @fragment fn fsBlur(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = vec2i(pos.xy);
-  let g = textureLoad(gbuf, p, 0);
+  let g = prepass(p);
   if (g.w <= 0.0) { return vec4f(1.0); }
-  let lim = vec2i(A.size.xy) - 1;
+  let lim = vec2i(textureDimensions(aoIn)) - 1;
   var sum = 0.0;
   var wsum = 0.0;
   for (var y = -2; y <= 2; y++) {
     for (var x = -2; x <= 2; x++) {
       let q = clamp(p + vec2i(x, y), vec2i(0), lim);
-      let gq = textureLoad(gbuf, q, 0);
+      let gq = prepass(q);
       if (gq.w <= 0.0) { continue; }
       let w = exp(-abs(gq.w - g.w) / (g.w * 0.02)) * max(dot(gq.xyz, g.xyz), 0.0);
       sum += textureLoad(aoIn, q, 0).r * w;
@@ -971,6 +999,8 @@ class Renderer {
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.ctx.configure({ device, format: this.format, alphaMode: 'opaque' });
     this.batches = [];
+    this.cells = new Float32Array(0);
+    this.cellVis = new Uint8Array(0);
     this.dirty = true;
     this.onLost = null;
     device.lost.then((info) => this.onLost?.(info));
@@ -1107,8 +1137,10 @@ class Renderer {
     this.depthTex = dev.createTexture({ size: [w, h], format: DEPTH, sampleCount: MSAA, usage: RA });
     this.gbufTex = dev.createTexture({ size: [w, h], format: 'rgba32float', usage: RA | TB });
     this.gdepthTex = dev.createTexture({ size: [w, h], format: DEPTH, usage: RA });
-    this.aoRawTex = dev.createTexture({ size: [w, h], format: 'r8unorm', usage: RA | TB });
-    this.aoTex = dev.createTexture({ size: [w, h], format: 'r8unorm', usage: RA | TB | GPUTextureUsage.COPY_SRC });
+    // The soft edges read the prepass, so it stays the window's size; the occlusion itself need not.
+    const ao = [Math.ceil(w / AO_DIV), Math.ceil(h / AO_DIV)];
+    this.aoRawTex = dev.createTexture({ size: ao, format: 'r8unorm', usage: RA | TB });
+    this.aoTex = dev.createTexture({ size: ao, format: 'r8unorm', usage: RA | TB | GPUTextureUsage.COPY_SRC });
 
     const aoView = this.aoTex.createView();
     this.makeFrameBindGroups();
@@ -1168,12 +1200,13 @@ class Renderer {
     });
     pass.setPipeline(this.pipes.gbuf);
     pass.setBindGroup(0, this.gbufFrameBG);
+    this.cull(s.viewProj);
     for (const b of this.batches) {
-      if (!b.visible || b.kind !== 'mesh' || (s.mode === 1 && b.transparent)) continue;
+      if (!b.visible || b.kind !== 'mesh' || (s.mode === 1 && b.transparent) || !this.seen(b)) continue;
       pass.setBindGroup(1, this.batchBG, [b.offset]);
       pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.nrm); pass.setVertexBuffer(2, b.gpu.oid);
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
-      pass.drawIndexed(b.count);
+      this.drawCells(pass, b);
     }
     pass.end();
     for (const [pipe, bg, target] of [[this.aoPipe, this.aoBG, this.aoRawTex], [this.blurPipe, this.blurBG, this.aoTex]]) {
@@ -1183,6 +1216,45 @@ class Renderer {
       pass.draw(3);
       pass.end();
     }
+  }
+
+  // Decides which cells of the model (see Batcher.finish) the view m can see, for the draws that
+  // follow. depth: test against the near and far planes too (not for the main view: edges are pulled
+  // towards the eye, and nothing much lies only beyond those planes).
+  cull(m, depth = false) {
+    const box = this.cells, vis = this.cellVis, n = depth ? 6 : 4;
+    // Planes from the matrix's rows: -w <= x <= w, -w <= y <= w, 0 <= z <= w.
+    const P = [m[3] + m[0], m[7] + m[4], m[11] + m[8], m[15] + m[12], m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12],
+      m[3] + m[1], m[7] + m[5], m[11] + m[9], m[15] + m[13], m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13],
+      m[2], m[6], m[10], m[14], m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]];
+    for (let c = 0, b = 0; c < vis.length; c++, b += 6) {
+      let inside = 1;
+      for (let i = 0, p = 0; i < n; i++, p += 4) {
+        const x = P[p] > 0 ? box[b + 3] : box[b], y = P[p + 1] > 0 ? box[b + 4] : box[b + 1], z = P[p + 2] > 0 ? box[b + 5] : box[b + 2];
+        if (P[p] * x + P[p + 1] * y + P[p + 2] * z + P[p + 3] < 0) { inside = 0; break; }
+      }
+      vis[c] = inside;
+    }
+  }
+
+  // Does the last cull() leave anything of this batch to draw?
+  seen(b) {
+    const r = b.ranges, vis = this.cellVis;
+    for (let i = 2; i < r.length; i += 3) if (vis[r[i]]) return true;
+    return false;
+  }
+
+  // Draws what the last cull() left of a batch, as few draws as neighbouring cells allow.
+  drawCells(pass, b) {
+    const r = b.ranges, vis = this.cellVis, indexed = b.kind === 'mesh';
+    let first = 0, n = 0;
+    for (let i = 0; i < r.length; i += 3) {
+      if (!vis[r[i + 2]]) continue;
+      if (n && first + n === r[i]) { n += r[i + 1]; continue; }
+      if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
+      first = r[i]; n = r[i + 1];
+    }
+    if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
   }
 
   clearModel() {
@@ -1195,6 +1267,8 @@ class Renderer {
   setModel(batches) {
     this.clearModel();
     this.geomVersion++;
+    this.cells = batches.cells;
+    this.cellVis = new Uint8Array(batches.cells.length / 6);
     const dev = this.device, U = GPUBufferUsage;
     const upload = (arr, usage) => {
       const size = Math.ceil(arr.byteLength / 4) * 4;
@@ -1291,7 +1365,7 @@ class Renderer {
     f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
     f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
-    f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
+    f.set(sun ? [...sun.sunDir, 1] : [0, 0, 1, s.skyOnly ? 1 : 0], 96);
     // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:
     // far from the file's origin (map coordinates), float precision would break up fine grain.
     const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];
@@ -1312,26 +1386,28 @@ class Renderer {
     this.device.queue.writeBuffer(buf, 0, f);
   }
 
-  // Render each cascade's depth map from the sun.
-  // Skipped when nothing it depends on has changed since the last time (e.g. while only the
-  // clouds drift): the same sun and camera, so the same matrices, and the same geometry.
+  // Render each cascade's depth map from the sun, skipping any whose matrix and geometry are as last
+  // time. The clouds can drift without any being redrawn, and walking usually redraws only the
+  // nearest, since the matrices snap to whole texels and the far ones have large texels.
   renderShadows(enc, sh, geom) {
-    const key = `${geom}|${sh.mats.map((m) => Array.prototype.join.call(m)).join('|')}`;
-    if (this.shadowKey === key) return;
-    this.shadowKey = key;
+    const keys = sh.mats.map((m) => `${geom}|${Array.prototype.join.call(m)}`), old = this.shadowKeys || [];
+    if (keys.every((k, c) => k === old[c])) return;
+    this.shadowKeys = keys;
     const data = new Float32Array(CASCADES * 64);
     sh.mats.forEach((m, c) => data.set(m, c * 64));
     this.device.queue.writeBuffer(this.shadowBuf, 0, data);
     for (let c = 0; c < CASCADES; c++) {
+      if (keys[c] === old[c]) continue;
+      this.cull(sh.mats[c]);
       const pass = enc.beginRenderPass({ colorAttachments: [],
         depthStencilAttachment: { view: this.shadowLayers[c], depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
       pass.setPipeline(this.shadowPipe);
       pass.setBindGroup(0, this.shadowBG, [c * 256]);
       for (const b of this.batches) {
-        if (!b.visible || b.kind !== 'mesh' || !b.castsShadow) continue;
+        if (!b.visible || b.kind !== 'mesh' || !b.castsShadow || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
     }
@@ -1368,11 +1444,12 @@ class Renderer {
       pass.setPipeline(this.shadowPipe);
       pass.setBindGroup(0, this.lampShadowBG, [j.layer * 256]);
       const [x, y, z] = j.p;
+      this.cull(j.m);
       for (const b of casters) {
-        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R) continue;
+        if (b.min[0] > x + j.R || b.max[0] < x - j.R || b.min[1] > y + j.R || b.max[1] < y - j.R || b.min[2] > z + j.R || b.max[2] < z - j.R || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
     }
@@ -1402,28 +1479,31 @@ class Renderer {
     pass.setBindGroup(0, this.frameBG);
     pass.setPipeline(P.bg);
     pass.draw(3);
+    this.cull(s.viewProj);
 
     const vis = this.batches.filter((b) => b.visible);
     const meshes = vis.filter((b) => b.kind === 'mesh');
     const transparentMode = (b) => s.xray || (s.mode === 1 && b.transparent);
     const drawMesh = (b) => {
+      if (!this.seen(b)) return;
       pass.setPipeline(transparentMode(b) ? (b.vc ? P.meshVCT : P.meshT) : b.vc ? P.meshVC : P.mesh);
       pass.setBindGroup(1, this.batchBG, [b.offset]);
       pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.nrm);
       if (b.vc) pass.setVertexBuffer(2, b.gpu.col);
       pass.setVertexBuffer(b.vc ? 3 : 2, b.gpu.oid);
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
-      pass.drawIndexed(b.count);
+      this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
     for (const b of vis) {
       // Edges on water and foliage are noise, so they are hidden when those materials apply.
       const softEdge = b.kind === 'edge' && ((s.mode === 1 && (b.effCls === MAT_WATER || b.effCls === MAT_VEGETATION)) || (s.mode === 2 && b.effCls === MAT_WATER));
       if ((b.kind === 'edge' && s.showEdges && !softEdge) || (b.kind === 'line' && s.showCurves)) {
+        if (!this.seen(b)) continue;
         pass.setPipeline(s.xray ? P.lineX : P.line);
         pass.setBindGroup(1, this.batchBG, [b.offset]);
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
-        pass.draw(b.count);
+        this.drawCells(pass, b);
       } else if (b.kind === 'point' && s.showPoints) {
         pass.setPipeline(s.xray ? P.pointX : P.point);
         pass.setBindGroup(1, this.batchBG, [b.offset]);
@@ -1453,7 +1533,8 @@ class Renderer {
       const cx = ((px + 0.5) / this.width) * 2 - 1, cy = 1 - ((py + 0.5) / this.height) * 2;
       const W = this.width, H = this.height, pm = new Float64Array(16);
       pm[0] = W; pm[5] = H; pm[10] = 1; pm[15] = 1; pm[12] = -W * cx; pm[13] = -H * cy;
-      this.writeFrame(this.pickFrameBuf, M4.mul(pm, viewProj), s);
+      const vp = M4.mul(pm, viewProj);
+      this.writeFrame(this.pickFrameBuf, vp, s);
       const enc = this.device.createCommandEncoder();
       const pass = enc.beginRenderPass({
         colorAttachments: [{ view: this.pickColor.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
@@ -1461,11 +1542,12 @@ class Renderer {
       });
       pass.setPipeline(this.pipes.pick);
       pass.setBindGroup(0, this.pickFrameBG);
+      this.cull(vp, true);
       for (const b of this.batches) {
-        if (!b.visible || b.kind !== 'mesh') continue;
+        if (!b.visible || b.kind !== 'mesh' || !this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
       pass.end();
       enc.copyTextureToBuffer({ texture: this.pickColor }, { buffer: this.pickRead, bytesPerRow: 256 }, [1, 1]);
@@ -1501,16 +1583,10 @@ class Renderer {
       this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
       this.probeBGs = null;
     }
-    // Rebuilt when the object flags buffer is replaced (it grows with the model). The screen-sized
-    // textures are not bound (the pick pipeline reads neither): a resize destroys them, and a
-    // bind group still holding one made every probe fail, leaving the walker with a stale map.
+    // Rebuilt when the object flags buffer is replaced (it grows with the model).
     if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
       this.probeFlagsBuf = this.objFlagsBuf;
-      const none = this.noGbuf.createView();
-      this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
-        { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] }));
+      this.probeBGs = this.probeBufs.map((buffer) => this.probeBindGroup(buffer));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
@@ -1520,9 +1596,7 @@ class Renderer {
     });
     views.forEach((v, i) => dev.queue.writeBuffer(this.probeBufs[i], 0, Float32Array.from(v.vp)));
 
-    const R = Math.max(q.half, q.reach);
-    const near = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION
-      && b.min[0] <= q.x + R && b.max[0] >= q.x - R && b.min[1] <= q.y + R && b.max[1] >= q.y - R && b.min[2] <= q.top && b.max[2] >= q.bottom);
+    const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION);
     // Should the GPU reject this work, the read-back buffer still holds the previous result (for
     // somewhere else): resolve null then, so the walker asks again rather than trusting it.
     dev.pushErrorScope('validation');
@@ -1536,10 +1610,12 @@ class Renderer {
       pass.setViewport(...v.rect, 0, 1);
       pass.setScissorRect(...v.rect);
       pass.setBindGroup(0, this.probeBGs[i]);
-      for (const b of near) {
+      this.cull(v.vp, true);
+      for (const b of solid) {
+        if (!this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        pass.drawIndexed(b.count);
+        this.drawCells(pass, b);
       }
     });
     pass.end();
@@ -1559,6 +1635,72 @@ class Renderer {
       return { ground: all.subarray(0, G * G * 4), walls };
     }, () => null).finally(() => { this.probeBusy = false; });
   }
+
+  // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys
+  // them, and a bind group still holding one made every probe fail, leaving the walker with a stale map.
+  probeBindGroup(buffer) {
+    const none = this.noGbuf.createView();
+    return this.device.createBindGroup({ layout: this.frameLayout, entries: [
+      { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
+      { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+      { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] });
+  }
+
+  // The ground below many points at once, by the same rules as probe(): the highest visible surface
+  // below each point ({ x, y, top }), down to `bottom`, leaving out vegetation and any batch `skip`
+  // says to. Each point looks straight down through one texel of half size `half`. Resolves to an
+  // array of heights, null where there is nothing (or if the GPU rejected the work).
+  groundBelow(points, bottom, half, skip) {
+    const run = async () => {
+      const out = new Array(points.length).fill(null);
+      if (!this.batches.length) return out;
+      const dev = this.device, S = PROBE.groundBatch, U = GPUBufferUsage;
+      if (!this.groundTex) {
+        const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+        this.groundTex = dev.createTexture({ size: [S, S], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.groundDepth = dev.createTexture({ size: [S, S], format: DEPTH, usage: RA });
+        this.groundRead = dev.createBuffer({ size: S * S * 16, usage: U.MAP_READ | U.COPY_DST });
+        this.groundBuf = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
+      }
+      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION && !skip(b));
+      const group = this.probeBindGroup(this.groundBuf), color = this.groundTex.createView(), depth = this.groundDepth.createView();
+      for (let from = 0; from < points.length; from += S * S) {
+        const n = Math.min(S * S, points.length - from);
+        dev.pushErrorScope('validation');
+        for (let i = 0; i < n; i++) {
+          const p = points[from + i], vp = M4.mul(M4.ortho(half, 1, 0, Math.max(p.top - bottom, half)), M4.lookAt([p.x, p.y, p.top], [p.x, p.y, p.top - 1], [0, 1, 0]));
+          dev.queue.writeBuffer(this.groundBuf, 0, Float32Array.from(vp));
+          const enc = dev.createCommandEncoder(), load = i ? 'load' : 'clear';
+          const pass = enc.beginRenderPass({
+            colorAttachments: [{ view: color, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: load, storeOp: 'store' }],
+            depthStencilAttachment: { view: depth, depthClearValue: 0, depthLoadOp: load, depthStoreOp: 'store' },
+          });
+          pass.setPipeline(this.pipes.pick);
+          pass.setViewport(i % S, Math.floor(i / S), 1, 1, 0, 1);
+          pass.setScissorRect(i % S, Math.floor(i / S), 1, 1);
+          pass.setBindGroup(0, group);
+          this.cull(vp, true);
+          for (const b of solid) {
+            if (!this.seen(b)) continue;
+            pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+            pass.setIndexBuffer(b.gpu.idx, 'uint32');
+            this.drawCells(pass, b);
+          }
+          pass.end();
+          if (i === n - 1) enc.copyTextureToBuffer({ texture: this.groundTex }, { buffer: this.groundRead, bytesPerRow: S * 16 }, [S, S]);
+          dev.queue.submit([enc.finish()]);
+        }
+        const failed = await dev.popErrorScope();
+        await this.groundRead.mapAsync(GPUMapMode.READ);
+        const v = new Float32Array(this.groundRead.getMappedRange());
+        if (!failed) for (let i = 0; i < n; i++) if (v[i * 4 + 3] > 0) out[from + i] = v[i * 4 + 2];
+        this.groundRead.unmap();
+      }
+      return out;
+    };
+    this.groundQueue = (this.groundQueue || Promise.resolve()).then(run, run);
+    return this.groundQueue;
+  }
 }
 
-const PROBE = { ground: 128, wallW: 32, wallH: 16 };
+const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };

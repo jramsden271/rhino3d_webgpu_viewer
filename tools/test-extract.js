@@ -5,7 +5,7 @@ const path = require('path');
 const vm = require('vm');
 const rhino3dm = require(path.join(__dirname, process.env.W64 ? '../vendor/package/wasm64/rhino3dm.js' : '../vendor/package/rhino3dm.js'));
 
-const src = ['math.js', 'materials.js', 'extract.js'].map((f) => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n');
+const src = ['math.js', 'materials.js', 'magicblocks.js', 'extract.js'].map((f) => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n');
 vm.runInThisContext(src + '\nglobalThis.extractModel = extractModel;');
 
 (async () => {

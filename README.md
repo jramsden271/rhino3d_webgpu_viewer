@@ -27,29 +27,44 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 
 | Action | Mouse / touch | Keys |
 | --- | --- | --- |
-| Orbit (around the point under the cursor) | Right-drag, Alt + left-drag · one finger (in Top, Front and Right views: Alt + left-drag only) | |
-| Pan | Left- or middle-drag, Shift + right-drag · two fingers · in Top, Front and Right views also right-drag and one finger | |
-| Zoom (towards the cursor) | Wheel · pinch | |
+| Orbit (around the point under the cursor) | Perspective and most named views: right-drag, Alt + left-drag · one finger | |
+| Rotate about Z | Top: right-drag around the middle of the window · Elevation: right-drag left or right | |
+| Pan (the surface you grab stays under the cursor) | Left- or middle-drag, Shift + right-drag · two fingers · in Top and Elevation also one finger | |
+| Zoom (towards the surface under the cursor, slowing to a stop at it) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
-| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `5` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
+| Rotate the view | Drag the compass (bottom left) | |
+| Face north, east, south or west | Compass: double-click the N or a tick | |
+| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
-| Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
+| Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
-| Edges · Curves · Magic · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · `O` · `X` |
-| Layers · Sun panel | Toolbar | `L` · `S` |
+| Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
+| Layers · Blocks · Sun panel | Toolbar | `L` · `K` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
 
-The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right, Perspective and Walk, with any views
-saved by name in the Rhino file above them. Top, Front and Right are parallel (no perspective)
-views, as in Rhino; orbiting a parallel view turns it into a free view. Each camera remembers
-where you left it: leave one and come back, and it is where it was (including after walking).
-The first visit to a camera, or picking the one you are already in, gives its default: the
-extents for the four built-in cameras, the saved view for a named one.
+The **compass** at the bottom left points to north on the screen, from the model's north angle
+(click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
+carries on outside the compass, where it is easier to control. Double-click its **N**, or the
+tick for east, south or west, to turn the view to face that way, keeping its tilt.
+
+The **camera button** on the toolbar shows the current view and opens a list of Top, Elevation, Perspective and Walk, with any views
+saved by name in the Rhino file above them. Top and Elevation are parallel (no perspective) views
+that never tilt: Top always looks straight down and Elevation always looks level. Both pan and
+zoom, and turn about the Z axis through the middle of the view, by dragging the compass or by
+right-dragging: in Top the whole window is a dial, with a large see-through compass marking its middle while you
+drag, and in Elevation only the drag left or right
+counts. Each camera remembers where you left it, including its rotation: leave one and come back,
+or reload the model, and it is where it was (including after walking). The first visit to a camera,
+or picking the one you are already in, gives its default, including its rotation: the extents for
+the built-in cameras, the saved view for a named one. Top and Elevation start out facing the model's
++Y direction. The rules come from the camera, not its name: a named view that is parallel and looks
+straight down moves like Top, one that is parallel and exactly level moves like Elevation, and any
+other orbits freely.
 
 Named views are read-only and are matched as closely as this camera allows: the position,
 direction, lens and parallel zoom come from the file, and all of the saved frame stays in view
@@ -101,15 +116,58 @@ View changes, date and time, hiding objects, turning layers on or off and the si
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
 
+In the Layers and Block definitions panels, click a row to select it, Ctrl-click to add or remove a row, and
+Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
+selected rows.
+
 In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:
 
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
-- **Show all** / **Hide all**: turn the layer and all its sub-layers on or off.
 
-The Layers and Sun panels close with their × button or from the toolbar.
+Double-click a layer's row to open its colour or material window, as its square does.
+
+The Block definitions panel appears for models with blocks. It lists each block definition that has an
+instance, including those only used inside other blocks, with its number of copies in the model
+(a sub-block used 3 times in a block placed 10 times has 30). Right-click a block for:
+
+- **Select instances**: its visible top-level instances.
+- **Select sub-blocks**: adds every block inside it, at any depth, to the selected rows.
+- **Sub-element setting**: as clicking its tag or double-clicking its row.
+
+Unticking a block hides every copy of it, like turning a layer off: a copy shows only if it and
+every block around it are ticked. A row is dimmed when none of its copies can show because of the
+blocks around it. Block visibility is separate from **Unhide all**, is remembered with the view,
+and is not undoable or saved in a copy.
+
+The tag on each row is the block's sub-element setting, for where the objects directly inside the
+definition get their colour and material. It belongs to the definition, as in Rhino, so it is shared
+by all its instances:
+
+- **default**: as in the file.
+- **byParent**: from the block instance. If the instance is set to By object, its object colour is
+  used; to follow its layer instead, select the instance and set its Colour to By layer.
+- **byLayer**: from each sub-element's own layer, not the layer of the block instance.
+
+The setting doesn't reach sub-blocks unless you click **Apply setting to sub-blocks**, which copies
+it down to every block inside, once; the latest setting wins for a block with several parents. It
+can be undone, and it is written into a saved copy. Layer visibility is not affected: a sub-element on
+a layer that is off stays hidden.
+
+The same window can choose a **magic block**: geometry from the viewer's built-in library that
+replaces every instance of the block, for example a nicer tree for a simple tree crown. The library
+has a placeholder deciduous tree and a palm tree. Each instance is sized uniformly to the height of its
+block's box. A tree also needs ground to grow from, so its box reaches down to the highest visible
+surface below the box's centre (vegetation doesn't count), and stops at its own bottom if there is
+none. Hiding or showing what is below moves it to match. Trees also get their own fixed turn. The
+leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
+The tag then reads "magic", and the sub-element setting doesn't apply.
+
+The Layers, Block definitions and Sun panels close with their × button or from the toolbar. The first
+two can be open together, sharing the height the other panels leave. Drag the left edge of any of
+these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
@@ -199,14 +257,14 @@ it that are set to "By parent".
 All of these changes, and the north angle, are **remembered automatically** in this browser for
 each model (by file name and size) and restored when you open it again. **Download .3dm** in the file properties
 (click the file name) writes a *copy* of the .3dm with them: layer colours, a Rhino material
-for each layer material set in the viewer (assigned as the layer's render material), changed
-and changed object colour and material sources. Your original file is not touched. Materials with a magic material are named after it (e.g.
+for each layer material set in the viewer (assigned as the layer's render material),
+changed object colour and material sources, block sub-element settings and magic blocks. Top-level instances of a block with a magic block are removed, and an instance of a new definition holding it takes the place of each, on the same layer. No existing block definition changes, so instances inside other blocks stay as they are, and the viewer says which. Your original file is not touched. Materials with a magic material are named after it (e.g.
 "Water – 010_WaterBody"), so Auto matches them again when the copy is reopened. "Always off"
 is not saved in the copy.
 
 **Inspect and hide objects.** The object panel can be dragged by its title bar; it then stays
 put until it closes. Click a surface or mesh to select the whole object (a block
-instance is one object) and show its type, block name, layer (click to find it in the Layers
+instance is one object) and show its type, block name (click to find it in the Block definitions panel), layer (click to find it in the Layers
 panel), material, size, triangle count, Rhino user text and ID (click to copy). Shift-click
 adds or removes objects; with several selected the panel summarises types, layers, overall
 extent and triangles. **Hide** (or `H`) removes the selection from view, including its edges,
@@ -224,7 +282,8 @@ hidden objects and layer visibility) back to how it is in the file. The cameras 
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
-view; it switches off in X-ray mode. It is computed from the true (faceted) surfaces, so the
+view; it is worked out at half the window's resolution, and switches off in X-ray mode. It is
+computed from the true (faceted) surfaces, so the
 smooth shading of foliage does not darken the outlines of tree canopies. It also softens
 edges: the light rolls round each corner as though it were rounded by a few centimetres (never
 less than 2 pixels on screen), outside corners catch a little more light, and faceted curved
@@ -258,16 +317,23 @@ tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`
 drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
 the weather in the Weather panel and, when it has a latitude and longitude, the location.
 
-Click **Weather** on the toolbar for the **Weather panel**: the air temperature, relative
-humidity, wind speed and direction, cloud cover, and global horizontal, direct normal and diffuse
-horizontal irradiance at the Sun panel's date and time. Values are interpolated between the
-file's hourly records, each taken as the middle of its hour.
+Click **Weather** on the toolbar for the **Weather panel**, at the Sun panel's date and time. One
+row shows the air temperature, relative humidity and wind speed, with a compass arrow pointing
+the way the wind blows (north up; hover for the direction it comes from). **More** opens the
+cloud cover, the global horizontal, direct normal and diffuse horizontal irradiance, and the
+Cloud speed slider. Values are interpolated between the file's hourly records, each taken as the
+middle of its hour.
 
 ### Clouds and daylight
 
 With the sun on and a weather file loaded, the weather shows in the sky and the light. The
 cloud on the toolbar's Weather button (filled white while on) and the switch on the Weather
 panel turn this on and off; off, the sky and light are a clear day's, as without a file.
+
+With the sun off, perspective views still show the clouds, as many as the file gives for the Sun
+panel's date and time and drifting with its wind, on a neutral daytime sky that does not change
+with the date or time. The model keeps its usual lighting, so there are no cloud shadows. This
+needs no location.
 
 - **Cloud cover** comes from the file's total sky cover (tenths), which nearly every EPW has,
   day and night, and which in most files comes from observations. Where it is missing or does
@@ -292,11 +358,13 @@ panel turn this on and off; off, the sky and light are a clear day's, as without
   moonlit at night, and hide the stars. The sun is hidden when a cloud is in front of it, which
   is exactly when the camera stands in that cloud's shadow.
 - **The clouds drift with the wind**, from the file's wind direction at its speed times the
-  **Cloud speed** slider (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
+  **Cloud speed** slider under **More** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
   up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
-  drift easier to see. Like the water ripples, they stop after 15 s without input. While only
-  the clouds move, the sun's shadow maps and the ambient occlusion are kept from the last frame
-  rather than drawn again, so a drifting frame costs little more than the main pass.
+  drift easier to see. Like the water ripples, they stop after 15 s without input, or at once
+  with **Animations** off in the render mode menu, which saves the graphics card work on large
+  models when the view is still. While only the clouds move, or the ripples, frames are drawn
+  about 30 times a second, and the sun's shadow maps and the ambient occlusion are kept from
+  the last frame rather than drawn again, so a drifting frame costs little more than the main pass.
 
 Reflections in water and glass show the sky's colours without the clouds. Rain, fog and dust are not shown: EPW
 precipitation and present-weather fields are too unreliable (Leeds TMYx, for one, reports
@@ -528,6 +596,8 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | --- | --- |
 | `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort |
 | `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
+| `node tools/test-magic.js` | Checks where a magic block is placed |
+| `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
 | `node tools/probe2.js <file.3dm>` | Prints the shapes of values returned by rhino3dm |
@@ -539,7 +609,8 @@ dist/index.html          the released viewer (the only file anyone needs)
 dist-dev/index.html      development build (git-ignored)
 build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist-dev/, or dist/ with --release
 src/index.html, style.css  page and UI
-src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
+src/magicblocks.js       magic block library and how an instance is placed
+src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time

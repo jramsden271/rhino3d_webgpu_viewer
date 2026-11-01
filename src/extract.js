@@ -6,6 +6,7 @@
 // JS doubles. This keeps site-coordinate models (e.g. 6-digit eastings) free of float jitter.
 
 const MAX_BATCH_VERTS = 4_000_000;
+const CHUNKS_ACROSS = 32; // grid cells across the model (a square site; a long thin one has fewer)
 const EDGE_COS = Math.cos((30 * Math.PI) / 180);
 const MAX_EDGE_TRIS = 2_000_000; // skip crease detection on enormous single meshes
 const DEFAULT_MATERIAL = { name: '', rgb: [0.85, 0.84, 0.81], alpha: 1 }; // warm off-white
@@ -21,7 +22,7 @@ const rgbOf = (c) => [c.r / 255, c.g / 255, c.b / 255];
 class Acc {
   constructor(kind, key, layers, color, mat, vc, cls, matSet, layer, refs) {
     Object.assign(this, { kind, key, layers, color, mat, vc, cls, matSet, layer, cLayer: refs.cLayer, cMatLayer: refs.cMatLayer, mLayer: refs.mLayer });
-    this.pos = []; this.nrm = []; this.col = []; this.idx = []; this.oid = [];
+    this.pieces = []; // what was added: { pos, oid, box, and for a mesh nrm, idx (from 0), col }
     this.nv = 0; this.ni = 0;
   }
 }
@@ -41,21 +42,73 @@ class Batcher {
     return a;
   }
 
+  // Each batch's geometry goes in order of grid cell, with b.ranges saying where each cell's part is
+  // ([first index or vertex, count, cell] in turn), so a view can draw only the cells it can see.
+  // The cells' boxes are in batches.cells, shared by all the batches.
   finish() {
-    const all = this.done.concat([...this.open.values()]);
-    return all.filter((a) => a.nv > 0).map((a) => {
+    const all = this.done.concat([...this.open.values()]).filter((a) => a.nv > 0);
+    const cells = chunkCells(all);
+    const batches = all.map((a) => {
       const b = { kind: a.kind, layers: a.layers, layer: a.layer, color: a.color, mat: a.mat, vc: a.vc, cls: a.cls, matSet: a.matSet,
         cLayer: a.cLayer, cMatLayer: a.cMatLayer, mLayer: a.mLayer, count: a.ni || a.nv };
-      b.position = concat(Float32Array, a.pos, a.nv * 3);
-      b.objectId = concat(Uint32Array, a.oid, a.nv);
+      const parts = a.pieces.sort((p, q) => p.cell - q.cell), ranges = [];
+      let first = 0, last = -1;
+      for (const p of parts) {
+        const n = a.ni ? p.idx.length : p.pos.length / 3;
+        if (p.cell === last) ranges[ranges.length - 2] += n;
+        else ranges.push(first, n, p.cell);
+        first += n; last = p.cell;
+      }
+      b.ranges = Uint32Array.from(ranges);
+      b.position = concat(Float32Array, parts.map((p) => p.pos), a.nv * 3);
+      b.objectId = concat(Uint32Array, parts.map((p) => p.oid), a.nv);
       if (a.kind === 'mesh') {
-        b.normal = concat(Int16Array, a.nrm, a.nv * 4);
-        b.index = concat(Uint32Array, a.idx, a.ni);
-        if (a.vc) b.vcolor = concat(Uint8Array, a.col, a.nv * 4);
+        b.normal = concat(Int16Array, parts.map((p) => p.nrm), a.nv * 4);
+        const index = (b.index = new Uint32Array(a.ni));
+        let o = 0, base = 0;
+        for (const { idx, pos } of parts) {
+          for (let i = 0; i < idx.length; i++) index[o + i] = idx[i] + base;
+          o += idx.length; base += pos.length / 3;
+        }
+        if (a.vc) b.vcolor = concat(Uint8Array, parts.map((p) => p.col), a.nv * 4);
       }
       return b;
     });
+    batches.cells = cells;
+    return batches;
   }
+}
+
+// Sets each piece's cell, and returns the cells' boxes (6 floats each). A piece goes in the cell its
+// middle falls in, on a grid coarse enough for it: each grid's cells are 4 times as wide as the last's,
+// so that a wide piece does not stretch the box of a small cell. Cells are numbered as they are met,
+// not along the grid: an order along it would draw far things first from some directions, and the
+// surfaces drawn over them later would cost much more shading.
+function chunkCells(accs) {
+  const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+  const pieces = accs.flatMap((a) => a.pieces);
+  for (const { box } of pieces) if (box[0] <= box[3]) for (let k = 0; k < 2; k++) { mn[k] = Math.min(mn[k], box[k]); mx[k] = Math.max(mx[k], box[k + 3]); }
+  const w = mx[0] - mn[0], d = mx[1] - mn[1];
+  const size = Math.max(Math.sqrt(w * d) / CHUNKS_ACROSS, Math.max(w, d) / (4 * CHUNKS_ACROSS), 1e-6);
+  const found = new Map(), boxes = [];
+  for (const p of pieces) {
+    // A box with nothing valid in it (bad coordinates) is never culled.
+    const b = p.box[0] <= p.box[3] ? p.box : [-Infinity, -Infinity, -Infinity, Infinity, Infinity, Infinity];
+    const wide = Math.max(b[3] - b[0], b[4] - b[1]);
+    let level = 0, s = size;
+    while (wide > 2 * s && s < 1e30) { level++; s *= 4; }
+    const key = isFinite(wide) ? `${level}|${Math.floor(((b[0] + b[3]) / 2 - mn[0]) / s)}|${Math.floor(((b[1] + b[4]) / 2 - mn[1]) / s)}` : 'all';
+    let id = found.get(key);
+    if (id === undefined) {
+      found.set(key, (id = boxes.length));
+      boxes.push([...b]);
+    } else for (let k = 0; k < 3; k++) { boxes[id][k] = Math.min(boxes[id][k], b[k]); boxes[id][k + 3] = Math.max(boxes[id][k + 3], b[k + 3]); }
+    p.cell = id;
+  }
+  // A little larger, so rounding on the GPU cannot leave geometry just outside its box.
+  const out = new Float32Array(boxes.length * 6), m = size * 0.01;
+  boxes.forEach((b, i) => { for (let k = 0; k < 3; k++) { out[i * 6 + k] = b[k] - m; out[i * 6 + k + 3] = b[k + 3] + m; } });
+  return out;
 }
 
 function concat(T, parts, n) {
@@ -285,10 +338,11 @@ async function extractScene(rhino, doc, onProgress) {
     l.materialRgb = m ? m.rgb : DEFAULT_MATERIAL.rgb;
     l.materialAlpha = m ? m.alpha : 1;
   }
+  const magicLayers = addMagicLayers(layers, materials);
 
   // Attribute snapshot: plain values, so items and block definitions outlive the document.
   // cs colour source (0 layer, 1 object, 2 material, 3 parent); ms material source (0 layer,
-  // 1 object, 2 parent); oc object colour; mi object material index.
+  // 1 object, 3 parent); oc object colour; mi object material index.
   const attrInfo = (a) => ({ layer: a.layerIndex, cs: a.colorSource.value, oc: rgbOf(a.objectColor), ms: a.materialSource.value, mi: a.materialIndex, name: a.name || '' });
   const userText = (a) => {
     try { return (a.getUserStrings() || []).filter(([k]) => !k.startsWith('$')); } catch (e) { return []; }
@@ -417,7 +471,7 @@ async function extractScene(rhino, doc, onProgress) {
     }
     items.push(it);
   }
-  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items,
+  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
     stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
 }
 
@@ -431,6 +485,10 @@ const mulRM = (a, b) => {
 // Stable pseudo-random value in -1..1, used to vary colour between objects / block instances.
 const seedOf = (a, b, c) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return (s - Math.floor(s)) * 2 - 1; };
 
+// A block definition's setting for its sub-elements, chosen in the viewer: the sources that replace
+// each sub-element's own. Without one, they are as in the file.
+const SUB_SOURCES = { byParent: { cs: 3, ms: 3 }, byLayer: { cs: 0, ms: 0 } };
+
 // An object's colour and material from its attributes, its layer, and (inside a block) the
 // enclosing instance's resolved look. Also records where each came from, so that layer edits made
 // in the viewer apply without a rebuild: cLayer = the colour is that layer's display colour;
@@ -440,7 +498,7 @@ function resolveLook(scene, ai, parent) {
   const L = scene.layers[ai.layer] ? ai.layer : 0, layer = scene.layers[L] || { rgb: [0, 0, 0], material: -1 };
   let mi, mLayer = -1;
   if (ai.ms === 1) mi = ai.mi;
-  else if (ai.ms === 2 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
+  else if (ai.ms === 3 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
   else { mi = layer.material; mLayer = L; }
   const mat = scene.materials[mi] || DEFAULT_MATERIAL;
   if (mat === DEFAULT_MATERIAL) mi = -1;
@@ -450,6 +508,60 @@ function resolveLook(scene, ai, parent) {
   else if (ai.cs === 3 && parent) ({ rgb, cLayer, cMatLayer } = parent);
   else cLayer = L;
   return { rgb, mat, mi, matSet: mat !== DEFAULT_MATERIAL, cLayer, cMatLayer, mLayer };
+}
+
+// The block definitions in use, those a top-level instance reaches: id -> { id, name, tops (object
+// indexes of its top-level instances), kids and parents (definition ids), layers (of its own
+// objects), copies (in the whole model, counting those inside other blocks) }.
+function blockTable(scene) {
+  const { defs, items, layers } = scene, out = new Map();
+  for (const [id, def] of defs) {
+    const inner = def.entries.filter((e) => e.k === 'inst' && defs.has(e.idef)).map((e) => e.idef);
+    out.set(id, { id, name: def.name || '(unnamed block)', tops: [], kids: [...new Set(inner)], parents: [], copies: 0,
+      layers: [...new Set(def.entries.map((e) => e.ai.layer))].filter((l) => layers[l]) });
+  }
+  for (const b of out.values()) for (const k of b.kids) out.get(k).parents.push(b.id);
+  items.forEach((it, i) => { if (it.k === 'inst') out.get(it.idef)?.tops.push(i); });
+  const active = new Set(); // a damaged file could have a block contain itself
+  const count = (id, n) => {
+    if (active.has(id)) return;
+    active.add(id);
+    out.get(id).copies += n;
+    for (const e of defs.get(id).entries) if (e.k === 'inst' && out.has(e.idef)) count(e.idef, n);
+    active.delete(id);
+  };
+  for (const b of out.values()) if (b.tops.length) count(b.id, b.tops.length);
+  return out;
+}
+
+// A block definition's box in its own coordinates, sub-blocks included ([x0, y0, z0, x1, y1, z1]), or
+// null if it holds no geometry.
+function defBox(scene, id) {
+  const boxes = (scene.defBoxes ||= new Map());
+  if (boxes.has(id)) return boxes.get(id);
+  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], active = new Set();
+  const take = (p, xf) => {
+    for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) {
+      const v = xf[k * 4] * p[i] + xf[k * 4 + 1] * p[i + 1] + xf[k * 4 + 2] * p[i + 2] + xf[k * 4 + 3];
+      if (v < b[k]) b[k] = v;
+      if (v > b[k + 3]) b[k + 3] = v;
+    }
+  };
+  const walk = (defId, xf) => {
+    const def = scene.defs.get(defId);
+    if (!def || active.has(defId)) return;
+    active.add(defId);
+    for (const e of def.entries) {
+      if (e.k === 'inst') walk(e.idef, mulRM(xf, e.xf));
+      else if (e.k === 'mesh') for (const part of e.parts) take(part.pos, xf);
+      else take(e.k === 'line' ? e.segs : e.p, xf);
+    }
+    active.delete(defId);
+  };
+  walk(id, new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+  const box = b[0] <= b[3] ? b : null;
+  boxes.set(id, box);
+  return box;
 }
 
 // Directions to look for a batch's outermost vertices in, both ways along each: most of them level,
@@ -495,6 +607,16 @@ function buildBatches(scene) {
   const specialOf = scene.specialOf || ((l) => matchLayer(layers, l)?.id || 0);
   const specials = layers.map((_, l) => specialOf(l));
   const special = (look) => (look.mLayer >= 0 ? specials[look.mLayer] || 0 : 0);
+  // The block settings made in the viewer: a definition's sub-element setting, and whether it is
+  // shown. A hidden block's top-level instances stay in the batches, hidden by their object flags.
+  const subSetting = scene.subSetting || (() => null), blockShown = scene.blockShown || (() => true);
+  // The magic block replacing a definition (magicblocks.js), if any. The ground under its instances
+  // is found on the GPU, so not during a build: an instance not yet in scene.magicGround is placed
+  // without it, and magicMissing tells the caller to look it up and build again.
+  const magicOf = scene.magicOf || (() => null), unit = 1 / (scene.metresPerUnit || 1);
+  const magicGround = (scene.magicGround ||= new Map());
+  scene.magicPoints = new Map();
+  scene.magicMissing = false;
 
   let rec = null; // the item being emitted
   // Geometry that needs no transform (xf null) is the same on every rebuild, so its bounding
@@ -510,6 +632,7 @@ function buildBatches(scene) {
   const growBox = (p, c) => {
     const b = c ? (c.box ||= boxOf(p)) : boxOf(p), mn = rec.min, mx = rec.max;
     for (let k = 0; k < 3; k++) { if (b[k] < mn[k]) mn[k] = b[k]; if (b[k + 3] > mx[k]) mx[k] = b[k + 3]; }
+    return b;
   };
   const oids = (c, n, objId) => {
     if (!c) return new Uint32Array(n).fill(objId);
@@ -526,53 +649,70 @@ function buildBatches(scene) {
     // Vegetation is usually low-poly and faceted; smooth shading reads as soft foliage.
     const nrm = cls === MAT_VEGETATION ? (part.smooth ||= smoothNormals(part.pos, part.idx)) : part.nrm;
     const p = xformPoints(part.pos, xf), c = cacheOf(part, 'meshCache', xf);
-    growBox(p, c);
+    const box = growBox(p, c);
     rec.triangles += part.idx.length / 3;
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
     if (c && (c.nrmFrom !== nrm || c.seed !== seed)) Object.assign(c, { packed: packNormals(nrm, part.pos, part.idx, null, seed), nrmFrom: nrm, seed });
-    a.nrm.push(c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed));
+    const piece = { pos: p, oid: oids(c, n, objId), nrm: c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed), idx: part.idx, box };
     if (vc) {
       const c8 = new Uint8Array(n * 4), stride = part.col.length / n;
       for (let i = 0; i < n; i++) {
         c8[i * 4] = part.col[i * stride] * 255; c8[i * 4 + 1] = part.col[i * stride + 1] * 255;
         c8[i * 4 + 2] = part.col[i * stride + 2] * 255; c8[i * 4 + 3] = 255;
       }
-      a.col.push(c8);
+      piece.col = c8;
     }
-    const idx = new Uint32Array(part.idx.length);
-    for (let i = 0; i < idx.length; i++) idx[i] = part.idx[i] + a.nv;
-    a.idx.push(idx);
-    a.nv += n; a.ni += idx.length;
-    stats.triangles += idx.length / 3;
-    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part);
+    a.pieces.push(piece);
+    a.nv += n; a.ni += part.idx.length;
+    stats.triangles += part.idx.length / 3;
+    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part, box);
   };
-  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null) => {
+  // box: a mesh's edges lie on the mesh, so they take its box.
+  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null, box = null) => {
     const n = segs.length / 3;
     if (!n) return;
     const a = batcher.get(kind, layerSet, kind === 'edge' ? [0, 0, 0, 1] : colorKey(look.rgb), null, false, n, cls, look.matSet, layer,
       kind === 'edge' ? { cLayer: -1, cMatLayer: -1, mLayer: look.mLayer } : look);
     const p = xformPoints(segs, xf), c = holder && cacheOf(holder, kind + 'Cache', xf);
-    if (kind !== 'edge') growBox(p, c);
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
+    a.pieces.push({ pos: p, oid: oids(c, n, objId), box: box || growBox(p, c) });
     a.nv += n;
   };
   const emitPoint = (pt, layerSet, look, xf, objId) => {
     const a = batcher.get('point', layerSet, colorKey(look.rgb), null, false, 1, 0, false, layerSet[0], look);
     const p = xformPoints(pt, xf);
-    growBox(p);
-    a.pos.push(p);
-    a.oid.push(new Uint32Array([objId]));
+    a.pieces.push({ pos: p, oid: new Uint32Array([objId]), box: growBox(p) });
     a.nv += 1;
     stats.points++;
   };
+  const emitMagic = (block, idefId, xf, layerChain, depth, objId) => {
+    const box = defBox(scene, idefId);
+    if (!box) return;
+    const meshes = magicMeshes(block, unit), source = magicSource(box, xf);
+    let ground = null;
+    if (block.ground) {
+      const key = `${source.x.toFixed(3)},${source.y.toFixed(3)},${source.top.toFixed(3)}`;
+      scene.magicPoints.set(key, source);
+      if (magicGround.has(key)) ground = magicGround.get(key);
+      else scene.magicMissing = true;
+    }
+    const seed = seedOf(source.x, source.y, source.lo), place = magicPlacement(block, source, xf, ground, seed);
+    if (depth === 0) rec.magicXf = place;
+    for (const m of meshes) {
+      const L = scene.magicLayers[m.layer], look = resolveLook(scene, { layer: L, cs: 0, oc: [0, 0, 0], ms: 0, mi: -1 }, null);
+      layers[L].count++;
+      emitMesh(m, [...new Set([...layerChain, L])].sort((a, b) => a - b), look, place, special(look), seed, objId, L);
+    }
+  };
+  const expanding = new Set(); // a damaged file could have a block contain itself
   const instantiate = (idefId, xf, parentLook, layerChain, depth, objId) => {
     const def = defs.get(idefId);
-    if (!def || depth > 24) return;
-    const seed = seedOf(xf[3], xf[7], xf[11]);
+    if (!def || depth > 24 || expanding.has(idefId)) return;
+    const magic = magicOf(idefId);
+    if (magic) { emitMagic(magic, idefId, xf, layerChain, depth, objId); return; }
+    expanding.add(idefId);
+    const seed = seedOf(xf[3], xf[7], xf[11]), sources = SUB_SOURCES[subSetting(idefId)];
     for (const e of def.entries) {
-      const look = resolveLook(scene, e.ai, parentLook);
+      if (e.k === 'inst' && !blockShown(e.idef)) continue;
+      const look = resolveLook(scene, sources ? { ...e.ai, ...sources } : e.ai, parentLook);
       const ls = [...new Set([...layerChain, e.ai.layer])].sort((a, b) => a - b);
       if (layers[e.ai.layer]) layers[e.ai.layer].count++;
       if (e.k === 'inst') {
@@ -585,10 +725,12 @@ function buildBatches(scene) {
       else if (e.k === 'line') { stats.curves++; emitLines('line', e.segs, ls, look, xf, objId); }
       else if (e.k === 'point') emitPoint(e.p, ls, look, xf, objId);
     }
+    expanding.delete(idefId);
   };
 
   items.forEach((it, objId) => {
     rec = it;
+    it.magicXf = null;
     it.min = [Infinity, Infinity, Infinity]; it.max = [-Infinity, -Infinity, -Infinity]; it.triangles = 0;
     it.layer = it.ai.layer;
     const look = resolveLook(scene, it.ai, null), ls = [it.ai.layer];

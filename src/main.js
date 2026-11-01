@@ -4,10 +4,10 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
-  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
+  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
   // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
@@ -18,6 +18,7 @@ const state = {
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
   weatherPanel: false,
+  weatherMore: false, // the Weather panel's More section is open
   weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // details: the Details section is open.
@@ -36,6 +37,7 @@ state.sun = {
 const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
+state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -130,7 +132,7 @@ function frameState() {
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
   s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
   s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
-  s.time = (performance.now() / 1000) % 3600;
+  s.time = anim.time;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
@@ -155,6 +157,18 @@ function frameState() {
     if ((light.up > 0 || byMoon) && !state.xray) {
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
+  } else if (!camera.ortho) {
+    // With the sun off, the weather's clouds still drift across a neutral day's sky, whatever the
+    // date and time. The model keeps its usual light, so no cloud shadows. Orthographic views draw
+    // no clouds, so they keep the usual backdrop.
+    const wx = currentSky(NEUTRAL_ALTITUDE);
+    if (wx) {
+      const light = sunLight(NEUTRAL_ALTITUDE);
+      overcastSky(light, wx.cover);
+      s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
+      s.skyOnly = true;
+      s.clouds = { cover: wx.cover, drift: clouds.drift, haze: 1 };
+    }
   }
   return s;
 }
@@ -164,6 +178,7 @@ function frameState() {
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
 const clouds = { drift: [0, 0], last: 0, speed: prefs.cloudSpeed >= 0 && prefs.cloudSpeed <= CLOUD_SPEED_MAX ? prefs.cloudSpeed : 10 };
+const NEUTRAL_ALTITUDE = 45; // the sun's height (degrees) whose sky colours are shown with the sun off
 
 // The weather as the sky and light show it: null without a weather file or with the weather
 // switched off (the Weather button's icon or the switch on its panel).
@@ -192,8 +207,8 @@ function overcastSky(light, cover) {
 function driftClouds(now) {
   const dt = Math.min(0.1, (now - (clouds.last || now)) / 1000);
   clouds.last = now;
-  if (!state.sun.on || !site.epw || !clouds.speed) return false;
-  const wx = currentSky(sunPosition().altitude);
+  if (!site.epw || !clouds.speed || (!state.sun.on && camera.ortho)) return false;
+  const wx = currentSky(state.sun.on ? sunPosition().altitude : NEUTRAL_ALTITUDE);
   if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
   const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
   // Wrapped well before the noise's coordinates lose precision; a jump every few hundred km.
@@ -207,22 +222,28 @@ function sunOpts() {
 }
 function sunPosition() { return solarPosition(sunOpts()); }
 
+// The water's clock, stopped while Animations is off, and when the last frame was drawn.
+const anim = { time: 0, last: performance.now(), drawn: 0 };
+const ANIM_FRAME = 30; // ms between frames drawn only for the animations: about 30 a second, as they need no more
+
 function loop() {
-  // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
-  // untouched page does not keep the GPU busy.
-  if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
-  // Drifting clouds likewise.
-  if (model && performance.now() - lastInput < 15000 && driftClouds(performance.now())) {
-    renderer.dirty = true;
-    // A cloud may have moved over the camera.
-    if (state.comfort.panel && state.comfort.clouds && performance.now() - comfortAt > 200) { comfortAt = performance.now(); syncComfortPanel(); }
-  }
+  const now = performance.now();
+  if (state.animations) anim.time = (anim.time + (now - anim.last) / 1000) % 3600;
+  anim.last = now;
+  // Water ripples and drifting clouds animate while someone is using the viewer; after 15 s idle
+  // they freeze so an untouched page does not keep the GPU busy.
+  const live = model && state.animations && now - lastInput < 15000;
+  const drifting = live && driftClouds(now);
+  if (live && (drifting || renderer.hasWater(state.mode)) && now - anim.drawn >= ANIM_FRAME) renderer.dirty = true;
+  // A cloud may have moved over the camera.
+  if (drifting && state.comfort.panel && state.comfort.clouds && now - comfortAt > 200) { comfortAt = now; syncComfortPanel(); }
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
   }
   if (renderer.dirty) {
-    renderer.dirty = false; renderer.draw(frameState()); positionInspector();
+    anim.drawn = now;
+    renderer.dirty = false; renderer.draw(frameState()); positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
   }
   requestAnimationFrame(loop);
@@ -290,11 +311,14 @@ async function openBytes(name, bytes, handle = null) {
     }
     model = m;
     layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
+    state.blockOff = new Set();
     model.name = name;
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
+    model.blocks = blockTable(m);
+    model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
     state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
@@ -318,9 +342,13 @@ async function openBytes(name, bytes, handle = null) {
     $('undoRedo').hidden = false;
     $('fileDialog').hidden = true;
     $('matDialog').hidden = true;
+    $('blockDialog').hidden = true;
     applyLayerVisibility();
     buildLayerTree();
+    buildBlockList();
+    if (nestedBlockOff()) await rebuildModel();
     applyLayerMaterials(false);
+    await settleMagicGround();
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
@@ -405,6 +433,7 @@ function layerEffective(i) {
 
 function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
+  recheckMagicGround();
   saveViewState();
   redraw();
 }
@@ -442,22 +471,25 @@ function buildLayerTree() {
         const desc = (k) => { keep.add(k); kids[k].forEach(desc); };
         desc(i);
         layerOn = L.map((_, k) => keep.has(k));
-      } else layerOn[i] = cb.checked;
+      } else for (const l of layerRows.has(i) ? layerRows.list() : [i]) layerOn[l] = cb.checked;
       applyLayerVisibility();
       refreshRows();
     });
     row.querySelector('.caret').addEventListener('click', () => {
       collapsed.has(i) ? collapsed.delete(i) : collapsed.add(i);
       refreshRows();
+      layerRows.keepShown();
     });
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(i, row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
       const at = e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]; // context-menu key
-      openLayerMenu(i, hasKids ? subtree(i) : null, at);
+      const picked = layerRows.take(i), tree = [...new Set(picked.flatMap(subtree))];
+      openLayerMenu(picked, tree.length > picked.length ? tree : null, at);
     });
     tree.appendChild(row);
-    rows.push({ i, row, cb });
+    rows.push({ key: i, i, row, cb });
     kids[i].forEach((k) => add(k, depth + 1));
   };
   const subtree = (i) => { const out = [i]; for (let n = 0; n < out.length; n++) out.push(...kids[out[n]]); return out; };
@@ -485,6 +517,7 @@ function buildLayerTree() {
     }
   }
   refreshRows();
+  layerRows.setRows(rows);
   buildLayerTree.refresh = refreshRows;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
@@ -492,27 +525,29 @@ function buildLayerTree() {
     refreshRows();
     const r = rows.find((x) => x.i === i);
     if (!r) return;
-    r.row.scrollIntoView({ block: 'center' });
-    r.row.classList.remove('flash'); void r.row.offsetWidth; r.row.classList.add('flash');
+    layerRows.set([i]);
+    flashRow(r.row);
   };
 }
 
-// Right-click menu for a layer row. `tree` is the layer and all its sub-layers, or null when it
-// has none (the sub-layer items are then left out). Selection takes visible objects only.
-function openLayerMenu(i, tree, [x, y]) {
+function flashRow(row) {
+  row.scrollIntoView({ block: 'center' });
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+}
+
+// Right-click menu for the selected layer rows. `tree` is those layers and all their sub-layers, or
+// null when they have none (the sub-layer items are then left out). Selection takes visible objects
+// only.
+function openLayerMenu(picked, tree, [x, y]) {
   const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
-    return model.objects.flatMap((o, id) => (set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
+    return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
-  const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
-  const own = visibleOn([i]), all = tree && visibleOn(tree);
-  showMenu(L[i].fullPath, [
+  const own = visibleOn(picked), all = tree && visibleOn(tree);
+  showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
-    '-',
-    { label: 'Show all', run: () => setOn(true) },
-    { label: 'Hide all', run: () => setOn(false) },
   ].filter(Boolean), [x, y]);
 }
 
@@ -544,6 +579,245 @@ function showMenu(titleText, items, [x, y]) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+
+function showLayersHelp() {
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
+    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+    ${ROW_SELECT_HELP('layers')}
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+}
+
+function showBlocksHelp() {
+  Dialog.open({ title: 'Block definitions', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
+    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
+    <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
+    ${ROW_SELECT_HELP('blocks')}
+    <p>Clicking a tag on a selected row sets all the selected blocks.</p>
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Blocks
+//
+// The block definitions in use (model.blocks, see blockTable in extract.js). Each has a setting for
+// where its sub-elements get their colour and material (state.blockSub: definition id -> 'byParent'
+// or 'byLayer', none meaning as in the file). As in Rhino this belongs to the definition, so it is
+// shared by all its instances; it does not reach its sub-blocks unless applied to them. It is a
+// change to the model, like a layer's material. Turning a block off (state.blockOff) hides every copy
+// of it, like turning a layer off: a copy shows if it and every block around it are on. An object is
+// visible only if its layer is on, it isn't hidden, and (for a block instance) its block is on.
+
+const SUB_SETTINGS = [
+  ['default', 'As in the file', 'Each sub-element keeps the colour and material source it has in the file.'],
+  ['byParent', 'By parent: inherit from the block instance', 'Each sub-element takes its colour and material from the block instance. To change those, select an instance and set its Colour or Material.'],
+  ['byLayer', 'By layer: use each sub-element’s own layer', 'Each sub-element takes its colour and material from the layer it is on, not the layer of the block instance.'],
+];
+const layerRows = new RowSelection(), blockRows = new RowSelection();
+const blockSetting = (id) => state.blockSub[id] || 'default';
+const blockMagic = (id) => MAGIC_BY_ID[state.blockMagic[id]?.id] || null;
+const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
+const nestedBlockOff = () => [...state.blockOff].some((id) => model.blocks.get(id).parents.length);
+const objectOff = (i) => { const o = model.objects[i]; return state.hidden.has(i) || (o.k === 'inst' && state.blockOff.has(o.idef)); };
+
+// Everything inside these blocks, at any depth, other than the blocks themselves.
+function subBlocks(ids) {
+  const seen = new Set(ids), out = [], todo = [...ids];
+  while (todo.length) {
+    for (const k of model.blocks.get(todo.pop()).kids) if (!seen.has(k)) { seen.add(k); out.push(k); todo.push(k); }
+  }
+  return out;
+}
+
+// The blocks at the top of those containing this one (none if it isn't inside another).
+function topParents(id) {
+  const seen = new Set([id]), out = [], todo = [id];
+  while (todo.length) {
+    for (const p of model.blocks.get(todo.pop()).parents) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      todo.push(p);
+      if (!model.blocks.get(p).parents.length) out.push(p);
+    }
+  }
+  return out.sort((a, b) => model.blocks.get(a).name.localeCompare(model.blocks.get(b).name, undefined, { numeric: true }));
+}
+
+// Whether any copy of a block can show, given its own tick and the blocks around it.
+function blockReachable(id, seen = new Set()) {
+  if (state.blockOff.has(id) || seen.has(id)) return false;
+  seen.add(id);
+  const b = model.blocks.get(id);
+  return b.tops.length > 0 || b.parents.some((p) => !blockMagic(p) && blockReachable(p, seen));
+}
+
+function buildBlockList() {
+  const list = $('blockList');
+  list.innerHTML = '';
+  $('blockFilter').value = '';
+  const sorted = [...model.blocks.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  blockRows.setRows(sorted.map((b) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row block-row';
+    row.title = b.name;
+    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.querySelector('.layer-name').textContent = b.name;
+    const cb = row.querySelector('input');
+    cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
+    row.querySelector('.block-tag').addEventListener('click', () => openBlockDialog(blockRows.take(b.id), row));
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openBlockDialog(blockRows.take(b.id), row); });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      openBlockMenu(blockRows.take(b.id), row, e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]); // context-menu key
+    });
+    list.appendChild(row);
+    return { key: b.id, row, cb, name: b.name.toLowerCase() };
+  }));
+  document.querySelector('[data-toggle="blocks"]').hidden = !model.blocks.size;
+  if (state.blocks && !model.blocks.size) toggle('blocks');
+  refreshBlockList();
+}
+
+function refreshBlockList() {
+  const filter = $('blockFilter').value.trim().toLowerCase();
+  for (const { key, row, cb, name } of blockRows.rows) {
+    const on = !state.blockOff.has(key), set = blockSetting(key), tag = row.querySelector('.block-tag');
+    cb.checked = on;
+    row.hidden = !name.includes(filter);
+    row.classList.toggle('off', !on);
+    row.classList.toggle('inherited-off', on && !blockReachable(key));
+    const magic = blockMagic(key);
+    tag.textContent = magic ? 'magic' : set;
+    tag.classList.toggle('set', !!magic || set !== 'default');
+    tag.title = `${magic ? `Magic block: ${magic.name}` : SUB_SETTINGS.find(([id]) => id === set)[1]}. Click to change.`;
+  }
+  blockRows.keepShown();
+}
+
+async function setBlocksOn(ids, on) {
+  for (const id of ids) { if (on) state.blockOff.delete(id); else state.blockOff.add(id); }
+  // Instances of a hidden block leave the selection; copies inside other blocks need a rebuild.
+  const nested = ids.some((id) => model.blocks.get(id).parents.length);
+  state.sel.ids = state.sel.ids.filter((i) => !objectOff(i));
+  if (nested) await rebuildModel(); else pushObjectFlags();
+  showInspector();
+  refreshBlockList();
+  renderFileInfo();
+  saveViewState();
+}
+
+// Select these blocks' rows, showing them all if the filter leaves any out.
+function revealBlocks(ids) {
+  const rows = blockRows.rows.filter((r) => ids.includes(r.key));
+  if (rows.some((r) => r.row.hidden)) { $('blockFilter').value = ''; refreshBlockList(); }
+  blockRows.set(ids);
+  if (ids.length === 1 && rows[0]) flashRow(rows[0].row);
+  return rows[0]?.row;
+}
+
+// Right-click menu for the selected block rows.
+function openBlockMenu(ids, row, at) {
+  const instances = ids.flatMap((id) => model.blocks.get(id).tops).filter((i) => !objectOff(i) && layerEffective(model.objects[i].layer));
+  const subs = subBlocks(ids);
+  showMenu(ids.length > 1 ? `${ids.length} blocks` : model.blocks.get(ids[0]).name, [
+    { label: 'Select instances', n: instances.length, run: () => selectObjects(instances) },
+    subs.length && { label: 'Select sub-blocks', n: subs.length, run: () => revealBlocks([...ids, ...subs]) },
+    '-',
+    { label: 'Block settings…', run: () => openBlockDialog(ids, row) },
+  ].filter(Boolean), at);
+}
+
+// The window for these blocks' magic block and sub-element setting.
+let blockDialogIds = [];
+function openBlockDialog(ids, anchor) {
+  blockDialogIds = ids;
+  syncBlockDialog();
+  placePopover($('blockDialog'), anchor, 'blocksPanel');
+}
+
+function syncBlockDialog() {
+  const ids = blockDialogIds, one = ids.length === 1 ? model.blocks.get(ids[0]) : null;
+  const values = new Set(ids.map(blockSetting)), value = values.size === 1 ? [...values][0] : null, subs = subBlocks(ids);
+  $('blockTitle').textContent = $('blockTitle').title = one ? one.name : `${ids.length} blocks`;
+  const magics = new Set(ids.map((id) => blockMagic(id)?.id || 'none')), magic = magics.size === 1 ? [...magics][0] : null, anyMagic = ids.some(blockMagic);
+  $('blockMagic').innerHTML = (magic ? '' : '<option value="" selected disabled>Mixed</option>') +
+    [['none', 'None'], ...MAGIC_BLOCKS.map((b) => [b.id, b.name])].map(([id, label]) => `<option value="${id}"${id === magic ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockMagicHint').textContent = !anyMagic ? '' : `Replaces every instance, sized to the height of the block.${ids.some((id) => blockMagic(id) && model.blocks.get(id).parents.length) ? ' In a saved copy, instances inside other blocks stay as they are, as block definitions aren’t changed.' : ''}`;
+  $('blockSub').disabled = anyMagic;
+  $('blockSub').innerHTML = (value ? '' : '<option value="" selected disabled>Mixed</option>') +
+    SUB_SETTINGS.map(([id, label]) => `<option value="${id}"${id === value ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockHint').textContent = anyMagic ? 'A magic block’s colours and materials come from its own layers.' : value ? SUB_SETTINGS.find(([id]) => id === value)[2] : 'These blocks have different settings.';
+  const apply = $('blockApplySubs');
+  apply.textContent = subs.length ? `Apply setting to sub-blocks (${subs.length})` : 'Apply setting to sub-blocks';
+  apply.disabled = !subs.length || !value || anyMagic;
+  apply.title = !subs.length ? 'No sub-blocks inside' : anyMagic ? 'Doesn’t apply to a magic block' : !value ? 'Choose one setting first' : '';
+  $('blockSubsHint').textContent = subs.length && !anyMagic ?'The setting doesn’t change sub-blocks until applied to them, and applying it changes them everywhere they are used.' : '';
+  const links = (items, heading) => (items.length ? `${heading}: ${items.slice(0, 6).join(', ')}${items.length > 6 ? ` and ${items.length - 6} more` : ''}` : '');
+  const layers = [...new Set(ids.flatMap((id) => { const m = blockMagic(id); return m ? m.parts.map((p) => model.magicLayers[p.layer]) : model.blocks.get(id).layers; }))];
+  $('blockLayers').innerHTML = links(layers.map((l) => `<button class="link" data-layer="${l}">${escapeHtml(model.layers[l].fullPath)}</button>`), 'Sub-element layers');
+  $('blockParents').innerHTML = one ? links(topParents(one.id).map(blockLink), `Top-level parent block${topParents(one.id).length > 1 ? 's' : ''}`) : '';
+}
+
+async function setBlockSetting(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'default') delete state.blockSub[id]; else state.blockSub[id] = value; }
+  await rebuildModel();
+  saveEdits();
+  afterBlockChange();
+}
+
+async function setBlockMagic(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'none') delete state.blockMagic[id]; else state.blockMagic[id] = { id: value }; }
+  await rebuildModel();
+  saveEdits();
+  buildLayerTree();
+  afterBlockChange();
+}
+
+function afterBlockChange() {
+  refreshBlockList();
+  if (!$('blockDialog').hidden) syncBlockDialog();
+  if (state.sel.ids.length) showInspector();
+  renderFileInfo();
+}
+
+function bindBlocksPanel() {
+  blockRows.bind($('blockList'));
+  $('blockFilter').addEventListener('input', refreshBlockList);
+  $('blockList').addEventListener('scroll', closeLayerMenu);
+  $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
+  $('blocksHelp').addEventListener('click', showBlocksHelp);
+  document.querySelectorAll('[data-blocks]').forEach((b) => b.addEventListener('click', () => {
+    if (model) setBlocksOn(blockRows.rows.filter((r) => !r.row.hidden).map((r) => r.key), b.dataset.blocks === 'all');
+  }));
+  const close = () => { $('blockDialog').hidden = true; };
+  $('blockClose').addEventListener('click', close);
+  $('blockDone').addEventListener('click', close);
+  $('blockMagic').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockMagic(blockDialogIds, e.target.value, `Change magic block (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
+  $('blockSub').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockSetting(blockDialogIds, e.target.value, `Change sub-element setting (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
+  $('blockApplySubs').addEventListener('click', () => {
+    const subs = subBlocks(blockDialogIds);
+    setBlockSetting(subs, blockSetting(blockDialogIds[0]), `Apply sub-element setting to ${subs.length} sub-block${subs.length > 1 ? 's' : ''}`);
+  });
+  $('blockDialog').addEventListener('click', (e) => {
+    const block = e.target.closest('[data-block]'), layer = e.target.closest('[data-layer]');
+    if (block) openBlockDialog([block.dataset.block], revealBlocks([block.dataset.block]));
+    if (layer) {
+      if (!state.layers) toggle('layers');
+      buildLayerTree.reveal(+layer.dataset.layer);
+    }
+  });
+}
+
 function bindLayerMenu() {
   const menu = $('layerMenu');
   window.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeLayerMenu(); }, true);
@@ -567,12 +841,14 @@ function bindLayerMenu() {
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
 // layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
-// in extract.js). Everything is remembered in this browser per model, and can be written into a
+// in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
+// state.blockMagic: block definition id -> its magic block, { id } (see magicblocks.js).
+// Everything is remembered in this browser per model, and can be written into a
 // copy of the .3dm.
 
 const rgbHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {} });
+const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, blockSub: {}, blockMagic: {} });
 Object.assign(state, NO_EDITS());
 
 // Swatches and dialogs show materials in Rendered view and display colours otherwise.
@@ -642,15 +918,15 @@ const oldMaterialsKey = () => model && `3dm-viewer:materials:${model.name}:${mod
 // Layers whose material or magic material was set in the viewer.
 const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...Object.keys(state.layerSpecial)]);
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
-  obj: Object.keys(state.objEdits).length });
+  obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length, magic: Object.keys(state.blockMagic).length });
 
 function saveEdits() {
   const n = editCount(), north = state.sun.north;
   try {
     localStorage.removeItem(oldMaterialsKey());
-    if (n.mat + n.col + n.obj || north !== fileNorth()) {
-      const { layerMat, layerColor, layerSpecial, objEdits } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, north }));
+    if (n.mat + n.col + n.obj + n.blocks + n.magic || north !== fileNorth()) {
+      const { layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic } = state;
+      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic, north }));
     } else localStorage.removeItem(editsKey());
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
@@ -679,6 +955,48 @@ async function rebuildModel() {
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
+  await settleMagicGround();
+}
+
+function pushMagicBatches() {
+  renderer.setModel(buildBatches(model));
+  applyLayerVisibility();
+  applyLayerMaterials(false);
+  pushObjectFlags();
+}
+
+// Rebuild if a build placed magic blocks whose ground isn't known yet. Their source blocks are gone
+// from the batches by then, and magic blocks are left out of the look down, so neither is taken for
+// ground. Resolves once they stand on it.
+async function settleMagicGround() {
+  if (!model.magicMissing) return;
+  await lookForMagicGround([...model.magicPoints].filter(([key]) => !model.magicGround.has(key)));
+  pushMagicBatches();
+}
+
+// Finds the ground under [key, point] entries and records it. Returns whether any of it moved.
+async function lookForMagicGround(entries) {
+  const u = 1 / model.metresPerUnit, bottom = Math.min(...renderer.batches.map((b) => b.min[2])) - u;
+  const found = await renderer.groundBelow(entries.map(([, p]) => p), bottom, 0.05 * u, (b) => model.layers[b.layer]?.magic);
+  let moved = false;
+  entries.forEach(([key], i) => {
+    const was = model.magicGround.get(key), z = found[i];
+    if (was === undefined || (was == null) !== (z == null) || Math.abs(was - z) > 0.01 * u) moved = true;
+    model.magicGround.set(key, z);
+  });
+  return moved;
+}
+
+// What is visible decides what is ground, so look again when that may have changed, and rebuild only
+// if a magic block has to move.
+let groundTimer = 0;
+function recheckMagicGround() {
+  if (!model?.magicPoints?.size) return;
+  clearTimeout(groundTimer);
+  groundTimer = setTimeout(async () => {
+    const seen = model;
+    if (seen?.magicPoints?.size && await lookForMagicGround([...seen.magicPoints]) && seen === model) pushMagicBatches();
+  }, 200);
 }
 
 // Put the objects back as they are in the file, then apply attribute changes (object id ->
@@ -703,7 +1021,7 @@ function applyObjectEdits(objEdits = {}) {
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits,
+const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, blockSub: state.blockSub, blockMagic: state.blockMagic,
   north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
@@ -745,16 +1063,18 @@ async function stepHistory(redo) {
 
 // Make the given edit state current, rebuilding only if objects or foliage normals change.
 async function restoreEdits(e) {
-  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits);
+  const magicChange = JSON.stringify(state.blockMagic) !== JSON.stringify(e.blockMagic);
+  const objectsChange = magicChange || JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits) || JSON.stringify(state.blockSub) !== JSON.stringify(e.blockSub);
   const vegBefore = model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
-  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial) });
+  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial), blockSub: structuredClone(e.blockSub), blockMagic: structuredClone(e.blockMagic) });
   const vegChange = vegBefore !== model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
   if (objectsChange) applyObjectEdits(e.objEdits);
   if (objectsChange || vegChange) await rebuildModel();
+  if (magicChange) buildLayerTree();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
-  if (state.sel.ids.length) showInspector();
+  afterBlockChange();
   pushObjectFlags();
 }
 
@@ -775,16 +1095,22 @@ function loadEdits() {
     if (!(id in state.layerSpecial)) state.layerSpecial[id] = t;
     state.layerMat[id] = t === MAT_WATER ? { alpha: m.alpha, gloss: m.gloss } : { rgb: m.rgb, alpha: m.alpha, gloss: m.gloss };
   }
-  model.specialOf = layerSpecialId;
+  for (const [id, set] of Object.entries(e.blockSub || {})) if (model.blocks.has(id) && SUB_SOURCES[set]) state.blockSub[id] = set;
+  for (const [id, set] of Object.entries(e.blockMagic || {})) if (model.blocks.has(id) && MAGIC_BY_ID[set?.id]) state.blockMagic[id] = set;
+  Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id), magicOf: blockMagic });
+  // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
+  for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
   applyObjectEdits(e.objEdits);
   model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
   if (n.col) parts.push(`colours on ${n.col} layer${n.col > 1 ? 's' : ''}`);
   if (n.mat) parts.push(`materials on ${n.mat} layer${n.mat > 1 ? 's' : ''}`);
   if (n.obj) parts.push(`${n.obj.toLocaleString()} object${n.obj > 1 ? 's' : ''} changed`);
+  if (n.blocks) parts.push(`sub-element settings on ${n.blocks.toLocaleString()} block${n.blocks > 1 ? 's' : ''}`);
+  if (n.magic) parts.push(`magic blocks on ${n.magic.toLocaleString()} block${n.magic > 1 ? 's' : ''}`);
   if (model.savedNorth != null && model.savedNorth !== fileNorth()) parts.push('the north angle');
   model.restored = parts;
-  return n.obj > 0 || Object.keys(state.layerSpecial).length > 0;
+  return n.obj > 0 || n.blocks > 0 || n.magic > 0 || Object.keys(state.layerSpecial).length > 0;
 }
 
 // Layer visibility, hidden objects and the cameras are the state of looking at a model rather than
@@ -802,7 +1128,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -812,19 +1138,26 @@ function restoreLayersAndHidden(saved) {
     const i = model.objectIndex.get(id);
     if (i != null) state.hidden.add(i);
   }
+  for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) model.restored.push('layer visibility');
+  if (state.blockOff.size) model.restored.push('block visibility');
 }
 
 function restoreCameras(saved) {
   const finite = (...v) => v.every(Number.isFinite);
   const valid = (c) => c && Array.isArray(c.target) && c.target.length === 3 && finite(...c.target, c.yaw, c.pitch) && c.distance > 0 && c.fov > 0 && c.fov < Math.PI && typeof c.ortho === 'boolean';
   if (!valid(saved.camera)) return;
-  viewCams = Object.fromEntries(Object.entries(saved.cams || {}).filter(([id, c]) => isCameraId(id) && valid(c)));
-  viewNow = isCameraId(saved.view) ? saved.view : null;
-  camera.restore(saved.camera);
+  // Saved before Elevation replaced Front and Right, and when a parallel view could be tilted into
+  // a free view: those come back as Elevation, and as Perspective.
+  const cams = { ...saved.cams }, wasFlat = saved.view === 'front' || saved.view === 'right';
+  cams.elevation ||= (wasFlat && cams[saved.view]) || cams.front || cams.right;
+  viewCams = Object.fromEntries(Object.entries(cams).filter(([id, c]) => isCameraId(id) && valid(c)));
+  const view = wasFlat ? 'elevation' : saved.view;
+  if (isCameraId(view)) { viewNow = view; camera.restore(saved.camera); }
+  else if (viewCams.perspective) camera.restore(viewCams.perspective);
   syncToolbar();
   redraw();
 }
@@ -866,11 +1199,55 @@ function openMaterialDialog(i, anchor) {
     $('matReset').hidden = !state.layerColor[l.id];
   }
   syncMaterialDialog();
+  placePopover(dlg, anchor, 'layersPanel');
+}
+
+// Show a window beside a side panel, level with the row it belongs to.
+function placePopover(dlg, anchor, panel) {
   dlg.hidden = false;
-  // Place it beside the layers panel, level with the swatch.
-  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $('layersPanel').getBoundingClientRect();
+  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $(panel).getBoundingClientRect();
   dlg.style.top = Math.max(12, Math.min(window.innerHeight - d.height - 12, r.top - 40)) + 'px';
   dlg.style.left = Math.max(12, (side.width ? side.left : r.left) - d.width - 10) + 'px';
+}
+
+// The right-hand panels share a column, whose width is set by dragging the left edge of any of them
+// (double-click for the default). Remembered between sessions. Phones use the full window width.
+const SIDE_WIDTH = 300, SIDE_EDGE = 6; // px; SIDE_EDGE: how close to the edge a drag can start
+state.sideWidth = SIDE_WIDTH;
+function setSideWidth(w) {
+  state.sideWidth = Math.round(Math.max(SIDE_WIDTH, Math.min(w, window.innerWidth * 0.6)));
+  document.querySelector('.side').style.setProperty('--side-width', state.sideWidth + 'px');
+  // Windows beside the column move with it.
+  for (const [dlg, panel] of [[$('matDialog'), $('layersPanel')], [$('blockDialog'), $('blocksPanel')]]) {
+    if (!dlg.hidden && !panel.hidden) dlg.style.left = Math.max(12, panel.getBoundingClientRect().left - dlg.offsetWidth - 10) + 'px';
+  }
+}
+
+function bindSideResize() {
+  const side = document.querySelector('.side');
+  const edgePanel = (e) => {
+    const p = e.target.closest?.('.panel');
+    return p && !window.matchMedia('(max-width: 720px)').matches && e.clientX - p.getBoundingClientRect().left <= SIDE_EDGE ? p : null;
+  };
+  let from = null;
+  side.addEventListener('pointermove', (e) => {
+    if (from) setSideWidth(from.width + from.x - e.clientX);
+    else side.classList.toggle('at-edge', !!edgePanel(e));
+  });
+  side.addEventListener('pointerleave', () => { if (!from) side.classList.remove('at-edge'); });
+  side.addEventListener('pointerdown', (e) => {
+    const p = e.button === 0 && edgePanel(e);
+    if (!p) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.setPointerCapture(e.pointerId);
+    from = { x: e.clientX, width: side.offsetWidth };
+  }, true);
+  const end = () => { if (from) { from = null; savePrefs(); } };
+  side.addEventListener('pointerup', end);
+  side.addEventListener('pointercancel', end);
+  side.addEventListener('dblclick', (e) => { if (edgePanel(e)) { setSideWidth(SIDE_WIDTH); savePrefs(); } });
+  if (prefs.sideWidth > SIDE_WIDTH) setSideWidth(prefs.sideWidth);
 }
 
 // Top-level objects on a layer whose colour (or material) does not come from the layer, so a
@@ -955,12 +1332,13 @@ function bindMaterialDialog() {
   });
   $('matOwn').addEventListener('click', (e) => {
     if (e.target.id !== 'matSelectOwn') return;
-    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !state.hidden.has(id)));
+    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !objectOff(id)));
   });
 }
 
 // Write a copy of the .3dm with the viewer's changes (the original is never touched): layer
-// colours, a Rhino material for each layer set in the viewer and object colour/material sources.
+// colours, a Rhino material for each layer set in the viewer, object colour/material sources,
+// block sub-element settings and magic blocks (writeMagicBlocks).
 async function downloadCopy() {
   if (!model || !model.bytes) return;
   try {
@@ -986,7 +1364,7 @@ async function downloadCopy() {
       layer.renderMaterialIndex = mats.count - 1;
     }
     const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
-    const MS = [rhino.ObjectMaterialSource.MaterialFromLayer, rhino.ObjectMaterialSource.MaterialFromObject, rhino.ObjectMaterialSource.MaterialFromParent];
+    const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
     // Objects whose attributes changed.
     for (const it of model.objects) {
       if (!state.objEdits[it.id]) continue;
@@ -998,6 +1376,16 @@ async function downloadCopy() {
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
     }
+    // Block sub-element settings: in the file these are the sources of the definition's own objects.
+    const idefs = doc.instanceDefinitions();
+    for (const [id, set] of Object.entries(state.blockSub)) {
+      const src = SUB_SOURCES[set];
+      for (const oid of idefs.findId(id)?.getObjectIds() || []) {
+        const a = objs.findId(oid)?.attributes();
+        if (a) { a.colorSource = CS[src.cs]; a.materialSource = MS[src.ms]; }
+      }
+    }
+    const keptNested = writeMagicBlocks(rhino, doc, rgba);
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
     const out = doc.toByteArray();
@@ -1007,12 +1395,67 @@ async function downloadCopy() {
     a.download = model.name.replace(/\.3dm$/i, '') + ' - viewer edits.3dm';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    if (keptNested.length) notice(`Saved with the original geometry inside other blocks, as block definitions aren’t changed: ${keptNested.join(', ')}.`, false, 8000);
   } catch (e) {
     console.error(e);
     notice(`Could not write the file: ${e.message || e}`, true);
   } finally {
     hideBusy();
   }
+}
+
+// In a copy, top-level instances replaced by a magic block become instances of a new block definition
+// holding it, on new layers, with the attributes the instances had. No existing definition changes,
+// so the replaced ones stay, and instances inside other blocks stay as they are.
+// Returns the names of the blocks left with such instances.
+function writeMagicBlocks(rhino, doc, rgba) {
+  const used = new Map(); // magic block -> top-level instances
+  for (const it of model.objects) {
+    const magic = it.k === 'inst' && it.magicXf && blockMagic(it.idef);
+    if (magic) used.set(magic, [...(used.get(magic) || []), it]);
+  }
+  const lt = doc.layers(), mats = doc.materials(), idefs = doc.instanceDefinitions(), objs = doc.objects();
+  const names = new Set(), layerIndex = {};
+  for (let i = 0; i < idefs.count; i++) names.add(idefs.get(i).name);
+  let parentId = null;
+  const fileLayer = (key) => {
+    if (layerIndex[key] != null) return layerIndex[key];
+    if (!parentId) {
+      const p = new rhino.Layer();
+      Object.assign(p, { name: MAGIC_PARENT_LAYER, color: rgba([0.5, 0.5, 0.5]) });
+      parentId = lt.get(lt.add(p)).id;
+    }
+    const i = model.magicLayers[key], m = new rhino.Material(), l = new rhino.Layer();
+    m.name = model.layers[i].name;
+    m.diffuseColor = rgba(layerLook(i).rgb);
+    mats.add(m);
+    Object.assign(l, { name: model.layers[i].name, parentLayerId: parentId, color: rgba(layerDisplayRgb(i)), renderMaterialIndex: mats.count - 1 });
+    return (layerIndex[key] = lt.add(l));
+  };
+  for (const [magic, items] of used) {
+    const meshes = [], attrs = [];
+    for (const part of magicMeshes(magic, 1 / model.metresPerUnit)) {
+      const mesh = new rhino.Mesh(), a = new rhino.ObjectAttributes();
+      for (let i = 0; i < part.pos.length; i += 3) mesh.vertices().add(part.pos[i], part.pos[i + 1], part.pos[i + 2]);
+      for (let i = 0; i < part.idx.length; i += 3) mesh.faces().addTriFace(part.idx[i], part.idx[i + 1], part.idx[i + 2]);
+      mesh.normals().computeNormals();
+      a.layerIndex = fileLayer(part.layer);
+      meshes.push(mesh); attrs.push(a);
+    }
+    let name = `Magic block - ${magic.name}`;
+    for (let k = 2; names.has(name); k++) name = `Magic block - ${magic.name} ${k}`;
+    names.add(name);
+    const defId = idefs.get(idefs.add(name, '', '', '', [0, 0, 0], meshes, attrs)).id;
+    for (const it of items) {
+      const o = objs.findId(it.id);
+      if (!o) continue;
+      const a = o.attributes(), p = it.magicXf, xf = new rhino.Transform(1);
+      objs.delete(it.id);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) xf[`m${r}${c}`] = p[r * 4 + c] + (c === 3 ? model.origin[r] : 0);
+      objs.addInstanceObject(new rhino.InstanceReference(defId, xf), a);
+    }
+  }
+  return Object.keys(state.blockMagic).filter((id) => model.blocks.get(id).parents.some((p) => !blockMagic(p))).map((id) => model.blocks.get(id).name);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1025,6 +1468,7 @@ async function downloadCopy() {
 
 state.sel = { ids: [], p: null };
 state.hidden = new Set();
+state.blockOff = new Set();
 let objFlags = new Uint32Array(0);
 
 function resetObjectState() {
@@ -1037,9 +1481,13 @@ function resetObjectState() {
   syncHiddenButton();
 }
 
+let flagsHidden = '';
 function pushObjectFlags() {
+  const hidden = `${state.hidden.size},${state.blockOff.size}`;
+  if (hidden !== flagsHidden) { flagsHidden = hidden; recheckMagicGround(); }
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
+  if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
   for (const id of state.sel.ids) objFlags[id] |= 2;
   renderer.setObjectFlags(objFlags);
   redraw();
@@ -1073,13 +1521,13 @@ function selectObjects(ids, p = null) {
 
 // Ctrl+A: every visible object (not hidden, on a layer that is on).
 function selectAll() {
-  selectObjects(model.objects.flatMap((o, id) => (!state.hidden.has(id) && layerEffective(o.layer) ? [id] : [])));
+  selectObjects(model.objects.flatMap((o, id) => (!objectOff(id) && layerEffective(o.layer) ? [id] : [])));
 }
 
 const UNIT_ABBR = { Meters: 'm', Millimeters: 'mm', Centimeters: 'cm', Kilometers: 'km', Feet: 'ft', Inches: 'in' };
 const fmtLen = (v) => (Math.abs(v) >= 100 ? v.toFixed(1) : v.toPrecision(3));
 const COLOR_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent'], [2, 'By material']];
-const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [2, 'By parent']];
+const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent']];
 const materialLabel = (mi) => (mi >= 0 && model.materials[mi] ? model.materials[mi].name || `Material ${mi + 1}` : 'Default material');
 
 // The colour (Shaded view) or material (Rendered view) source control for the selection: a
@@ -1097,7 +1545,7 @@ function sourceControl(objs) {
   }
   if (src === 1 && isMat) {
     const mi = same((o) => o.ai.mi) ? (model.materials[objs[0].ai.mi] ? objs[0].ai.mi : -1) : null;
-    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
+    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.filter((m) => !m.magic).map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
   }
   html += '</div>';
   // What it resolves to (single object), and what "by parent" means for blocks.
@@ -1112,7 +1560,7 @@ function sourceControl(objs) {
       html += `<div class="fine">${chip(shownRgb(look))}${rgbHex(shownRgb(look))}</div>`;
     }
   }
-  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this applies to the parts inside it that are set to “By parent”.</div>';
+  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Block definitions panel.</div>';
   return html;
 }
 
@@ -1133,7 +1581,7 @@ function showInspector() {
     title = o.name || o.block || o.type;
     swatch = o.look ? rgbHex(showsMaterial() ? shownMaterialRgb(o.look) : shownRgb(o.look)) : 'var(--accent)';
     rows = [
-      ['Type', o.block ? `Block · ${escapeHtml(o.block)}` : escapeHtml(o.type), true],
+      ['Type', o.k === 'inst' ? `Block · ${blockLink(o.idef)}` : escapeHtml(o.type), true],
       ['Layer', layerLink(o.layer), true],
       srcRow,
       ['Size', sizeText],
@@ -1147,12 +1595,12 @@ function showInspector() {
       for (const o of objs) m.set(key(o), (m.get(key(o)) || 0) + 1);
       return [...m.entries()].sort((a, b) => b[1] - a[1]);
     };
-    const types = count((o) => (o.block ? `Block · ${o.block}` : o.type));
+    const types = count((o) => (o.k === 'inst' ? o.idef : o.type));
     const layers = count((o) => o.layer);
     title = `${objs.length} objects selected`;
     swatch = 'var(--accent)';
     rows = [
-      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
+      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${model.blocks.has(t) ? `Block · ${blockLink(t)}` : escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
       ['Layers', layers.slice(0, 4).map(([l]) => layerLink(l)).join('<br>') + (layers.length > 4 ? `<br>and ${layers.length - 4} more` : ''), true],
       srcRow,
       ['Extent', sizeText],
@@ -1261,6 +1709,11 @@ function bindInspector() {
       if (!state.layers) toggle('layers');
       buildLayerTree.reveal(+b.dataset.layer);
     }
+    const block = e.target.closest('[data-block]');
+    if (block) {
+      if (!state.blocks) toggle('blocks');
+      revealBlocks([block.dataset.block]);
+    }
     const code = e.target.closest('code');
     if (code) navigator.clipboard?.writeText(code.textContent).then(() => { code.classList.add('copied'); setTimeout(() => code.classList.remove('copied'), 900); });
   });
@@ -1290,7 +1743,7 @@ function renderFileInfo() {
     s.curves && ['Curves', fmt(s.curves)],
     s.points && ['Points', fmt(s.points)],
     s.instances && ['Block instances', fmt(s.instances)],
-    ['Layers', fmt(model.layers.length)],
+    ['Layers', fmt(model.layers.filter((l) => !l.magic).length)],
     ['Location', loc ? `${loc.lat.toFixed(4)}°, ${loc.lon.toFixed(4)}°` : 'Not set'],
     hiddenTypes && ['Not shown', hiddenTypes],
     missing && ['No render mesh', missing],
@@ -1303,9 +1756,12 @@ function renderFileInfo() {
   if (n.col) saved.push(`Colours set on ${plural(n.col, 'layer')}`);
   if (n.mat) saved.push(`Materials set on ${plural(n.mat, 'layer')}`);
   if (n.obj) saved.push(`${plural(n.obj, 'object')} with changed colour or material`);
+  if (n.blocks) saved.push(`Sub-element settings on ${plural(n.blocks, 'block')}`);
+  if (n.magic) saved.push(`Magic blocks on ${plural(n.magic, 'block')}`);
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
+  if (state.blockOff.size) changes.push('Block visibility changed');
   if (state.sun.north !== fileNorth()) changes.push('North angle changed');
   if (document.activeElement !== $('fileNorth')) $('fileNorth').value = state.sun.north;
   $('fileNorthInfo').textContent = `Degrees anticlockwise from the model’s +X axis to north (90: +Y is north). ${loc ? `The file’s is ${+fileNorth().toFixed(1)}°, from its ${loc.source}.` : 'The file does not set one; 90 is the default.'}`;
@@ -1324,15 +1780,16 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours and materials, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
-  if (n.mat + n.col + n.obj || state.sun.north !== north) recordUndo('Revert changes');
+  if (n.mat + n.col + n.obj + n.blocks + n.magic || state.sun.north !== north) recordUndo('Revert changes');
   setSun({ north });
-  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
+  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length || n.blocks || n.magic || nestedBlockOff();
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
+  state.blockOff.clear();
   state.sel = { ids: [], p: null };
   $('inspect').hidden = true; inspectPin = null;
   layerOn = model.layers.map((l) => l.visible);
@@ -1343,9 +1800,10 @@ async function revertChanges() {
   applyLayerVisibility();
   applyLayerMaterials();
   buildLayerTree.refresh?.();
+  if (n.magic) buildLayerTree();
+  afterBlockChange();
   pushObjectFlags();
   syncHiddenButton();
-  renderFileInfo();
 }
 
 // The open model's north angle: the file's own (Rhino sun settings or Earth anchor), else 90.
@@ -1476,6 +1934,7 @@ function bindSunPanel() {
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
+  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
   $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncSunPanel(); redraw(); });
   $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
   $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
@@ -1497,10 +1956,10 @@ function toggleWeatherPanel() {
 function syncWeather(month, day) {
   if (!state.weatherPanel) return;
   const el = $('weatherBody'), e = site.epw;
-  $('weatherSrc').textContent = e ? e.location.name || e.fileName : 'No weather file';
-  $('weatherSrc').title = e ? e.fileName : '';
-  $('weatherWhen').value = `${day} ${MONTHS[month - 1]} · ${fmtHour(state.sun.hour)}`;
-  $('cloudSpeedField').hidden = !e;
+  $('weatherMoreField').hidden = !e;
+  $('weatherToggle').setAttribute('aria-expanded', String(state.weatherMore));
+  $('weatherToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherMore);
+  $('weatherDetails').hidden = !state.weatherMore;
   $('cloudSpeed').value = clouds.speed;
   $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
   if (!e) {
@@ -1511,12 +1970,16 @@ function syncWeather(month, day) {
   const sky = weatherSky(e, state.sun.doy, state.sun.hour, activeLocation() ? sunPosition().altitude : 30);
   const cloud = !sky || sky.source === 'none' ? '—'
     : `<b>${Math.round(sky.cover * 10)}</b>/10 <span class="fine">${sky.source === 'observed' ? 'observed' : 'from radiation'}</span>`;
-  const wind = w.windSpeed === null ? '—' : w.windSpeed < 0.05 ? '<b>Calm</b>'
-    : `<b>${v(w.windSpeed, 1)}</b> m/s${w.windDirection === null ? '' : ` from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°)`}`;
-  el.innerHTML = `<dl class="wx">
-    <dt>Air temperature</dt><dd><b>${v(w.dryBulb, 1)}</b> °C</dd>
-    <dt>Relative humidity</dt><dd><b>${v(w.relativeHumidity)}</b>%</dd>
-    <dt>Wind</dt><dd>${wind}</dd>
+  const reading = (x, d, unit) => (x === null ? '—' : `<span><b>${x.toFixed(d)}</b>${unit}</span>`);
+  const blowing = w.windSpeed >= 0.05 && w.windDirection !== null; // null >= 0.05 is false
+  const windTitle = blowing ? `Wind from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°). The arrow points the way it blows, with north up.` : 'Wind';
+  // The file gives the direction the wind comes from; the arrow points the way it goes.
+  const needle = blowing ? `<path class="needle" transform="rotate(${(w.windDirection + 180).toFixed(1)} 12 12)" d="M12 5.5 15.5 18 12 15.6 8.5 18Z"/>` : '';
+  el.innerHTML = `<div class="wx-now">
+    <span title="Air temperature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg>${reading(w.dryBulb, 1, ' °C')}</span>
+    <span title="Relative humidity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.7 5.66 5.66a8 8 0 1 1-11.31 0Z"/></svg>${reading(w.relativeHumidity, 0, '%')}</span>
+    <span title="${windTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/>${needle}</svg>${w.windSpeed !== null && w.windSpeed < 0.05 ? '<b>Calm</b>' : reading(w.windSpeed, 1, ' m/s')}</span></div>`;
+  $('weatherMore').innerHTML = `<dl class="wx">
     <dt>Cloud cover</dt><dd title="${sky?.source === 'radiation' ? 'This file has no usable cloud observations, so the cover is estimated from the share of diffuse light, by day, and filled in overnight' : 'Total sky cover from the weather file'}">${cloud}</dd>
     <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
     <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
@@ -1773,7 +2236,7 @@ function openLocationDialog() {
 // Pointer / keyboard input
 
 const pointers = new Map();
-let drag = null, pivot = null, lastWheelPick = null, clickTimer = 0;
+let drag = null, pivot = null, wheelZoom = null, clickTimer = 0;
 
 const toDevice = (e) => {
   const r = canvas.getBoundingClientRect();
@@ -1786,6 +2249,10 @@ const toNdc = (e) => {
 // Resolves to { p: world point, id: object index } for the surface under the pointer, or null.
 const pickAt = (e) => (model ? renderer.pick(...toDevice(e), camera.viewProj(), frameState()) : Promise.resolve(null));
 const pickPoint = (e) => pickAt(e).then((h) => h && h.p);
+// camera.distance has no fixed relation to what is on screen: zooming about a point scales it, and
+// orbiting leaves it. So a drag finds how far away the surface it grabbed is, and leaves drag.depth
+// unset over empty space, where the camera's distance is all there is to go on.
+const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.depth = V3.dot(V3.sub(p, camera.eye), camera.forward); });
 
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1801,18 +2268,21 @@ function bindPointer() {
       canvas.classList.add('dragging');
     } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
-      // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
-      // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
-      const flat = camera.ortho && viewNow;
-      const orbit = (!flat && (e.pointerType === 'touch' || (e.button === 2 && !e.shiftKey))) || (e.button === 0 && e.altKey);
-      const pan = !orbit;
-      drag = { mode: pan ? 'pan' : 'orbit', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      // Alt + left orbits for trackpads; on touch screens one finger orbits. Top-down and level
+      // parallel views keep their tilt: right-drag turns them about Z instead, and one finger pans.
+      const rules = viewRules(), rightDrag = e.pointerType !== 'touch' && e.button === 2 && !e.shiftKey;
+      const orbit = rules === 'orbit' && (e.pointerType === 'touch' || rightDrag || (e.button === 0 && e.altKey));
+      const mode = orbit ? 'orbit' : rightDrag ? rules : 'pan';
+      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
       pivot = null;
-      if (!pan) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      else if (mode === 'pan') pickDepth(e, drag);
       canvas.classList.add('dragging');
     } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
+      pickDepth({ clientX: drag.cx, clientY: drag.cy }, drag);
     }
+    syncCompassOverlay();
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -1823,9 +2293,11 @@ function bindPointer() {
     if (!drag) return;
     if (drag.mode === 'pinch' && pointers.size === 2) {
       const p = pinchInfo(), r = canvas.getBoundingClientRect();
-      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height);
+      camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height, drag.depth);
       const ndc = [((p.cx - r.left) / r.width) * 2 - 1, 1 - ((p.cy - r.top) / r.height) * 2];
-      camera.zoomAt(drag.dist / p.dist, camera.planePoint(...ndc));
+      const before = camera.distance;
+      camera.zoomAt(drag.dist / p.dist, drag.depth ? camera.pointAtDepth(...ndc, drag.depth) : camera.planePoint(...ndc));
+      if (drag.depth) drag.depth *= camera.distance / before;
       Object.assign(drag, p);
       redraw();
       return;
@@ -1834,11 +2306,10 @@ function bindPointer() {
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
     if (drag.mode === 'look') walker.turn(dx, dy);
-    else if (drag.mode === 'orbit') {
-      camera.orbit(dx, dy, pivot);
-      if (camera.ortho) viewNow = null;
-      syncToolbar();
-    } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
+    else if (drag.mode === 'orbit') camera.orbit(dx, dy, pivot);
+    else if (drag.mode === 'top') turnByDial(e);
+    else if (drag.mode === 'elevation') camera.yaw -= dx * 0.006;
+    else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height, drag.depth);
     redraw();
   });
 
@@ -1853,8 +2324,9 @@ function bindPointer() {
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: walker.active ? 'look' : 'orbit', x: p.x, y: p.y, moved: true };
+      drag = { mode: walker.active ? 'look' : viewRules() === 'orbit' ? 'orbit' : 'pan', x: p.x, y: p.y, moved: true };
     }
+    syncCompassOverlay();
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -1867,15 +2339,19 @@ function bindPointer() {
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
-    let q = null;
-    if (lastWheelPick && now - lastWheelPick.t < 600 && Math.hypot(e.clientX - lastWheelPick.x, e.clientY - lastWheelPick.y) < 4) q = lastWheelPick.p;
-    else {
-      const wx = e.clientX, wy = e.clientY;
-      lastWheelPick = { t: now, x: wx, y: wy, p: null };
-      pickPoint(e).then((p) => { if (lastWheelPick && lastWheelPick.x === wx && lastWheelPick.y === wy) lastWheelPick.p = p; });
+    // A burst of wheel events zooms about the surface under the pointer. The first waits for the
+    // pick, as the camera's distance can put the plane through its target far behind that surface.
+    if (!wheelZoom || now - wheelZoom.t >= 600 || Math.hypot(e.clientX - wheelZoom.x, e.clientY - wheelZoom.y) >= 4) {
+      const z = (wheelZoom = { t: now, x: e.clientX, y: e.clientY, ready: false, p: null, factor: 1, ndc: toNdc(e) });
+      pickPoint(e).catch(() => null).then((p) => {
+        Object.assign(z, { p, ready: true });
+        camera.zoomAt(z.factor, p || camera.planePoint(...z.ndc));
+        redraw();
+      });
     }
-    if (lastWheelPick) lastWheelPick.t = now;
-    camera.zoomAt(factor, q || camera.planePoint(...toNdc(e)));
+    wheelZoom.t = now;
+    if (!wheelZoom.ready) { wheelZoom.factor *= factor; return; }
+    camera.zoomAt(factor, wheelZoom.p || camera.planePoint(...toNdc(e)));
     redraw();
   }, { passive: false });
 
@@ -1884,6 +2360,92 @@ function bindPointer() {
     const p = await pickPoint(e);
     if (p) animateFocus(p); else zoomExtents();
   });
+}
+
+// The compass: turned so that its arrow points to north on the screen, with the N kept upright.
+// The way the view faces along the ground is the yaw + 180°, at any pitch.
+function syncCompass() {
+  const r = (camera.yaw * 180) / Math.PI + 180 - state.sun.north;
+  $('compassDial').setAttribute('transform', `rotate(${r})`);
+  $('compassN').setAttribute('transform', `rotate(${-r} 0 -21)`);
+  $('compassOverlayDial').setAttribute('transform', `rotate(${r})`);
+  $('compassOverlayN').setAttribute('transform', `rotate(${-r} 0 -27)`);
+}
+
+// While the window is a dial, a large see-through compass shows where the dial's middle is.
+function syncCompassOverlay() {
+  $('compassOverlay').hidden = drag?.mode !== 'top';
+}
+
+// Turns the view the short way round to face a compass bearing (degrees clockwise from north),
+// keeping its tilt: around the middle of the view, or on the spot when walking.
+function faceBearing(bearing) {
+  if (!model) return;
+  const from = camera.yaw, to = ((state.sun.north - bearing) * Math.PI) / 180 - Math.PI;
+  const turn = wrapAngle(to - from);
+  if (Math.abs(turn) < 1e-4) return;
+  const t0 = performance.now(), dur = 260;
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / dur), k = 1 - Math.pow(1 - t, 3);
+    setHeading(from + turn * k);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function setHeading(yaw) {
+  const eye = camera.eye;
+  camera.yaw = yaw;
+  if (walker.active) camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+  redraw();
+}
+
+const wrapAngle = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+
+// The pointer's angle around the middle of an element, as on a dial. Too near the middle, the angle
+// means little.
+function dialAngle(el, e) {
+  const r = el.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
+  return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
+}
+
+// Right-drag in a view looking straight down: the whole window is a dial, like the compass.
+function turnByDial(e) {
+  const a = dialAngle(canvas, e);
+  if (a === null) return;
+  if (drag.at !== null) camera.yaw += wrapAngle(a - drag.at);
+  drag.at = a;
+}
+
+// Dragging the compass turns it like a dial, and the view with it. The drag only starts once the
+// pointer has moved, so double-clicks still reach the N and the ticks, and it carries on outside
+// the compass, where the angle is easier to control.
+function bindCompass() {
+  const el = $('compass');
+  let drag = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: dialAngle(el, e), moved: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+      drag.moved = true;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('dragging');
+    }
+    const a = dialAngle(el, e);
+    if (a === null) return;
+    if (drag.at !== null) setHeading(camera.yaw + wrapAngle(a - drag.at));
+    drag.at = a;
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    el.classList.remove('dragging');
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
 }
 
 function pinchInfo() {
@@ -2041,11 +2603,11 @@ function onKey(e) {
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'), 5: () => pickView('walk'),
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
-    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
+    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
@@ -2058,18 +2620,20 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-// Top, Front, Right, Perspective and the file's named views each keep their own camera: leaving
-// one remembers it, and coming back restores it. The first visit, or picking the view you are in,
-// gives the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
-// viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
-// walking and orbiting in perspective. Orbiting a parallel view makes it a free view that
-// belongs to none. Walk is listed with them but has no camera of its own: see startWalk.
+// Top, Elevation, Perspective and the file's named views each keep their own camera: leaving one
+// remembers it, and coming back restores it. The first visit, or picking the view you are in, gives
+// the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
+// viewNow is the view the camera belongs to: the last one picked. Walk is listed with them but has
+// no camera of its own: see startWalk.
 let viewNow = 'perspective', viewCams = {};
+// How the view moves (see movementRules). A named view keeps the rules of its saved camera, so that
+// orbiting one up to straight down or through level doesn't catch it there.
+const viewRules = () => { const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
 function pickView(id) {
   if (id === 'walk') { startWalk(); return; }
   if (walker.active) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
-  if (viewNow && viewNow !== id) viewCams[viewNow] = camera.snapshot();
+  if (viewNow !== id) viewCams[viewNow] = camera.snapshot();
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
   viewNow = id;
   if (!saved && !named) { setView(id, true); return; }
@@ -2079,7 +2643,7 @@ function pickView(id) {
 }
 
 // The toolbar's Camera menu. Picking leaves it open, to compare views.
-const CAMERAS = [['top', 'Top', '1'], ['front', 'Front', '2'], ['right', 'Right', '3'], ['perspective', 'Perspective', '4']];
+const CAMERAS = [['top', 'Top', '1'], ['elevation', 'Elevation', '2'], ['perspective', 'Perspective', '3']];
 const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
 const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
 let cameraList = null, cameraMenu = null;
@@ -2101,15 +2665,15 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '5' }] }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }] }]);
 }
 
 function syncCameraMenu() {
   const walking = walker.active || walker.placing;
   cameraList?.setActive(walking ? 'walk' : viewNow);
   const name = walking ? 'Walk' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
-  $('cameraName').textContent = name || 'Free view';
-  $('btnCamera').title = name ? `Camera: ${name}` : 'Camera: a free view';
+  $('cameraName').textContent = name;
+  $('btnCamera').title = `Camera: ${name}`;
 }
 // Walking starts from Walk in the camera list, which usually first asks where to start: the figure
 // follows the cursor, a marker shows the spot under it, and a click there starts walking (as Street
@@ -2219,7 +2783,7 @@ function startWalkAt(e) {
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>5</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>4</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off, lifting you a few metres if you are standing: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
@@ -2425,6 +2989,7 @@ const RENDER_TOGGLES = [
   { id: 'showEdges', label: 'Edges', hint: 'E' },
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
   { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
+  { id: 'animations', label: 'Animations', title: 'Water ripples and drifting clouds. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];
@@ -2472,6 +3037,10 @@ function toggle(key) {
   state[key] = !state[key];
   savePrefs();
   if (key === 'layers') $('layersPanel').hidden = !state.layers;
+  if (key === 'blocks') {
+    $('blocksPanel').hidden = !state.blocks;
+    if (!state.blocks) $('blockDialog').hidden = true;
+  }
   syncToolbar();
   redraw();
 }
@@ -2569,9 +3138,15 @@ function bindUi() {
   document.querySelector('[data-act="sun"]').addEventListener('click', toggleSunPanel);
   $('sunCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleSunPanel(); }); // the gaps round the icon
   $('sunQuick').addEventListener('click', () => setSun({ on: !state.sun.on }));
+  document.querySelectorAll('.compass-point').forEach((p) => p.addEventListener('dblclick', () => faceBearing(+p.dataset.bearing)));
+  bindCompass();
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
+  $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
+  layerRows.bind($('layerTree'));
+  bindBlocksPanel();
+  bindSideResize();
   renderRecent();
   $('btnUndo').addEventListener('click', () => stepHistory(false));
   $('btnRedo').addEventListener('click', () => stepHistory(true));
@@ -2581,7 +3156,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));

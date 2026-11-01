@@ -88,20 +88,28 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 
-.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: 300px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: min(var(--side-width, 300px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side.at-edge .panel, .side.at-edge .panel * { cursor: ew-resize; }
+.side.at-edge .panel::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); z-index: 1; }
 .panel { position: relative; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; }
 .panel[hidden] { display: none; }
-.layers-panel { flex: 1 1 auto; min-height: 140px; }
+.layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
 .sun-panel { flex: none; max-height: 100%; overflow-y: auto; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 12px; }
 .panel-actions .x { margin: -2px -6px -2px -4px; }
-.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; }
-.panel-foot { padding: 8px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); }
+.panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; padding: 2px 4px; }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
 .layer-row:hover { background: var(--hover); }
 .layer-row[hidden] { display: none; }
+.layer-row.selected, .layer-row.selected:hover { background: var(--accent-soft); }
+.toolbar .btn[hidden] { display: none; }
+.panel-filter { padding: 8px 12px 4px; }
+.panel-filter input { width: 100%; font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.block-tag { background: none; cursor: pointer; font-family: inherit; }
+.block-tag:hover, .block-tag:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
+.block-tag.set { color: var(--accent); border-color: var(--accent); }
 .layer-row.off .layer-name, .layer-row.inherited-off .layer-name { color: var(--muted); }
 .layer-row.inherited-off { opacity: 0.6; }
 .caret { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; padding: 0; cursor: pointer; color: var(--muted); flex: none; }
@@ -119,13 +127,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .light-row .light-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .light-row .light-meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .light-row.off .light-name { color: var(--muted); }
-.light-row .x { font-size: 15px; padding: 0 4px; }
+.light-row .x { font-size: 15px; padding: 0 4px 0.24em; }
 .lights-group { padding: 8px 12px 3px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .lights-empty { padding: 8px 12px; font-size: 12px; color: var(--muted); }
 .layer-row.flash { animation: flash 1.2s ease-out; }
 @keyframes flash { 0%, 30% { background: var(--accent-soft); } 100% { background: transparent; } }
 
-.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
+/* The × glyph sits below the middle of its line, by about 0.12em: more padding below lifts it. */
+.x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 17px; line-height: 1; padding: calc(2px - 0.12em) 4px calc(2px + 0.12em); border-radius: 5px; }
 .x:hover { background: var(--hover); color: var(--text); }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
@@ -145,6 +154,11 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .pop-body .fine:empty { display: none; }
 .field-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; font-size: 12.5px; }
 .field-row[hidden] { display: none; }
+.stack-row { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.stack-row select { font: inherit; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.popover-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pop-body .stretch { justify-content: center; }
+.pop-body .fine .link { font-size: inherit; text-align: left; }
 .field-row select { font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
 .field-row input[type="color"] { width: 100%; height: 26px; border: 1px solid var(--border); border-radius: 6px; padding: 1px; background: var(--surface-solid); cursor: pointer; }
 .range { display: flex; align-items: center; gap: 8px; }
@@ -232,6 +246,22 @@ input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] 
 .btn.primary:disabled { filter: none; }
 .inspect-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 2px; }
 .inspect-actions .fine { font-size: 11px; color: var(--muted); }
+.compass { left: 14px; bottom: 14px; width: 68px; height: 68px; border-radius: 50%; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.compass.dragging, .compass.dragging .compass-point { cursor: grabbing; }
+.compass svg { display: block; width: 100%; height: 100%; }
+.compass-tick { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+.compass-arrow { fill: var(--accent); stroke: none; }
+.compass-point { cursor: pointer; }
+.compass-point circle { fill: transparent; stroke: none; }
+.compass-point:hover circle { fill: var(--hover); }
+.compass-point text { fill: var(--text); stroke: none; font-size: 13px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+@media (max-width: 680px) { .compass { bottom: 64px; } } /* clear of the toolbar */
+.compass-overlay { position: fixed; left: 50%; top: 50%; width: min(60vmin, 480px); height: min(60vmin, 480px); transform: translate(-50%, -50%); opacity: 0.5; pointer-events: none; }
+.compass-overlay svg { display: block; width: 100%; height: 100%; }
+.compass-overlay-face { fill: var(--surface); stroke: var(--muted); stroke-width: 0.4; }
+.compass-overlay-centre { fill: var(--surface-solid); stroke: var(--text); stroke-width: 0.5; }
+.compass-overlay .compass-tick { stroke-width: 0.8; }
+.compass-overlay text { fill: var(--text); stroke: none; font-size: 6px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .unhide { left: 50%; bottom: 66px; transform: translateX(-50%); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; color: var(--text); }
 .unhide:hover { color: var(--accent); }
 .unhide[hidden] { display: none; }
@@ -379,6 +409,10 @@ body.walking .walk-frame { display: block; }
 .sun-weather dt { color: var(--muted); }
 .sun-weather dd { margin: 0; }
 .sun-weather b { font-weight: 600; }
+.wx-now { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-now > span { display: inline-flex; align-items: center; gap: 4px; }
+.wx-now svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; }
+.wx-now .needle { fill: var(--accent); stroke: none; }
 #sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 /* North angle in the file panel */
 .north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
