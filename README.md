@@ -42,7 +42,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
-| Layers · Sun panel | Toolbar | `L` · `S` |
+| Layers · Blocks · Sun panel | Toolbar | `L` · `K` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
@@ -116,6 +116,10 @@ View changes, date and time, hiding objects, turning layers on or off and the si
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
 
+In the Layers and Blocks panels, click a row to select it, Ctrl-click to add or remove a row, and
+Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
+selected rows.
+
 In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:
 
@@ -124,7 +128,35 @@ visibility saved in the file. Right-click a layer for:
   (only for layers with sub-layers).
 - **Show all** / **Hide all**: turn the layer and all its sub-layers on or off.
 
-The Layers and Sun panels close with their × button or from the toolbar.
+The Blocks panel appears for models with blocks. It lists each block definition that has an
+instance, including those only used inside other blocks, with its number of copies in the model
+(a sub-block used 3 times in a block placed 10 times has 30). Right-click a block for:
+
+- **Select instances**: its visible top-level instances.
+- **Select sub-blocks**: adds every block inside it, at any depth, to the selected rows.
+- **Sub-element setting**, **Show** and **Hide**.
+
+Unticking a block hides every copy of it, like turning a layer off: a copy shows only if it and
+every block around it are ticked. A row is dimmed when none of its copies can show because of the
+blocks around it. Block visibility is separate from **Unhide all**, is remembered with the view,
+and is not undoable or saved in a copy.
+
+The tag on each row is the block's sub-element setting, for where the objects directly inside the
+definition get their colour and material. It belongs to the definition, as in Rhino, so it is shared
+by all its instances:
+
+- **default**: as in the file.
+- **byParent**: from the block instance. If the instance is set to By object, its object colour is
+  used; to follow its layer instead, select the instance and set its Colour to By layer.
+- **byLayer**: from each sub-element's own layer, not the layer of the block instance.
+
+The setting doesn't reach sub-blocks unless you click **Apply setting to sub-blocks**, which copies
+it down to every block inside, once; the latest setting wins for a block with several parents. It
+can be undone, and it is written into a saved copy. Layer visibility is not affected: a sub-element on
+a layer that is off stays hidden.
+
+The Layers, Blocks and Sun panels close with their × button or from the toolbar. Layers and Blocks
+share a place, so opening one closes the other.
 
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
@@ -214,14 +246,14 @@ it that are set to "By parent".
 All of these changes, and the north angle, are **remembered automatically** in this browser for
 each model (by file name and size) and restored when you open it again. **Download .3dm** in the file properties
 (click the file name) writes a *copy* of the .3dm with them: layer colours, a Rhino material
-for each layer material set in the viewer (assigned as the layer's render material), changed
-and changed object colour and material sources. Your original file is not touched. Materials with a magic material are named after it (e.g.
+for each layer material set in the viewer (assigned as the layer's render material),
+changed object colour and material sources, and block sub-element settings. Your original file is not touched. Materials with a magic material are named after it (e.g.
 "Water – 010_WaterBody"), so Auto matches them again when the copy is reopened. "Always off"
 is not saved in the copy.
 
 **Inspect and hide objects.** The object panel can be dragged by its title bar; it then stays
 put until it closes. Click a surface or mesh to select the whole object (a block
-instance is one object) and show its type, block name, layer (click to find it in the Layers
+instance is one object) and show its type, block name (click to find it in the Blocks panel), layer (click to find it in the Layers
 panel), material, size, triangle count, Rhino user text and ID (click to copy). Shift-click
 adds or removes objects; with several selected the panel summarises types, layers, overall
 extent and triangles. **Hide** (or `H`) removes the selection from view, including its edges,

@@ -7,7 +7,7 @@ const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer'
 const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
-  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
+  mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
   // Lights (lamps): { name, src ('file' or 'added'), on, p (model, origin-relative), rgb (linear),
@@ -310,11 +310,13 @@ async function openBytes(name, bytes, handle = null) {
     }
     model = m;
     layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
+    state.blockOff = new Set();
     model.name = name;
     model.size = bytes.length;
     model.bytes = bytes; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
+    model.blocks = blockTable(m);
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
     state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
@@ -338,8 +340,11 @@ async function openBytes(name, bytes, handle = null) {
     $('undoRedo').hidden = false;
     $('fileDialog').hidden = true;
     $('matDialog').hidden = true;
+    $('blockDialog').hidden = true;
     applyLayerVisibility();
     buildLayerTree();
+    buildBlockList();
+    if (nestedBlockOff()) await rebuildModel();
     applyLayerMaterials(false);
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
     const back = handle ? await restoreLinks(handle) : [];
@@ -462,22 +467,24 @@ function buildLayerTree() {
         const desc = (k) => { keep.add(k); kids[k].forEach(desc); };
         desc(i);
         layerOn = L.map((_, k) => keep.has(k));
-      } else layerOn[i] = cb.checked;
+      } else for (const l of layerRows.has(i) ? layerRows.list() : [i]) layerOn[l] = cb.checked;
       applyLayerVisibility();
       refreshRows();
     });
     row.querySelector('.caret').addEventListener('click', () => {
       collapsed.has(i) ? collapsed.delete(i) : collapsed.add(i);
       refreshRows();
+      layerRows.keepShown();
     });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
       const at = e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]; // context-menu key
-      openLayerMenu(i, hasKids ? subtree(i) : null, at);
+      const picked = layerRows.take(i), tree = [...new Set(picked.flatMap(subtree))];
+      openLayerMenu(picked, tree.length > picked.length ? tree : null, at);
     });
     tree.appendChild(row);
-    rows.push({ i, row, cb });
+    rows.push({ key: i, i, row, cb });
     kids[i].forEach((k) => add(k, depth + 1));
   };
   const subtree = (i) => { const out = [i]; for (let n = 0; n < out.length; n++) out.push(...kids[out[n]]); return out; };
@@ -505,6 +512,7 @@ function buildLayerTree() {
     }
   }
   refreshRows();
+  layerRows.setRows(rows);
   buildLayerTree.refresh = refreshRows;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
@@ -512,22 +520,28 @@ function buildLayerTree() {
     refreshRows();
     const r = rows.find((x) => x.i === i);
     if (!r) return;
-    r.row.scrollIntoView({ block: 'center' });
-    r.row.classList.remove('flash'); void r.row.offsetWidth; r.row.classList.add('flash');
+    layerRows.set([i]);
+    flashRow(r.row);
   };
 }
 
-// Right-click menu for a layer row. `tree` is the layer and all its sub-layers, or null when it
-// has none (the sub-layer items are then left out). Selection takes visible objects only.
-function openLayerMenu(i, tree, [x, y]) {
+function flashRow(row) {
+  row.scrollIntoView({ block: 'center' });
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+}
+
+// Right-click menu for the selected layer rows. `tree` is those layers and all their sub-layers, or
+// null when they have none (the sub-layer items are then left out). Selection takes visible objects
+// only.
+function openLayerMenu(picked, tree, [x, y]) {
   const L = model.layers;
   const visibleOn = (layers) => {
     const set = new Set(layers);
-    return model.objects.flatMap((o, id) => (set.has(o.layer) && !state.hidden.has(id) && layerEffective(o.layer) ? [id] : []));
+    return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
-  const setOn = (on) => { for (const l of tree || [i]) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
-  const own = visibleOn([i]), all = tree && visibleOn(tree);
-  showMenu(L[i].fullPath, [
+  const setOn = (on) => { for (const l of tree || picked) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
+  const own = visibleOn(picked), all = tree && visibleOn(tree);
+  showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
     '-',
@@ -564,6 +578,207 @@ function showMenu(titleText, items, [x, y]) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
+// ---------------------------------------------------------------------------------------------
+// Blocks
+//
+// The block definitions in use (model.blocks, see blockTable in extract.js). Each has a setting for
+// where its sub-elements get their colour and material (state.blockSub: definition id -> 'byParent'
+// or 'byLayer', none meaning as in the file). As in Rhino this belongs to the definition, so it is
+// shared by all its instances; it does not reach its sub-blocks unless applied to them. It is a
+// change to the model, like a layer's material. Turning a block off (state.blockOff) hides every copy
+// of it, like turning a layer off: a copy shows if it and every block around it are on. An object is
+// visible only if its layer is on, it isn't hidden, and (for a block instance) its block is on.
+
+const SUB_SETTINGS = [
+  ['default', 'As in the file', 'Each sub-element keeps the colour and material source it has in the file.'],
+  ['byParent', 'By parent: inherit from the block instance', 'Each sub-element takes its colour and material from the block instance. To change those, select an instance and set its Colour or Material.'],
+  ['byLayer', 'By layer: use each sub-element’s own layer', 'Each sub-element takes its colour and material from the layer it is on, not the layer of the block instance.'],
+];
+const layerRows = new RowSelection(), blockRows = new RowSelection();
+const blockSetting = (id) => state.blockSub[id] || 'default';
+const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
+const nestedBlockOff = () => [...state.blockOff].some((id) => model.blocks.get(id).parents.length);
+const objectOff = (i) => { const o = model.objects[i]; return state.hidden.has(i) || (o.k === 'inst' && state.blockOff.has(o.idef)); };
+
+// Everything inside these blocks, at any depth, other than the blocks themselves.
+function subBlocks(ids) {
+  const seen = new Set(ids), out = [], todo = [...ids];
+  while (todo.length) {
+    for (const k of model.blocks.get(todo.pop()).kids) if (!seen.has(k)) { seen.add(k); out.push(k); todo.push(k); }
+  }
+  return out;
+}
+
+// The blocks at the top of those containing this one (none if it isn't inside another).
+function topParents(id) {
+  const seen = new Set([id]), out = [], todo = [id];
+  while (todo.length) {
+    for (const p of model.blocks.get(todo.pop()).parents) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      todo.push(p);
+      if (!model.blocks.get(p).parents.length) out.push(p);
+    }
+  }
+  return out.sort((a, b) => model.blocks.get(a).name.localeCompare(model.blocks.get(b).name, undefined, { numeric: true }));
+}
+
+// Whether any copy of a block can show, given its own tick and the blocks around it.
+function blockReachable(id, seen = new Set()) {
+  if (state.blockOff.has(id) || seen.has(id)) return false;
+  seen.add(id);
+  const b = model.blocks.get(id);
+  return b.tops.length > 0 || b.parents.some((p) => blockReachable(p, seen));
+}
+
+function buildBlockList() {
+  const list = $('blockList');
+  list.innerHTML = '';
+  $('blockFilter').value = '';
+  const sorted = [...model.blocks.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  blockRows.setRows(sorted.map((b) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row block-row';
+    row.title = b.name;
+    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.querySelector('.layer-name').textContent = b.name;
+    const cb = row.querySelector('input');
+    cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
+    row.querySelector('.block-tag').addEventListener('click', () => openBlockDialog(blockRows.take(b.id), row));
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      openBlockMenu(blockRows.take(b.id), row, e.clientX || e.clientY ? [e.clientX, e.clientY] : [r.left + 24, r.bottom]); // context-menu key
+    });
+    list.appendChild(row);
+    return { key: b.id, row, cb, name: b.name.toLowerCase() };
+  }));
+  document.querySelector('[data-toggle="blocks"]').hidden = !model.blocks.size;
+  if (state.blocks && !model.blocks.size) toggle('blocks');
+  refreshBlockList();
+}
+
+function refreshBlockList() {
+  const filter = $('blockFilter').value.trim().toLowerCase();
+  for (const { key, row, cb, name } of blockRows.rows) {
+    const on = !state.blockOff.has(key), set = blockSetting(key), tag = row.querySelector('.block-tag');
+    cb.checked = on;
+    row.hidden = !name.includes(filter);
+    row.classList.toggle('off', !on);
+    row.classList.toggle('inherited-off', on && !blockReachable(key));
+    tag.textContent = set;
+    tag.classList.toggle('set', set !== 'default');
+    tag.title = `${SUB_SETTINGS.find(([id]) => id === set)[1]}. Click to change.`;
+  }
+  blockRows.keepShown();
+}
+
+async function setBlocksOn(ids, on) {
+  for (const id of ids) { if (on) state.blockOff.delete(id); else state.blockOff.add(id); }
+  // Instances of a hidden block leave the selection; copies inside other blocks need a rebuild.
+  const nested = ids.some((id) => model.blocks.get(id).parents.length);
+  state.sel.ids = state.sel.ids.filter((i) => !objectOff(i));
+  if (nested) await rebuildModel(); else pushObjectFlags();
+  showInspector();
+  refreshBlockList();
+  renderFileInfo();
+  saveViewState();
+}
+
+// Select these blocks' rows, showing them all if the filter leaves any out.
+function revealBlocks(ids) {
+  const rows = blockRows.rows.filter((r) => ids.includes(r.key));
+  if (rows.some((r) => r.row.hidden)) { $('blockFilter').value = ''; refreshBlockList(); }
+  blockRows.set(ids);
+  if (ids.length === 1 && rows[0]) flashRow(rows[0].row);
+  return rows[0]?.row;
+}
+
+// Right-click menu for the selected block rows.
+function openBlockMenu(ids, row, at) {
+  const instances = ids.flatMap((id) => model.blocks.get(id).tops).filter((i) => !objectOff(i) && layerEffective(model.objects[i].layer));
+  const subs = subBlocks(ids);
+  showMenu(ids.length > 1 ? `${ids.length} blocks` : model.blocks.get(ids[0]).name, [
+    { label: 'Select instances', n: instances.length, run: () => selectObjects(instances) },
+    subs.length && { label: 'Select sub-blocks', n: subs.length, run: () => revealBlocks([...ids, ...subs]) },
+    '-',
+    { label: 'Sub-element setting…', run: () => openBlockDialog(ids, row) },
+    '-',
+    { label: 'Show', run: () => setBlocksOn(ids, true) },
+    { label: 'Hide', run: () => setBlocksOn(ids, false) },
+  ].filter(Boolean), at);
+}
+
+// The window for these blocks' sub-element setting.
+let blockDialogIds = [];
+function openBlockDialog(ids, anchor) {
+  blockDialogIds = ids;
+  syncBlockDialog();
+  placePopover($('blockDialog'), anchor, 'blocksPanel');
+}
+
+function syncBlockDialog() {
+  const ids = blockDialogIds, one = ids.length === 1 ? model.blocks.get(ids[0]) : null;
+  const values = new Set(ids.map(blockSetting)), value = values.size === 1 ? [...values][0] : null, subs = subBlocks(ids);
+  $('blockTitle').textContent = $('blockTitle').title = one ? one.name : `${ids.length} blocks`;
+  $('blockSub').innerHTML = (value ? '' : '<option value="" selected disabled>Mixed</option>') +
+    SUB_SETTINGS.map(([id, label]) => `<option value="${id}"${id === value ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockHint').textContent = value ? SUB_SETTINGS.find(([id]) => id === value)[2] : 'These blocks have different settings.';
+  const apply = $('blockApplySubs');
+  apply.textContent = subs.length ? `Apply setting to sub-blocks (${subs.length})` : 'Apply setting to sub-blocks';
+  apply.disabled = !subs.length || !value;
+  apply.title = !subs.length ? 'No sub-blocks inside' : !value ? 'Choose one setting first' : '';
+  $('blockSubsHint').textContent = subs.length ? 'The setting doesn’t change sub-blocks until applied to them, and applying it changes them everywhere they are used.' : '';
+  const links = (items, heading) => (items.length ? `${heading}: ${items.slice(0, 6).join(', ')}${items.length > 6 ? ` and ${items.length - 6} more` : ''}` : '');
+  const layers = [...new Set(ids.flatMap((id) => model.blocks.get(id).layers))];
+  $('blockLayers').innerHTML = links(layers.map((l) => `<button class="link" data-layer="${l}">${escapeHtml(model.layers[l].fullPath)}</button>`), 'Sub-element layers');
+  $('blockParents').innerHTML = one ? links(topParents(one.id).map(blockLink), `Top-level parent block${topParents(one.id).length > 1 ? 's' : ''}`) : '';
+}
+
+async function setBlockSetting(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'default') delete state.blockSub[id]; else state.blockSub[id] = value; }
+  await rebuildModel();
+  saveEdits();
+  afterBlockChange();
+}
+
+function afterBlockChange() {
+  refreshBlockList();
+  if (!$('blockDialog').hidden) syncBlockDialog();
+  if (state.sel.ids.length) showInspector();
+  renderFileInfo();
+}
+
+function bindBlocksPanel() {
+  blockRows.bind($('blockList'));
+  $('blockFilter').addEventListener('input', refreshBlockList);
+  $('blockList').addEventListener('scroll', closeLayerMenu);
+  $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
+  document.querySelectorAll('[data-blocks]').forEach((b) => b.addEventListener('click', () => {
+    if (model) setBlocksOn(blockRows.rows.filter((r) => !r.row.hidden).map((r) => r.key), b.dataset.blocks === 'all');
+  }));
+  const close = () => { $('blockDialog').hidden = true; };
+  $('blockClose').addEventListener('click', close);
+  $('blockDone').addEventListener('click', close);
+  $('blockSub').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockSetting(blockDialogIds, e.target.value, `Change sub-element setting (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
+  $('blockApplySubs').addEventListener('click', () => {
+    const subs = subBlocks(blockDialogIds);
+    setBlockSetting(subs, blockSetting(blockDialogIds[0]), `Apply sub-element setting to ${subs.length} sub-block${subs.length > 1 ? 's' : ''}`);
+  });
+  $('blockDialog').addEventListener('click', (e) => {
+    const block = e.target.closest('[data-block]'), layer = e.target.closest('[data-layer]');
+    if (block) openBlockDialog([block.dataset.block], revealBlocks([block.dataset.block]));
+    if (layer) {
+      if (!state.layers) toggle('layers');
+      buildLayerTree.reveal(+layer.dataset.layer);
+    }
+  });
+}
+
 function bindLayerMenu() {
   const menu = $('layerMenu');
   window.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeLayerMenu(); }, true);
@@ -587,12 +802,13 @@ function bindLayerMenu() {
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
 // layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
-// in extract.js). Everything is remembered in this browser per model, and can be written into a
+// in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
+// Everything is remembered in this browser per model, and can be written into a
 // copy of the .3dm.
 
 const rgbHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {} });
+const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, blockSub: {} });
 Object.assign(state, NO_EDITS());
 
 // Swatches and dialogs show materials in Rendered view and display colours otherwise.
@@ -662,15 +878,15 @@ const oldMaterialsKey = () => model && `3dm-viewer:materials:${model.name}:${mod
 // Layers whose material or magic material was set in the viewer.
 const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...Object.keys(state.layerSpecial)]);
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
-  obj: Object.keys(state.objEdits).length });
+  obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length });
 
 function saveEdits() {
   const n = editCount(), north = state.sun.north;
   try {
     localStorage.removeItem(oldMaterialsKey());
-    if (n.mat + n.col + n.obj || north !== fileNorth()) {
-      const { layerMat, layerColor, layerSpecial, objEdits } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, north }));
+    if (n.mat + n.col + n.obj + n.blocks || north !== fileNorth()) {
+      const { layerMat, layerColor, layerSpecial, objEdits, blockSub } = state;
+      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, north }));
     } else localStorage.removeItem(editsKey());
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
@@ -723,7 +939,7 @@ function applyObjectEdits(objEdits = {}) {
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits,
+const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, blockSub: state.blockSub,
   north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
@@ -765,16 +981,16 @@ async function stepHistory(redo) {
 
 // Make the given edit state current, rebuilding only if objects or foliage normals change.
 async function restoreEdits(e) {
-  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits);
+  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits) || JSON.stringify(state.blockSub) !== JSON.stringify(e.blockSub);
   const vegBefore = model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
-  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial) });
+  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial), blockSub: structuredClone(e.blockSub) });
   const vegChange = vegBefore !== model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
   if (objectsChange) applyObjectEdits(e.objEdits);
   if (objectsChange || vegChange) await rebuildModel();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
-  if (state.sel.ids.length) showInspector();
+  afterBlockChange();
   pushObjectFlags();
 }
 
@@ -795,16 +1011,20 @@ function loadEdits() {
     if (!(id in state.layerSpecial)) state.layerSpecial[id] = t;
     state.layerMat[id] = t === MAT_WATER ? { alpha: m.alpha, gloss: m.gloss } : { rgb: m.rgb, alpha: m.alpha, gloss: m.gloss };
   }
-  model.specialOf = layerSpecialId;
+  for (const [id, set] of Object.entries(e.blockSub || {})) if (model.blocks.has(id) && SUB_SOURCES[set]) state.blockSub[id] = set;
+  Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id) });
+  // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
+  for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
   applyObjectEdits(e.objEdits);
   model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
   if (n.col) parts.push(`colours on ${n.col} layer${n.col > 1 ? 's' : ''}`);
   if (n.mat) parts.push(`materials on ${n.mat} layer${n.mat > 1 ? 's' : ''}`);
   if (n.obj) parts.push(`${n.obj.toLocaleString()} object${n.obj > 1 ? 's' : ''} changed`);
+  if (n.blocks) parts.push(`sub-element settings on ${n.blocks.toLocaleString()} block${n.blocks > 1 ? 's' : ''}`);
   if (model.savedNorth != null && model.savedNorth !== fileNorth()) parts.push('the north angle');
   model.restored = parts;
-  return n.obj > 0 || Object.keys(state.layerSpecial).length > 0;
+  return n.obj > 0 || n.blocks > 0 || Object.keys(state.layerSpecial).length > 0;
 }
 
 // Layer visibility, hidden objects and the cameras are the state of looking at a model rather than
@@ -822,7 +1042,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -832,10 +1052,12 @@ function restoreLayersAndHidden(saved) {
     const i = model.objectIndex.get(id);
     if (i != null) state.hidden.add(i);
   }
+  for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) model.restored.push('layer visibility');
+  if (state.blockOff.size) model.restored.push('block visibility');
 }
 
 function restoreCameras(saved) {
@@ -891,9 +1113,13 @@ function openMaterialDialog(i, anchor) {
     $('matReset').hidden = !state.layerColor[l.id];
   }
   syncMaterialDialog();
+  placePopover(dlg, anchor, 'layersPanel');
+}
+
+// Show a window beside a side panel, level with the row it belongs to.
+function placePopover(dlg, anchor, panel) {
   dlg.hidden = false;
-  // Place it beside the layers panel, level with the swatch.
-  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $('layersPanel').getBoundingClientRect();
+  const r = anchor.getBoundingClientRect(), d = dlg.getBoundingClientRect(), side = $(panel).getBoundingClientRect();
   dlg.style.top = Math.max(12, Math.min(window.innerHeight - d.height - 12, r.top - 40)) + 'px';
   dlg.style.left = Math.max(12, (side.width ? side.left : r.left) - d.width - 10) + 'px';
 }
@@ -980,12 +1206,13 @@ function bindMaterialDialog() {
   });
   $('matOwn').addEventListener('click', (e) => {
     if (e.target.id !== 'matSelectOwn') return;
-    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !state.hidden.has(id)));
+    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !objectOff(id)));
   });
 }
 
 // Write a copy of the .3dm with the viewer's changes (the original is never touched): layer
-// colours, a Rhino material for each layer set in the viewer and object colour/material sources.
+// colours, a Rhino material for each layer set in the viewer, object colour/material sources and
+// block sub-element settings.
 async function downloadCopy() {
   if (!model || !model.bytes) return;
   try {
@@ -1011,7 +1238,7 @@ async function downloadCopy() {
       layer.renderMaterialIndex = mats.count - 1;
     }
     const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
-    const MS = [rhino.ObjectMaterialSource.MaterialFromLayer, rhino.ObjectMaterialSource.MaterialFromObject, rhino.ObjectMaterialSource.MaterialFromParent];
+    const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
     // Objects whose attributes changed.
     for (const it of model.objects) {
       if (!state.objEdits[it.id]) continue;
@@ -1022,6 +1249,15 @@ async function downloadCopy() {
       a.objectColor = rgba(ai.oc);
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
+    }
+    // Block sub-element settings: in the file these are the sources of the definition's own objects.
+    const idefs = doc.instanceDefinitions();
+    for (const [id, set] of Object.entries(state.blockSub)) {
+      const src = SUB_SOURCES[set];
+      for (const oid of idefs.findId(id)?.getObjectIds() || []) {
+        const a = objs.findId(oid)?.attributes();
+        if (a) { a.colorSource = CS[src.cs]; a.materialSource = MS[src.ms]; }
+      }
     }
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
@@ -1050,6 +1286,7 @@ async function downloadCopy() {
 
 state.sel = { ids: [], p: null };
 state.hidden = new Set();
+state.blockOff = new Set();
 let objFlags = new Uint32Array(0);
 
 function resetObjectState() {
@@ -1065,6 +1302,7 @@ function resetObjectState() {
 function pushObjectFlags() {
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
+  if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
   for (const id of state.sel.ids) objFlags[id] |= 2;
   renderer.setObjectFlags(objFlags);
   redraw();
@@ -1098,13 +1336,13 @@ function selectObjects(ids, p = null) {
 
 // Ctrl+A: every visible object (not hidden, on a layer that is on).
 function selectAll() {
-  selectObjects(model.objects.flatMap((o, id) => (!state.hidden.has(id) && layerEffective(o.layer) ? [id] : [])));
+  selectObjects(model.objects.flatMap((o, id) => (!objectOff(id) && layerEffective(o.layer) ? [id] : [])));
 }
 
 const UNIT_ABBR = { Meters: 'm', Millimeters: 'mm', Centimeters: 'cm', Kilometers: 'km', Feet: 'ft', Inches: 'in' };
 const fmtLen = (v) => (Math.abs(v) >= 100 ? v.toFixed(1) : v.toPrecision(3));
 const COLOR_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent'], [2, 'By material']];
-const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [2, 'By parent']];
+const MATERIAL_SOURCES = [[0, 'By layer'], [1, 'By object'], [3, 'By parent']];
 const materialLabel = (mi) => (mi >= 0 && model.materials[mi] ? model.materials[mi].name || `Material ${mi + 1}` : 'Default material');
 
 // The colour (Shaded view) or material (Rendered view) source control for the selection: a
@@ -1137,7 +1375,7 @@ function sourceControl(objs) {
       html += `<div class="fine">${chip(shownRgb(look))}${rgbHex(shownRgb(look))}</div>`;
     }
   }
-  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this applies to the parts inside it that are set to “By parent”.</div>';
+  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Blocks panel.</div>';
   return html;
 }
 
@@ -1158,7 +1396,7 @@ function showInspector() {
     title = o.name || o.block || o.type;
     swatch = o.look ? rgbHex(showsMaterial() ? shownMaterialRgb(o.look) : shownRgb(o.look)) : 'var(--accent)';
     rows = [
-      ['Type', o.block ? `Block · ${escapeHtml(o.block)}` : escapeHtml(o.type), true],
+      ['Type', o.k === 'inst' ? `Block · ${blockLink(o.idef)}` : escapeHtml(o.type), true],
       ['Layer', layerLink(o.layer), true],
       srcRow,
       ['Size', sizeText],
@@ -1172,12 +1410,12 @@ function showInspector() {
       for (const o of objs) m.set(key(o), (m.get(key(o)) || 0) + 1);
       return [...m.entries()].sort((a, b) => b[1] - a[1]);
     };
-    const types = count((o) => (o.block ? `Block · ${o.block}` : o.type));
+    const types = count((o) => (o.k === 'inst' ? o.idef : o.type));
     const layers = count((o) => o.layer);
     title = `${objs.length} objects selected`;
     swatch = 'var(--accent)';
     rows = [
-      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
+      ['Types', types.slice(0, 4).map(([t, n]) => `${n} × ${model.blocks.has(t) ? `Block · ${blockLink(t)}` : escapeHtml(t)}`).join('<br>') + (types.length > 4 ? `<br>and ${types.length - 4} more` : ''), true],
       ['Layers', layers.slice(0, 4).map(([l]) => layerLink(l)).join('<br>') + (layers.length > 4 ? `<br>and ${layers.length - 4} more` : ''), true],
       srcRow,
       ['Extent', sizeText],
@@ -1286,6 +1524,11 @@ function bindInspector() {
       if (!state.layers) toggle('layers');
       buildLayerTree.reveal(+b.dataset.layer);
     }
+    const block = e.target.closest('[data-block]');
+    if (block) {
+      if (!state.blocks) toggle('blocks');
+      revealBlocks([block.dataset.block]);
+    }
     const code = e.target.closest('code');
     if (code) navigator.clipboard?.writeText(code.textContent).then(() => { code.classList.add('copied'); setTimeout(() => code.classList.remove('copied'), 900); });
   });
@@ -1328,9 +1571,11 @@ function renderFileInfo() {
   if (n.col) saved.push(`Colours set on ${plural(n.col, 'layer')}`);
   if (n.mat) saved.push(`Materials set on ${plural(n.mat, 'layer')}`);
   if (n.obj) saved.push(`${plural(n.obj, 'object')} with changed colour or material`);
+  if (n.blocks) saved.push(`Sub-element settings on ${plural(n.blocks, 'block')}`);
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
+  if (state.blockOff.size) changes.push('Block visibility changed');
   if (state.sun.north !== fileNorth()) changes.push('North angle changed');
   if (document.activeElement !== $('fileNorth')) $('fileNorth').value = state.sun.north;
   $('fileNorthInfo').textContent = `Degrees anticlockwise from the model’s +X axis to north (90: +Y is north). ${loc ? `The file’s is ${+fileNorth().toFixed(1)}°, from its ${loc.source}.` : 'The file does not set one; 90 is the default.'}`;
@@ -1349,15 +1594,16 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, the north angle, hidden objects and layer visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours and materials, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
-  if (n.mat + n.col + n.obj || state.sun.north !== north) recordUndo('Revert changes');
+  if (n.mat + n.col + n.obj + n.blocks || state.sun.north !== north) recordUndo('Revert changes');
   setSun({ north });
-  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length;
+  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length || n.blocks || nestedBlockOff();
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
+  state.blockOff.clear();
   state.sel = { ids: [], p: null };
   $('inspect').hidden = true; inspectPin = null;
   layerOn = model.layers.map((l) => l.visible);
@@ -1368,9 +1614,9 @@ async function revertChanges() {
   applyLayerVisibility();
   applyLayerMaterials();
   buildLayerTree.refresh?.();
+  afterBlockChange();
   pushObjectFlags();
   syncHiddenButton();
-  renderFileInfo();
 }
 
 // The open model's north angle: the file's own (Rhino sun settings or Earth anchor), else 90.
@@ -2155,9 +2401,9 @@ function onKey(e) {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
-    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
+    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
@@ -2586,7 +2832,13 @@ function setMode(m) {
 function toggle(key) {
   state[key] = !state[key];
   savePrefs();
-  if (key === 'layers') $('layersPanel').hidden = !state.layers;
+  if (key === 'layers' || key === 'blocks') { // one at a time
+    if (state[key]) state[key === 'layers' ? 'blocks' : 'layers'] = false;
+    $('layersPanel').hidden = !state.layers;
+    $('blocksPanel').hidden = !state.blocks;
+    if (!state.blocks) $('blockDialog').hidden = true;
+    if (state.blocks) $('matDialog').hidden = true;
+  }
   syncToolbar();
   redraw();
 }
@@ -2689,6 +2941,8 @@ function bindUi() {
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   bindLayerMenu();
+  layerRows.bind($('layerTree'));
+  bindBlocksPanel();
   renderRecent();
   $('btnUndo').addEventListener('click', () => stepHistory(false));
   $('btnRedo').addEventListener('click', () => stepHistory(true));
@@ -2698,7 +2952,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));

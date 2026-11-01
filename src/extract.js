@@ -341,7 +341,7 @@ async function extractScene(rhino, doc, onProgress) {
 
   // Attribute snapshot: plain values, so items and block definitions outlive the document.
   // cs colour source (0 layer, 1 object, 2 material, 3 parent); ms material source (0 layer,
-  // 1 object, 2 parent); oc object colour; mi object material index.
+  // 1 object, 3 parent); oc object colour; mi object material index.
   const attrInfo = (a) => ({ layer: a.layerIndex, cs: a.colorSource.value, oc: rgbOf(a.objectColor), ms: a.materialSource.value, mi: a.materialIndex, name: a.name || '' });
   const userText = (a) => {
     try { return (a.getUserStrings() || []).filter(([k]) => !k.startsWith('$')); } catch (e) { return []; }
@@ -484,6 +484,10 @@ const mulRM = (a, b) => {
 // Stable pseudo-random value in -1..1, used to vary colour between objects / block instances.
 const seedOf = (a, b, c) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return (s - Math.floor(s)) * 2 - 1; };
 
+// A block definition's setting for its sub-elements, chosen in the viewer: the sources that replace
+// each sub-element's own. Without one, they are as in the file.
+const SUB_SOURCES = { byParent: { cs: 3, ms: 3 }, byLayer: { cs: 0, ms: 0 } };
+
 // An object's colour and material from its attributes, its layer, and (inside a block) the
 // enclosing instance's resolved look. Also records where each came from, so that layer edits made
 // in the viewer apply without a rebuild: cLayer = the colour is that layer's display colour;
@@ -493,7 +497,7 @@ function resolveLook(scene, ai, parent) {
   const L = scene.layers[ai.layer] ? ai.layer : 0, layer = scene.layers[L] || { rgb: [0, 0, 0], material: -1 };
   let mi, mLayer = -1;
   if (ai.ms === 1) mi = ai.mi;
-  else if (ai.ms === 2 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
+  else if (ai.ms === 3 && parent) { mi = parent.mi; mLayer = parent.mLayer; }
   else { mi = layer.material; mLayer = L; }
   const mat = scene.materials[mi] || DEFAULT_MATERIAL;
   if (mat === DEFAULT_MATERIAL) mi = -1;
@@ -503,6 +507,30 @@ function resolveLook(scene, ai, parent) {
   else if (ai.cs === 3 && parent) ({ rgb, cLayer, cMatLayer } = parent);
   else cLayer = L;
   return { rgb, mat, mi, matSet: mat !== DEFAULT_MATERIAL, cLayer, cMatLayer, mLayer };
+}
+
+// The block definitions in use, those a top-level instance reaches: id -> { id, name, tops (object
+// indexes of its top-level instances), kids and parents (definition ids), layers (of its own
+// objects), copies (in the whole model, counting those inside other blocks) }.
+function blockTable(scene) {
+  const { defs, items, layers } = scene, out = new Map();
+  for (const [id, def] of defs) {
+    const inner = def.entries.filter((e) => e.k === 'inst' && defs.has(e.idef)).map((e) => e.idef);
+    out.set(id, { id, name: def.name || '(unnamed block)', tops: [], kids: [...new Set(inner)], parents: [], copies: 0,
+      layers: [...new Set(def.entries.map((e) => e.ai.layer))].filter((l) => layers[l]) });
+  }
+  for (const b of out.values()) for (const k of b.kids) out.get(k).parents.push(b.id);
+  items.forEach((it, i) => { if (it.k === 'inst') out.get(it.idef)?.tops.push(i); });
+  const active = new Set(); // a damaged file could have a block contain itself
+  const count = (id, n) => {
+    if (active.has(id)) return;
+    active.add(id);
+    out.get(id).copies += n;
+    for (const e of defs.get(id).entries) if (e.k === 'inst' && out.has(e.idef)) count(e.idef, n);
+    active.delete(id);
+  };
+  for (const b of out.values()) if (b.tops.length) count(b.id, b.tops.length);
+  return out;
 }
 
 // Directions to look for a batch's outermost vertices in, both ways along each: most of them level,
@@ -548,6 +576,9 @@ function buildBatches(scene) {
   const specialOf = scene.specialOf || ((l) => matchLayer(layers, l)?.id || 0);
   const specials = layers.map((_, l) => specialOf(l));
   const special = (look) => (look.mLayer >= 0 ? specials[look.mLayer] || 0 : 0);
+  // The block settings made in the viewer: a definition's sub-element setting, and whether it is
+  // shown. A hidden block's top-level instances stay in the batches, hidden by their object flags.
+  const subSetting = scene.subSetting || (() => null), blockShown = scene.blockShown || (() => true);
 
   let rec = null; // the item being emitted
   // Geometry that needs no transform (xf null) is the same on every rebuild, so its bounding
@@ -614,12 +645,15 @@ function buildBatches(scene) {
     a.nv += 1;
     stats.points++;
   };
+  const expanding = new Set(); // a damaged file could have a block contain itself
   const instantiate = (idefId, xf, parentLook, layerChain, depth, objId) => {
     const def = defs.get(idefId);
-    if (!def || depth > 24) return;
-    const seed = seedOf(xf[3], xf[7], xf[11]);
+    if (!def || depth > 24 || expanding.has(idefId)) return;
+    expanding.add(idefId);
+    const seed = seedOf(xf[3], xf[7], xf[11]), sources = SUB_SOURCES[subSetting(idefId)];
     for (const e of def.entries) {
-      const look = resolveLook(scene, e.ai, parentLook);
+      if (e.k === 'inst' && !blockShown(e.idef)) continue;
+      const look = resolveLook(scene, sources ? { ...e.ai, ...sources } : e.ai, parentLook);
       const ls = [...new Set([...layerChain, e.ai.layer])].sort((a, b) => a - b);
       if (layers[e.ai.layer]) layers[e.ai.layer].count++;
       if (e.k === 'inst') {
@@ -632,6 +666,7 @@ function buildBatches(scene) {
       else if (e.k === 'line') { stats.curves++; emitLines('line', e.segs, ls, look, xf, objId); }
       else if (e.k === 'point') emitPoint(e.p, ls, look, xf, objId);
     }
+    expanding.delete(idefId);
   };
 
   items.forEach((it, objId) => {
