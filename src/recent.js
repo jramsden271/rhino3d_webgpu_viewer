@@ -2,15 +2,17 @@
 // with a click. Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw }], newest first
+//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw, results }], newest first
 //   await Recent.add(handle, file) remembers a file just opened (up to Recent.MAX)
 //   await Recent.remove(index)
-//   await Recent.link(handle, { custom, epw, use })  a model's custom location, weather file and
-//                                 which location source it uses (any of them)
+//   await Recent.link(handle, { custom, epw, use, results })  a model's custom location, weather file,
+//                                 which location source it uses and results files (any of them)
 //   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset, name } | null, epw: { name, bytes } | null,
-//                                      use: 'custom' | 'epw' | 'file' | null }
+//                                      use: 'custom' | 'epw' | 'file' | null, results: [{ id, name, size }] }
+//   await Recent.putResult(id, bytes), Recent.resultBytes(id), Recent.dropResults(ids)  a results file's copy
 //
 // A model's weather file is kept as a copy, so it comes back without another permission prompt.
+// So are its results files, each under its own key, as they can be large and the list is read often.
 
 const Recent = {
   MAX: 5,
@@ -58,7 +60,8 @@ const Recent = {
       const i = await this.find(list, handle), old = i >= 0 ? list[i] : {};
       const rest = list.filter((_, k) => k !== i);
       await this.save([{ name: file.name, size: file.size, modified: file.lastModified, opened: Date.now(), handle,
-        custom: old.custom || null, epw: old.epw || null, use: old.use || null }, ...rest].slice(0, this.MAX));
+        custom: old.custom || null, epw: old.epw || null, use: old.use || null, results: old.results || [] }, ...rest].slice(0, this.MAX));
+      for (const gone of rest.slice(this.MAX - 1)) await this.dropResults((gone.results || []).map((r) => r.id));
     });
   },
 
@@ -78,14 +81,21 @@ const Recent = {
 
   async links(handle) {
     const list = await this.list(), i = await this.find(list, handle);
-    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null };
+    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null, results: list[i]?.results || [] };
   },
 
   remove(index) {
     return this.serial(async () => {
       const list = await this.list();
-      list.splice(index, 1);
+      const [gone] = list.splice(index, 1);
       await this.save(list);
+      await this.dropResults((gone?.results || []).map((r) => r.id));
     });
+  },
+
+  putResult(id, bytes) { return this.store('readwrite', (s) => s.put(bytes, `result:${id}`)); },
+  resultBytes(id) { return this.store('readonly', (s) => s.get(`result:${id}`)); },
+  async dropResults(ids) {
+    try { if (ids.length) await this.store('readwrite', (s) => { for (const id of ids) s.delete(`result:${id}`); }); } catch (e) { /* storage unavailable */ }
   },
 };

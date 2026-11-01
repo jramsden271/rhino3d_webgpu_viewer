@@ -35,6 +35,13 @@ state.sun = {
 // The site location of the open model: a custom location, the weather file (epw, an EPW object)
 // and which source to use (use: 'custom', 'epw', 'file' or null for the first that is set).
 const site = { custom: null, epw: null, use: null };
+// The open model's results files: { id, name, size, parser, data }, parser and data null if nothing
+// recognises a bound file any more. They are only ever read.
+let results = [];
+// The CFD streamlines panel. on: its master switch. off: keys (streamlineKey) of what is unticked,
+// streamlines and polylines alike. collapsed: keys of the streamlines folded up. lines: what was
+// given to the renderer, a { key, parts: [{ key, range }] } for each streamline and its polylines.
+state.streamlines = { panel: false, on: true, off: new Set(), collapsed: new Set(), lines: [] };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
@@ -127,6 +134,8 @@ function frameState() {
     ortho: camera.ortho, dpr: Math.min(window.devicePixelRatio || 1, 2), showPoints: state.showCurves, sun: null, cam,
   };
   if (!model) return s;
+  const SL = state.streamlines;
+  s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
@@ -255,7 +264,8 @@ function loop() {
 // handle: the file's FileSystemFileHandle, when there is one, for the recent files list.
 async function openFile(file, handle = null) {
   if (/\.epw$/i.test(file.name)) { loadEpw(file); return; }
-  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm or .epw file.`, true); return; }
+  if (resultParsersFor(file.name).length) { addResultsFile(file); return; }
+  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
   await Recent.add(handle, file);
   renderRecent();
@@ -265,7 +275,7 @@ async function openFile(file, handle = null) {
 // The custom location, weather file and choice of location linked to a model come back with it.
 // Returns what came back, for a notice.
 async function restoreLinks(handle) {
-  const { custom, epw: d, use } = await Recent.links(handle), back = [];
+  const { custom, epw: d, use, results: bound } = await Recent.links(handle), back = [];
   const c = custom && Math.abs(custom.lat) <= 90 && Math.abs(custom.lon) <= 180 && Math.abs(custom.utcOffset) <= 14 ? custom : null;
   if (c) { site.custom = { lat: +c.lat, lon: +c.lon, utcOffset: +c.utcOffset, name: typeof c.name === 'string' ? c.name : null }; back.push(`custom location ${site.custom.name || fmtCoords(c.lat, c.lon)}`); }
   if (d) {
@@ -273,6 +283,13 @@ async function restoreLinks(handle) {
     catch (e) { notice(`Could not read ${d.name}, the weather file linked to this model: ${e.message}`, true); }
   }
   if (['custom', 'epw', 'file'].includes(use)) site.use = use;
+  for (const r of bound) {
+    try {
+      const bytes = await Recent.resultBytes(r.id);
+      if (bytes) results.push({ ...r, parser: null, data: null, ...parseResultsFile(bytes, r.name) });
+    } catch (e) { results.push({ ...r, parser: null, data: null }); notice(`Could not read ${r.name}, a results file linked to this model: ${e.message}`, true); }
+  }
+  if (results.length) back.push(results.length === 1 ? `results file ${results[0].name}` : `${results.length} results files`);
   return back;
 }
 
@@ -350,7 +367,9 @@ async function openBytes(name, bytes, handle = null) {
     applyLayerMaterials(false);
     await settleMagicGround();
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
+    results = [];
     const back = handle ? await restoreLinks(handle) : [];
+    syncResults();
     applyFileLocation(m.location);
     if (model.savedNorth != null) setSun({ north: model.savedNorth });
     restoreSun(savedView);
@@ -1128,7 +1147,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1139,6 +1158,8 @@ function restoreLayersAndHidden(saved) {
     if (i != null) state.hidden.add(i);
   }
   for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
+  state.streamlines.on = saved.streamlines?.on !== false;
+  state.streamlines.off = new Set(saved.streamlines?.off || []);
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
@@ -2128,6 +2149,171 @@ function openWeatherDialog() {
     .then(() => { weatherDialog = null; });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Results files (results.js)
+
+const resultLinks = () => results.map(({ id, name, size }) => ({ id, name, size }));
+
+async function addResultsFile(file) {
+  if (!model) { notice(`Open a model first, then add ${file.name} to it.`, true); return; }
+  if (results.some((r) => r.name === file.name && r.size === file.size)) { notice(`${file.name} is already added.`, false, 3000); return; }
+  const m = model, bytes = new Uint8Array(await file.arrayBuffer());
+  let parsed;
+  try { parsed = parseResultsFile(bytes, file.name); }
+  catch (e) { notice(`Could not read ${file.name}: ${e.message}`, true); return; }
+  if (!parsed) { notice(`${file.name} isn't a kind of results file the viewer can read.`, true); return; }
+  if (m !== model) return;
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  results.push({ id, name: file.name, size: file.size, ...parsed });
+  syncResults();
+  notice(`${file.name}: ${parsed.parser.name}.`, false, 3000);
+  if (m.handle) {
+    try { await Recent.putResult(id, bytes); }
+    catch (e) { notice(`${file.name} could not be stored with this model, so it won't come back when you reopen it.`, true); return; }
+    if (m === model) linkToModel({ results: resultLinks() });
+  }
+}
+
+function removeResultsFile(id) {
+  results = results.filter((r) => r.id !== id);
+  linkToModel({ results: resultLinks() });
+  Recent.dropResults([id]);
+  syncResults();
+}
+
+// Everything that shows the results files follows the list.
+function syncResults() {
+  const n = results.length;
+  $('btnResultsFiles').classList.toggle('set', n > 0);
+  $('btnResultsFiles').title = n ? `Results files: ${results.map((r) => r.name).join(', ')}` : 'Add results files';
+  $('btnResults').hidden = !results.some((r) => r.data);
+  fillStreamlines();
+  fillResultsMenu();
+  resultsDialog?.refresh();
+  redraw();
+}
+
+// Results files dialog: what is bound to the open model, and which parser read each.
+let resultsDialog = null;
+function openResultsDialog() {
+  if (resultsDialog) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'loc-dlg';
+  wrap.innerHTML = `
+    <div class="res-list" data-el="list"></div>
+    <div class="loc-actions"><button class="btn small" data-el="pick">Add results file…</button></div>
+    <div class="fine" data-el="note"></div>
+    <input type="file" multiple data-el="input" hidden>`;
+  const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
+  el('input').accept = [...new Set(RESULT_PARSERS.flatMap((p) => p.extensions))].join(',');
+  el('pick').addEventListener('click', () => el('input').click());
+  el('input').addEventListener('change', () => { const files = [...el('input').files]; el('input').value = ''; files.forEach(addResultsFile); });
+  const refresh = () => {
+    el('list').replaceChildren(...results.map((r) => {
+      const row = document.createElement('div');
+      row.className = 'res-row';
+      row.innerHTML = `<div><div>${escapeHtml(r.name)}</div><div class="fine">${r.parser ? `${escapeHtml(r.parser.name)} · ${escapeHtml(r.parser.describe(r.data))}` : 'Not recognised by any parser'}</div></div><button class="x" aria-label="Remove ${escapeHtml(r.name)}" title="Remove">×</button>`;
+      row.querySelector('.x').addEventListener('click', () => removeResultsFile(r.id));
+      return row;
+    }));
+    el('pick').disabled = !model;
+    el('note').textContent = `Results files are only read, never changed. ${!model
+      ? 'They belong to a model: open one first.'
+      : model.handle ? `These belong to ${model.name}, and a copy of each comes back when you reopen it from Recent files. To update one, remove it and add the new version.`
+        : `These belong to ${model.name} while it is open. You can also drop a results file onto the window.`}`;
+  };
+  refresh();
+  resultsDialog = { refresh };
+  Dialog.open({ title: 'Results files', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460 })
+    .then(() => { resultsDialog = null; });
+}
+
+// The toolbar's Results menu: one item for each kind of result there is.
+let resultsList = null, resultsMenu = null;
+function bindResultsMenu() {
+  resultsList = new ChoiceList({ label: 'Results', onPick: (id) => { resultsMenu.close(); if (id === 'streamlines') toggleStreamlinesPanel(); } });
+  resultsMenu = new ToolbarMenu($('btnResults'), { label: 'Results' });
+  resultsMenu.body.append(resultsList.el);
+}
+function fillResultsMenu() {
+  resultsList.setGroups(state.streamlines.lines.length ? [{ items: [{ id: 'streamlines', label: 'CFD streamlines' }] }] : []);
+  resultsList.setActive(state.streamlines.panel ? 'streamlines' : null);
+}
+
+// The CFD streamlines panel, and the lines it shows.
+const streamlineKey = (file, line) => `${file.name}|${line.name}`;
+
+function toggleStreamlinesPanel() {
+  state.streamlines.panel = !state.streamlines.panel;
+  $('streamlinesPanel').hidden = !state.streamlines.panel;
+  resultsList.setActive(state.streamlines.panel ? 'streamlines' : null);
+}
+
+function setStreamlinesOn(on) {
+  state.streamlines.on = on;
+  syncStreamlines();
+  saveViewState();
+  redraw();
+}
+
+function fillStreamlines() {
+  const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines') : [];
+  const all = files.flatMap((file) => file.data.streamlines.map((line) => ({ file, line })));
+  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin) : null;
+  renderer.setResultLines(v);
+  SL.lines = all.map(({ file, line }, i) => {
+    const key = streamlineKey(file, line);
+    return { key, parts: v.ranges[i].map((range, k) => ({ key: `${key}|${k}`, range })) };
+  });
+  if (SL.panel && !all.length) toggleStreamlinesPanel();
+  // A row for each streamline, with one under it for each polyline when it has several.
+  const makeRow = (key, parent, label, title, count) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    row.title = title;
+    row.dataset.key = key;
+    if (parent) row.dataset.parent = parent;
+    row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
+    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
+    row.querySelector('.layer-name').textContent = label;
+    row.querySelector('.caret').addEventListener('click', () => {
+      if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
+      syncStreamlines();
+    });
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) SL.off.delete(key); else SL.off.add(key);
+      syncStreamlines();
+      saveViewState();
+      redraw();
+    });
+    return row;
+  };
+  $('streamlineList').replaceChildren(...all.flatMap(({ file, line }, i) => {
+    const { key, parts } = SL.lines[i], several = parts.length > 1;
+    const top = makeRow(key, null, files.length > 1 ? `${line.name} · ${file.name}` : line.name, `${line.name} in ${file.name}`, several ? parts.length : 0);
+    return several ? [top, ...parts.map((p, k) => makeRow(p.key, key, `Polyline ${k + 1}`, `Polyline ${k + 1} of ${line.name}`, 0))] : [top];
+  }));
+  syncStreamlines();
+}
+
+function syncStreamlines() {
+  const SL = state.streamlines;
+  $('streamlinesOn').checked = SL.on;
+  for (const row of $('streamlineList').children) {
+    const on = !SL.off.has(row.dataset.key), parent = row.dataset.parent;
+    row.querySelector('input').checked = on;
+    row.classList.toggle('off', !on);
+    row.classList.toggle('inherited-off', on && (!SL.on || SL.off.has(parent)));
+    row.hidden = SL.collapsed.has(parent);
+    row.querySelector('.caret').classList.toggle('collapsed', SL.collapsed.has(row.dataset.key));
+  }
+}
+
+function bindStreamlinesPanel() {
+  $('streamlinesOn').addEventListener('change', (e) => setStreamlinesOn(e.target.checked));
+  $('streamlinesClose').addEventListener('click', () => state.streamlines.panel && toggleStreamlinesPanel());
+}
+
 // Set location dialog: the three sources, each marked "In use" or offering "Use this location".
 // Changes apply as they are made.
 let locationDialog = null;
@@ -3111,6 +3297,7 @@ function bindUi() {
   $('btnHome').addEventListener('click', goHome);
   $('btnLocation').addEventListener('click', openLocationDialog);
   $('btnWeather').addEventListener('click', openWeatherDialog);
+  $('btnResultsFiles').addEventListener('click', openResultsDialog);
   $('btnMessages').addEventListener('click', openMessages);
   $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
@@ -3125,6 +3312,7 @@ function bindUi() {
     e.preventDefault(); depth = 0; drop.classList.remove('over');
     if (model && !atHome) drop.hidden = true;
     const f = e.dataTransfer.files[0];
+    if (f && resultParsersFor(f.name).length) { [...e.dataTransfer.files].forEach((x) => openFile(x)); return; }
     // The handle has to be requested before anything else is awaited.
     const h = Recent.supported ? e.dataTransfer.items[0]?.getAsFileSystemHandle?.() : null;
     if (f) Promise.resolve(h).then((handle) => openFile(f, handle?.kind === 'file' ? handle : null), () => openFile(f));
@@ -3132,6 +3320,8 @@ function bindUi() {
 
   bindCameraMenu();
   bindModeMenu();
+  bindResultsMenu();
+  bindStreamlinesPanel();
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
@@ -3156,7 +3346,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));

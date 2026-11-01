@@ -793,6 +793,14 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
   return vec4f(mix(F.bgBot.rgb, B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
+// Result lines, each vertex with its own colour; not picked, and not faded by the haze.
+struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
+@vertex fn vsResultLine(@location(0) p: vec3f, @location(2) col: vec4f) -> ResultOut {
+  let c = F.viewProj * vec4f(p, 1.0);
+  return ResultOut(vec4f(c.xy, min(c.z * LINE_PULL, c.w), c.w), col.rgb);
+}
+@fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
+
 // Points (screen-space squares) --------------------------------------------------------------
 @vertex fn vsPoint(@builtin(vertex_index) i: u32, @location(0) p: vec3f, @location(4) oid: u32) -> @builtin(position) vec4f {
   if (objFlag(oid, 1u)) { return CULLED; }
@@ -1113,6 +1121,8 @@ class Renderer {
       meshVCT: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true, blend, write: false }),
       line: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'greater-equal', blend }),
       lineX: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'always', blend, write: false }),
+      resultLine: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'greater-equal', layout: frameOnly }),
+      resultLineX: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'always', write: false, layout: frameOnly }),
       point: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'greater-equal' }),
       pointX: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'always', write: false }),
       pick: mk('vsPick', 'fsPick', [POS, OID], { format: 'rgba32float', samples: 1, layout: frameOnly }),
@@ -1511,9 +1521,29 @@ class Renderer {
         pass.draw(4, b.count);
       }
     }
+    if (this.resultLines && s.resultRanges?.length) {
+      pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
+      pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
+      for (const r of s.resultRanges) pass.draw(r.count, 1, r.first);
+    }
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     pass.end();
     this.device.queue.submit([enc.finish()]);
+  }
+
+  // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
+  // none. Each frame's s.resultRanges says which { first, count } of them are shown.
+  setResultLines(lines) {
+    this.resultLines?.pos.destroy();
+    this.resultLines?.col.destroy();
+    this.resultLines = null;
+    if (!lines?.pos.length) return;
+    const make = (arr) => {
+      const buf = this.device.createBuffer({ size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+      this.device.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.resultLines = { pos: make(lines.pos), col: make(lines.col) };
   }
 
   // Returns { p: world position (model-relative), id: object index } for the visible surface

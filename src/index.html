@@ -19,6 +19,7 @@
     </span>
     <button class="loc-btn" id="btnLocation" title="Set the site location"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-7-6.2-7-11.5a7 7 0 0 1 14 0c0 5.3-7 11.5-7 11.5Z"/><circle cx="12" cy="10" r="2.6"/></svg><span id="locName">Set location</span></button>
     <button class="btn icon wx-btn" id="btnWeather" title="Add a weather file (EPW)" aria-label="Weather file"><svg viewBox="0 0 24 24" aria-hidden="true"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button>
+    <button class="btn icon res-btn" id="btnResultsFiles" title="Add results files" aria-label="Results files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 17v-3M12 17v-6M15 17v-4"/></svg></button>
     <button class="btn icon msg-btn" id="btnMessages" title="No messages" aria-label="Messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 5.5 2.5 7.5 2.5 7.5h-17S6 15 6 9.5Z"/><path d="M10 20.5a2.3 2.3 0 0 0 4 0"/></svg><span class="msg-count" id="msgCount" hidden></span></button>
     <input type="file" id="fileInput" accept=".3dm" hidden>
   </header>
@@ -36,6 +37,7 @@
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
+    <button class="btn toggle camera-btn" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -93,6 +95,14 @@
     </div>
     <div class="panel-filter"><input type="search" id="blockFilter" placeholder="Filter blocks" aria-label="Filter blocks"></div>
     <div id="blockList" class="layer-tree"></div>
+  </aside>
+
+  <aside id="streamlinesPanel" class="chrome panel layers-panel" hidden aria-label="CFD streamlines">
+    <div class="panel-head">
+      <span>CFD streamlines</span>
+      <span class="panel-actions"><label class="switch" title="Show the selected streamlines, or none"><input type="checkbox" id="streamlinesOn"><span></span></label><button class="x" id="streamlinesClose" aria-label="Close CFD streamlines" title="Close">×</button></span>
+    </div>
+    <div id="streamlineList" class="layer-tree"></div>
   </aside>
 
   <section id="sunPanel" class="chrome panel sun-panel" hidden aria-label="Sun">
@@ -289,6 +299,7 @@
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Blocks</dt><dd>The Block definitions panel lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
+        <dt>Results</dt><dd>The file icon at the top left adds results files to the model · once one is read, <b>Results</b> on the toolbar opens what it holds · <b>CFD streamlines</b> lists them, coloured from blue at 0 m/s through green and orange to red at 10 m/s</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
@@ -308,6 +319,7 @@
 <script src="recent.js"></script>
 <script src="sun.js"></script>
 <script src="epw.js"></script>
+<script src="results.js"></script>
 <script src="clouds.js"></script>
 <script src="utci.js"></script>
 <script src="camera.js"></script>

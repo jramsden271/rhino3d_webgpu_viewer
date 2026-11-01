@@ -44,6 +44,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
 | Layers · Blocks · Sun panel | Toolbar | `L` · `K` · `S` |
 | Weather panel | Toolbar: Weather | |
+| Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
 
@@ -316,6 +317,23 @@ dialog. The icon is in colour when a weather file is loaded, with the file's nam
 tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`.epw`), or
 drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
 the weather in the Weather panel and, when it has a latitude and longitude, the location.
+
+The **results files button** next to it opens the **Results files** dialog, which lists the
+files added to the model and the parser that read each. **Add results file…** adds another, and
+so does dropping one onto the window; × removes one. Results files are only read. Like the weather
+file, a copy of each is kept with the model and comes back when you reopen it from Recent files,
+so to update one, remove it and add the new version.
+
+Once a file has been read, **Results** appears on the toolbar. Its **CFD streamlines** item opens a
+panel listing the streamlines in the file, with the polylines of each nested under it, as sub-layers
+are under a layer. Each has a checkbox, and unticking a streamline hides all its polylines; the
+switch on the panel's title bar shows what is ticked or nothing. They're drawn as polylines in the file's coordinates,
+scaled to the model's units, with each segment coloured by the velocity at its start: blue at
+0 m/s, then green, orange, and red at 10 m/s and above.
+
+A CFD streamlines file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z and velocity) and
+`[Lines]` (pairs of node numbers) sections. Parsers live in `src/results.js`: each file goes to
+each parser in turn until one recognises it.
 
 Click **Weather** on the toolbar for the **Weather panel**, at the Sun panel's date and time. One
 row shows the air temperature, relative humidity and wind speed, with a compass arrow pointing
