@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false,
@@ -36,6 +36,7 @@ state.sun = {
 const site = { custom: null, epw: null, use: null };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
+state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -130,7 +131,7 @@ function frameState() {
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
   s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
   s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
-  s.time = (performance.now() / 1000) % 3600;
+  s.time = anim.time;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
@@ -207,21 +208,27 @@ function sunOpts() {
 }
 function sunPosition() { return solarPosition(sunOpts()); }
 
+// The water's clock, stopped while Animations is off, and when the last frame was drawn.
+const anim = { time: 0, last: performance.now(), drawn: 0 };
+const ANIM_FRAME = 30; // ms between frames drawn only for the animations: about 30 a second, as they need no more
+
 function loop() {
-  // Water ripples animate while someone is using the viewer; after 15 s idle they freeze so an
-  // untouched page does not keep the GPU busy.
-  if (model && performance.now() - lastInput < 15000 && renderer.hasWater(state.mode)) renderer.dirty = true;
-  // Drifting clouds likewise.
-  if (model && performance.now() - lastInput < 15000 && driftClouds(performance.now())) {
-    renderer.dirty = true;
-    // A cloud may have moved over the camera.
-    if (state.comfort.panel && state.comfort.clouds && performance.now() - comfortAt > 200) { comfortAt = performance.now(); syncComfortPanel(); }
-  }
+  const now = performance.now();
+  if (state.animations) anim.time = (anim.time + (now - anim.last) / 1000) % 3600;
+  anim.last = now;
+  // Water ripples and drifting clouds animate while someone is using the viewer; after 15 s idle
+  // they freeze so an untouched page does not keep the GPU busy.
+  const live = model && state.animations && now - lastInput < 15000;
+  const drifting = live && driftClouds(now);
+  if (live && (drifting || renderer.hasWater(state.mode)) && now - anim.drawn >= ANIM_FRAME) renderer.dirty = true;
+  // A cloud may have moved over the camera.
+  if (drifting && state.comfort.panel && state.comfort.clouds && now - comfortAt > 200) { comfortAt = now; syncComfortPanel(); }
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
   }
   if (renderer.dirty) {
+    anim.drawn = now;
     renderer.dirty = false; renderer.draw(frameState()); positionInspector();
     if (state.comfort.panel) checkSunlight();
   }
@@ -2425,6 +2432,7 @@ const RENDER_TOGGLES = [
   { id: 'showEdges', label: 'Edges', hint: 'E' },
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
   { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
+  { id: 'animations', label: 'Animations', title: 'Water ripples and drifting clouds. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];

@@ -38,7 +38,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
-| Edges · Curves · Magic · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · `O` · `X` |
+| Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
 | Layers · Sun panel | Toolbar | `L` · `S` |
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
@@ -224,7 +224,8 @@ hidden objects and layer visibility) back to how it is in the file. The cameras 
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
-view; it switches off in X-ray mode. It is computed from the true (faceted) surfaces, so the
+view; it is worked out at half the window's resolution, and switches off in X-ray mode. It is
+computed from the true (faceted) surfaces, so the
 smooth shading of foliage does not darken the outlines of tree canopies. It also softens
 edges: the light rolls round each corner as though it were rounded by a few centimetres (never
 less than 2 pixels on screen), outside corners catch a little more light, and faceted curved
@@ -294,9 +295,11 @@ panel turn this on and off; off, the sky and light are a clear day's, as without
 - **The clouds drift with the wind**, from the file's wind direction at its speed times the
   **Cloud speed** slider (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
   up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
-  drift easier to see. Like the water ripples, they stop after 15 s without input. While only
-  the clouds move, the sun's shadow maps and the ambient occlusion are kept from the last frame
-  rather than drawn again, so a drifting frame costs little more than the main pass.
+  drift easier to see. Like the water ripples, they stop after 15 s without input, or at once
+  with **Animations** off in the render mode menu, which saves the graphics card work on large
+  models when the view is still. While only the clouds move, or the ripples, frames are drawn
+  about 30 times a second, and the sun's shadow maps and the ambient occlusion are kept from
+  the last frame rather than drawn again, so a drifting frame costs little more than the main pass.
 
 Reflections in water and glass show the sky's colours without the clouds. Rain, fog and dust are not shown: EPW
 precipitation and present-weather fields are too unreliable (Leeds TMYx, for one, reports
@@ -539,7 +542,7 @@ dist/index.html          the released viewer (the only file anyone needs)
 dist-dev/index.html      development build (git-ignored)
 build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist-dev/, or dist/ with --release
 src/index.html, style.css  page and UI
-src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges)
+src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time

@@ -6,6 +6,7 @@
 // JS doubles. This keeps site-coordinate models (e.g. 6-digit eastings) free of float jitter.
 
 const MAX_BATCH_VERTS = 4_000_000;
+const CHUNKS_ACROSS = 32; // grid cells across the model (a square site; a long thin one has fewer)
 const EDGE_COS = Math.cos((30 * Math.PI) / 180);
 const MAX_EDGE_TRIS = 2_000_000; // skip crease detection on enormous single meshes
 const DEFAULT_MATERIAL = { name: '', rgb: [0.85, 0.84, 0.81], alpha: 1 }; // warm off-white
@@ -21,7 +22,7 @@ const rgbOf = (c) => [c.r / 255, c.g / 255, c.b / 255];
 class Acc {
   constructor(kind, key, layers, color, mat, vc, cls, matSet, layer, refs) {
     Object.assign(this, { kind, key, layers, color, mat, vc, cls, matSet, layer, cLayer: refs.cLayer, cMatLayer: refs.cMatLayer, mLayer: refs.mLayer });
-    this.pos = []; this.nrm = []; this.col = []; this.idx = []; this.oid = [];
+    this.pieces = []; // what was added: { pos, oid, box, and for a mesh nrm, idx (from 0), col }
     this.nv = 0; this.ni = 0;
   }
 }
@@ -41,21 +42,73 @@ class Batcher {
     return a;
   }
 
+  // Each batch's geometry goes in order of grid cell, with b.ranges saying where each cell's part is
+  // ([first index or vertex, count, cell] in turn), so a view can draw only the cells it can see.
+  // The cells' boxes are in batches.cells, shared by all the batches.
   finish() {
-    const all = this.done.concat([...this.open.values()]);
-    return all.filter((a) => a.nv > 0).map((a) => {
+    const all = this.done.concat([...this.open.values()]).filter((a) => a.nv > 0);
+    const cells = chunkCells(all);
+    const batches = all.map((a) => {
       const b = { kind: a.kind, layers: a.layers, layer: a.layer, color: a.color, mat: a.mat, vc: a.vc, cls: a.cls, matSet: a.matSet,
         cLayer: a.cLayer, cMatLayer: a.cMatLayer, mLayer: a.mLayer, count: a.ni || a.nv };
-      b.position = concat(Float32Array, a.pos, a.nv * 3);
-      b.objectId = concat(Uint32Array, a.oid, a.nv);
+      const parts = a.pieces.sort((p, q) => p.cell - q.cell), ranges = [];
+      let first = 0, last = -1;
+      for (const p of parts) {
+        const n = a.ni ? p.idx.length : p.pos.length / 3;
+        if (p.cell === last) ranges[ranges.length - 2] += n;
+        else ranges.push(first, n, p.cell);
+        first += n; last = p.cell;
+      }
+      b.ranges = Uint32Array.from(ranges);
+      b.position = concat(Float32Array, parts.map((p) => p.pos), a.nv * 3);
+      b.objectId = concat(Uint32Array, parts.map((p) => p.oid), a.nv);
       if (a.kind === 'mesh') {
-        b.normal = concat(Int16Array, a.nrm, a.nv * 4);
-        b.index = concat(Uint32Array, a.idx, a.ni);
-        if (a.vc) b.vcolor = concat(Uint8Array, a.col, a.nv * 4);
+        b.normal = concat(Int16Array, parts.map((p) => p.nrm), a.nv * 4);
+        const index = (b.index = new Uint32Array(a.ni));
+        let o = 0, base = 0;
+        for (const { idx, pos } of parts) {
+          for (let i = 0; i < idx.length; i++) index[o + i] = idx[i] + base;
+          o += idx.length; base += pos.length / 3;
+        }
+        if (a.vc) b.vcolor = concat(Uint8Array, parts.map((p) => p.col), a.nv * 4);
       }
       return b;
     });
+    batches.cells = cells;
+    return batches;
   }
+}
+
+// Sets each piece's cell, and returns the cells' boxes (6 floats each). A piece goes in the cell its
+// middle falls in, on a grid coarse enough for it: each grid's cells are 4 times as wide as the last's,
+// so that a wide piece does not stretch the box of a small cell. Cells are numbered as they are met,
+// not along the grid: an order along it would draw far things first from some directions, and the
+// surfaces drawn over them later would cost much more shading.
+function chunkCells(accs) {
+  const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+  const pieces = accs.flatMap((a) => a.pieces);
+  for (const { box } of pieces) if (box[0] <= box[3]) for (let k = 0; k < 2; k++) { mn[k] = Math.min(mn[k], box[k]); mx[k] = Math.max(mx[k], box[k + 3]); }
+  const w = mx[0] - mn[0], d = mx[1] - mn[1];
+  const size = Math.max(Math.sqrt(w * d) / CHUNKS_ACROSS, Math.max(w, d) / (4 * CHUNKS_ACROSS), 1e-6);
+  const found = new Map(), boxes = [];
+  for (const p of pieces) {
+    // A box with nothing valid in it (bad coordinates) is never culled.
+    const b = p.box[0] <= p.box[3] ? p.box : [-Infinity, -Infinity, -Infinity, Infinity, Infinity, Infinity];
+    const wide = Math.max(b[3] - b[0], b[4] - b[1]);
+    let level = 0, s = size;
+    while (wide > 2 * s && s < 1e30) { level++; s *= 4; }
+    const key = isFinite(wide) ? `${level}|${Math.floor(((b[0] + b[3]) / 2 - mn[0]) / s)}|${Math.floor(((b[1] + b[4]) / 2 - mn[1]) / s)}` : 'all';
+    let id = found.get(key);
+    if (id === undefined) {
+      found.set(key, (id = boxes.length));
+      boxes.push([...b]);
+    } else for (let k = 0; k < 3; k++) { boxes[id][k] = Math.min(boxes[id][k], b[k]); boxes[id][k + 3] = Math.max(boxes[id][k + 3], b[k + 3]); }
+    p.cell = id;
+  }
+  // A little larger, so rounding on the GPU cannot leave geometry just outside its box.
+  const out = new Float32Array(boxes.length * 6), m = size * 0.01;
+  boxes.forEach((b, i) => { for (let k = 0; k < 3; k++) { out[i * 6 + k] = b[k] - m; out[i * 6 + k + 3] = b[k + 3] + m; } });
+  return out;
 }
 
 function concat(T, parts, n) {
@@ -510,6 +563,7 @@ function buildBatches(scene) {
   const growBox = (p, c) => {
     const b = c ? (c.box ||= boxOf(p)) : boxOf(p), mn = rec.min, mx = rec.max;
     for (let k = 0; k < 3; k++) { if (b[k] < mn[k]) mn[k] = b[k]; if (b[k + 3] > mx[k]) mx[k] = b[k + 3]; }
+    return b;
   };
   const oids = (c, n, objId) => {
     if (!c) return new Uint32Array(n).fill(objId);
@@ -526,44 +580,37 @@ function buildBatches(scene) {
     // Vegetation is usually low-poly and faceted; smooth shading reads as soft foliage.
     const nrm = cls === MAT_VEGETATION ? (part.smooth ||= smoothNormals(part.pos, part.idx)) : part.nrm;
     const p = xformPoints(part.pos, xf), c = cacheOf(part, 'meshCache', xf);
-    growBox(p, c);
+    const box = growBox(p, c);
     rec.triangles += part.idx.length / 3;
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
     if (c && (c.nrmFrom !== nrm || c.seed !== seed)) Object.assign(c, { packed: packNormals(nrm, part.pos, part.idx, null, seed), nrmFrom: nrm, seed });
-    a.nrm.push(c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed));
+    const piece = { pos: p, oid: oids(c, n, objId), nrm: c ? c.packed : packNormals(nrm, part.pos, part.idx, xf, seed), idx: part.idx, box };
     if (vc) {
       const c8 = new Uint8Array(n * 4), stride = part.col.length / n;
       for (let i = 0; i < n; i++) {
         c8[i * 4] = part.col[i * stride] * 255; c8[i * 4 + 1] = part.col[i * stride + 1] * 255;
         c8[i * 4 + 2] = part.col[i * stride + 2] * 255; c8[i * 4 + 3] = 255;
       }
-      a.col.push(c8);
+      piece.col = c8;
     }
-    const idx = new Uint32Array(part.idx.length);
-    for (let i = 0; i < idx.length; i++) idx[i] = part.idx[i] + a.nv;
-    a.idx.push(idx);
-    a.nv += n; a.ni += idx.length;
-    stats.triangles += idx.length / 3;
-    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part);
+    a.pieces.push(piece);
+    a.nv += n; a.ni += part.idx.length;
+    stats.triangles += part.idx.length / 3;
+    if (part.edges) emitLines('edge', part.edges, layerSet, look, xf, objId, cls, layer, part, box);
   };
-  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null) => {
+  // box: a mesh's edges lie on the mesh, so they take its box.
+  const emitLines = (kind, segs, layerSet, look, xf, objId, cls = 0, layer = layerSet[0], holder = null, box = null) => {
     const n = segs.length / 3;
     if (!n) return;
     const a = batcher.get(kind, layerSet, kind === 'edge' ? [0, 0, 0, 1] : colorKey(look.rgb), null, false, n, cls, look.matSet, layer,
       kind === 'edge' ? { cLayer: -1, cMatLayer: -1, mLayer: look.mLayer } : look);
     const p = xformPoints(segs, xf), c = holder && cacheOf(holder, kind + 'Cache', xf);
-    if (kind !== 'edge') growBox(p, c);
-    a.pos.push(p);
-    a.oid.push(oids(c, n, objId));
+    a.pieces.push({ pos: p, oid: oids(c, n, objId), box: box || growBox(p, c) });
     a.nv += n;
   };
   const emitPoint = (pt, layerSet, look, xf, objId) => {
     const a = batcher.get('point', layerSet, colorKey(look.rgb), null, false, 1, 0, false, layerSet[0], look);
     const p = xformPoints(pt, xf);
-    growBox(p);
-    a.pos.push(p);
-    a.oid.push(new Uint32Array([objId]));
+    a.pieces.push({ pos: p, oid: new Uint32Array([objId]), box: growBox(p) });
     a.nv += 1;
     stats.points++;
   };
