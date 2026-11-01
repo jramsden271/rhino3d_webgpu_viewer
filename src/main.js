@@ -842,9 +842,14 @@ function restoreCameras(saved) {
   const finite = (...v) => v.every(Number.isFinite);
   const valid = (c) => c && Array.isArray(c.target) && c.target.length === 3 && finite(...c.target, c.yaw, c.pitch) && c.distance > 0 && c.fov > 0 && c.fov < Math.PI && typeof c.ortho === 'boolean';
   if (!valid(saved.camera)) return;
-  viewCams = Object.fromEntries(Object.entries(saved.cams || {}).filter(([id, c]) => isCameraId(id) && valid(c)));
-  viewNow = isCameraId(saved.view) ? saved.view : null;
-  camera.restore(saved.camera);
+  // Saved before Elevation replaced Front and Right, and when a parallel view could be tilted into
+  // a free view: those come back as Elevation, and as Perspective.
+  const cams = { ...saved.cams }, wasFlat = saved.view === 'front' || saved.view === 'right';
+  cams.elevation ||= (wasFlat && cams[saved.view]) || cams.front || cams.right;
+  viewCams = Object.fromEntries(Object.entries(cams).filter(([id, c]) => isCameraId(id) && valid(c)));
+  const view = wasFlat ? 'elevation' : saved.view;
+  if (isCameraId(view)) { viewNow = view; camera.restore(saved.camera); }
+  else if (viewCams.perspective) camera.restore(viewCams.perspective);
   syncToolbar();
   redraw();
 }
@@ -1821,18 +1826,19 @@ function bindPointer() {
       canvas.classList.add('dragging');
     } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
-      // Alt + left orbits for trackpads; on touch screens one finger orbits. In the Top, Front
-      // and Right views right-drag (and one finger) pans, as in Rhino's parallel views.
-      const flat = camera.ortho && viewNow;
-      const orbit = (!flat && (e.pointerType === 'touch' || (e.button === 2 && !e.shiftKey))) || (e.button === 0 && e.altKey);
-      const pan = !orbit;
-      drag = { mode: pan ? 'pan' : 'orbit', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      // Alt + left orbits for trackpads; on touch screens one finger orbits. Top-down and level
+      // parallel views keep their tilt: right-drag turns them about Z instead, and one finger pans.
+      const rules = viewRules(), rightDrag = e.pointerType !== 'touch' && e.button === 2 && !e.shiftKey;
+      const orbit = rules === 'orbit' && (e.pointerType === 'touch' || rightDrag || (e.button === 0 && e.altKey));
+      const mode = orbit ? 'orbit' : rightDrag ? rules : 'pan';
+      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
       pivot = null;
-      if (!pan) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
+      if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       canvas.classList.add('dragging');
     } else if (pointers.size === 2 && !walker.active) {
       drag = { mode: 'pinch', ...pinchInfo() };
     }
+    syncCompassOverlay();
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -1854,11 +1860,10 @@ function bindPointer() {
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
     if (drag.mode === 'look') walker.turn(dx, dy);
-    else if (drag.mode === 'orbit') {
-      camera.orbit(dx, dy, pivot);
-      if (camera.ortho) viewNow = null;
-      syncToolbar();
-    } else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
+    else if (drag.mode === 'orbit') camera.orbit(dx, dy, pivot);
+    else if (drag.mode === 'top') turnByDial(e);
+    else if (drag.mode === 'elevation') camera.yaw -= dx * 0.006;
+    else if (drag.mode === 'pan') camera.pan(dx, dy, canvas.getBoundingClientRect().height);
     redraw();
   });
 
@@ -1873,8 +1878,9 @@ function bindPointer() {
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: walker.active ? 'look' : 'orbit', x: p.x, y: p.y, moved: true };
+      drag = { mode: walker.active ? 'look' : viewRules() === 'orbit' ? 'orbit' : 'pan', x: p.x, y: p.y, moved: true };
     }
+    syncCompassOverlay();
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -1912,16 +1918,22 @@ function syncCompass() {
   const r = (camera.yaw * 180) / Math.PI + 180 - state.sun.north;
   $('compassDial').setAttribute('transform', `rotate(${r})`);
   $('compassN').setAttribute('transform', `rotate(${-r} 0 -21)`);
+  $('compassOverlayDial').setAttribute('transform', `rotate(${r})`);
+  $('compassOverlayN').setAttribute('transform', `rotate(${-r} 0 -27)`);
+}
+
+// While the window is a dial, a large see-through compass shows where the dial's middle is.
+function syncCompassOverlay() {
+  $('compassOverlay').hidden = drag?.mode !== 'top';
 }
 
 // Turns the view the short way round to face a compass bearing (degrees clockwise from north),
 // keeping its tilt: around the middle of the view, or on the spot when walking.
 function faceBearing(bearing) {
   if (!model) return;
-  const from = camera.yaw, full = 2 * Math.PI, to = ((state.sun.north - bearing) * Math.PI) / 180 - Math.PI;
-  const turn = ((((to - from + Math.PI) % full) + full) % full) - Math.PI;
+  const from = camera.yaw, to = ((state.sun.north - bearing) * Math.PI) / 180 - Math.PI;
+  const turn = wrapAngle(to - from);
   if (Math.abs(turn) < 1e-4) return;
-  if (camera.ortho) { viewNow = null; syncToolbar(); }
   const t0 = performance.now(), dur = 260;
   const step = (now) => {
     const t = Math.min(1, (now - t0) / dur), k = 1 - Math.pow(1 - t, 3);
@@ -1938,18 +1950,31 @@ function setHeading(yaw) {
   redraw();
 }
 
+const wrapAngle = (a) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+
+// The pointer's angle around the middle of an element, as on a dial. Too near the middle, the angle
+// means little.
+function dialAngle(el, e) {
+  const r = el.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
+  return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
+}
+
+// Right-drag in a view looking straight down: the whole window is a dial, like the compass.
+function turnByDial(e) {
+  const a = dialAngle(canvas, e);
+  if (a === null) return;
+  if (drag.at !== null) camera.yaw += wrapAngle(a - drag.at);
+  drag.at = a;
+}
+
 // Dragging the compass turns it like a dial, and the view with it. The drag only starts once the
 // pointer has moved, so double-clicks still reach the N and the ticks, and it carries on outside
-// the compass, where the angle is easier to control. Too near the middle, the angle means little.
+// the compass, where the angle is easier to control.
 function bindCompass() {
   const el = $('compass');
   let drag = null;
-  const angle = (e) => {
-    const r = el.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
-    return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
-  };
   el.addEventListener('pointerdown', (e) => {
-    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: angle(e), moved: false };
+    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: dialAngle(el, e), moved: false };
   });
   window.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -1958,14 +1983,10 @@ function bindCompass() {
       drag.moved = true;
       el.setPointerCapture(e.pointerId);
       el.classList.add('dragging');
-      if (camera.ortho) { viewNow = null; syncToolbar(); }
     }
-    const a = angle(e);
+    const a = dialAngle(el, e);
     if (a === null) return;
-    if (drag.at !== null) {
-      const full = 2 * Math.PI;
-      setHeading(camera.yaw + ((((a - drag.at + Math.PI) % full) + full) % full) - Math.PI);
-    }
+    if (drag.at !== null) setHeading(camera.yaw + wrapAngle(a - drag.at));
     drag.at = a;
   });
   const end = (e) => {
@@ -2132,7 +2153,7 @@ function onKey(e) {
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('front'), 3: () => pickView('right'), 4: () => pickView('perspective'), 5: () => pickView('walk'),
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), s: toggleSunPanel,
     '?': toggleHelp, escape: () => {
@@ -2149,18 +2170,20 @@ function onKey(e) {
 // ---------------------------------------------------------------------------------------------
 // Toolbar and chrome
 
-// Top, Front, Right, Perspective and the file's named views each keep their own camera: leaving
-// one remembers it, and coming back restores it. The first visit, or picking the view you are in,
-// gives the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
-// viewNow is the view the camera belongs to: the last one picked, kept while panning, zooming,
-// walking and orbiting in perspective. Orbiting a parallel view makes it a free view that
-// belongs to none. Walk is listed with them but has no camera of its own: see startWalk.
+// Top, Elevation, Perspective and the file's named views each keep their own camera: leaving one
+// remembers it, and coming back restores it. The first visit, or picking the view you are in, gives
+// the view's default: zoom extents, or the camera saved in the file. Named views are read-only.
+// viewNow is the view the camera belongs to: the last one picked. Walk is listed with them but has
+// no camera of its own: see startWalk.
 let viewNow = 'perspective', viewCams = {};
+// How the view moves (see movementRules). A named view keeps the rules of its saved camera, so that
+// orbiting one up to straight down or through level doesn't catch it there.
+const viewRules = () => { const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
 function pickView(id) {
   if (id === 'walk') { startWalk(); return; }
   if (walker.active) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
-  if (viewNow && viewNow !== id) viewCams[viewNow] = camera.snapshot();
+  if (viewNow !== id) viewCams[viewNow] = camera.snapshot();
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
   viewNow = id;
   if (!saved && !named) { setView(id, true); return; }
@@ -2170,7 +2193,7 @@ function pickView(id) {
 }
 
 // The toolbar's Camera menu. Picking leaves it open, to compare views.
-const CAMERAS = [['top', 'Top', '1'], ['front', 'Front', '2'], ['right', 'Right', '3'], ['perspective', 'Perspective', '4']];
+const CAMERAS = [['top', 'Top', '1'], ['elevation', 'Elevation', '2'], ['perspective', 'Perspective', '3']];
 const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
 const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
 let cameraList = null, cameraMenu = null;
@@ -2192,15 +2215,15 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '5' }] }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }] }]);
 }
 
 function syncCameraMenu() {
   const walking = walker.active || walker.placing;
   cameraList?.setActive(walking ? 'walk' : viewNow);
   const name = walking ? 'Walk' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
-  $('cameraName').textContent = name || 'Free view';
-  $('btnCamera').title = name ? `Camera: ${name}` : 'Camera: a free view';
+  $('cameraName').textContent = name;
+  $('btnCamera').title = `Camera: ${name}`;
 }
 // Walking starts from Walk in the camera list, which usually first asks where to start: the figure
 // follows the cursor, a marker shows the spot under it, and a click there starts walking (as Street
@@ -2310,7 +2333,7 @@ function startWalkAt(e) {
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
-  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>5</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
+  Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>4</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off, lifting you a few metres if you are standing: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });

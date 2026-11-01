@@ -65,6 +65,17 @@
       </g>
     </svg>
   </div>
+  <div id="compassOverlay" class="compass-overlay" aria-hidden="true" hidden>
+    <svg viewBox="-34 -34 68 68">
+      <circle class="compass-overlay-face" r="33"/>
+      <g id="compassOverlayDial">
+        <path class="compass-arrow" d="M0-12 6.5 11 0 7-6.5 11Z" transform="scale(0.6)"/>
+        <path class="compass-tick" d="M26 0h4M0 26v4M-26 0h-4"/>
+        <text id="compassOverlayN" x="0" y="-27">N</text>
+      </g>
+      <circle class="compass-overlay-centre" r="1.2"/>
+    </svg>
+  </div>
 
   <div class="side">
   <aside id="layersPanel" class="chrome panel layers-panel" hidden>
@@ -237,11 +248,12 @@
   <!-- The Controls dialog's content (toolbar ? button or the ? key) -->
   <template id="helpBody">
       <dl class="help-list">
-        <dt>Orbit</dt><dd>Right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
+        <dt>Orbit</dt><dd>Perspective and most named views: right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
+        <dt>Rotate</dt><dd>Top: right-drag around the middle of the window, as if it were a dial (a large compass marks the middle while you drag) · Elevation: right-drag left or right · both: drag the compass</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
-        <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>5</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
+        <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>4</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
@@ -251,7 +263,7 @@
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
-        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>5</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
+        <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>
 

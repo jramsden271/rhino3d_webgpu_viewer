@@ -6,6 +6,16 @@ const Z_UP = [0, 0, 1];
 const PITCH_LIMIT = (89.99 * Math.PI) / 180;
 const DEFAULT_FOV = (40 * Math.PI) / 180;
 const FIT_MARGIN = 1.15; // zoom extents: leaves the model clear of the toolbars
+const LEVEL_TOLERANCE = 1e-4; // radians: a camera this close to straight down or level counts as it
+
+// How a camera may move, from its projection and tilt: a parallel camera looking straight down turns
+// like a dial ('top'), a parallel camera looking level turns left and right ('elevation'), and any
+// other orbits freely ('orbit').
+const movementRules = (c) => {
+  if (c.ortho && c.pitch > PITCH_LIMIT - LEVEL_TOLERANCE) return 'top';
+  if (c.ortho && Math.abs(c.pitch) < LEVEL_TOLERANCE) return 'elevation';
+  return 'orbit';
+};
 
 class Camera {
   constructor() {
@@ -91,11 +101,7 @@ class Camera {
     const views = {
       perspective: [-60, 28, false],
       top: [-90, 89.99, true],
-      bottom: [-90, -89.99, true],
-      front: [-90, 0, true],
-      back: [90, 0, true],
-      right: [0, 0, true],
-      left: [180, 0, true],
+      elevation: [-90, 0, true],
     };
     const [y, p, o] = views[name];
     this.yaw = y * deg; this.pitch = p * deg; this.ortho = o; this.fov = DEFAULT_FOV;

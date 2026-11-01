@@ -27,18 +27,19 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 
 | Action | Mouse / touch | Keys |
 | --- | --- | --- |
-| Orbit (around the point under the cursor) | Right-drag, Alt + left-drag · one finger (in Top, Front and Right views: Alt + left-drag only) | |
-| Pan | Left- or middle-drag, Shift + right-drag · two fingers · in Top, Front and Right views also right-drag and one finger | |
+| Orbit (around the point under the cursor) | Perspective and most named views: right-drag, Alt + left-drag · one finger | |
+| Rotate about Z | Top: right-drag around the middle of the window · Elevation: right-drag left or right | |
+| Pan | Left- or middle-drag, Shift + right-drag · two fingers · in Top and Elevation also one finger | |
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: double-click the N or a tick | |
-| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `5` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
+| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
-| Cameras | Toolbar: camera button | `1` Top · `2` Front · `3` Right · `4` Perspective · `5` Walk |
+| Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
 | Layers · Sun panel | Toolbar | `L` · `S` |
@@ -51,12 +52,19 @@ The **compass** at the bottom left points to north on the screen, from the model
 carries on outside the compass, where it is easier to control. Double-click its **N**, or the
 tick for east, south or west, to turn the view to face that way, keeping its tilt.
 
-The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right, Perspective and Walk, with any views
-saved by name in the Rhino file above them. Top, Front and Right are parallel (no perspective)
-views, as in Rhino; orbiting a parallel view turns it into a free view. Each camera remembers
-where you left it: leave one and come back, and it is where it was (including after walking).
-The first visit to a camera, or picking the one you are already in, gives its default: the
-extents for the four built-in cameras, the saved view for a named one.
+The **camera button** on the toolbar shows the current view and opens a list of Top, Elevation, Perspective and Walk, with any views
+saved by name in the Rhino file above them. Top and Elevation are parallel (no perspective) views
+that never tilt: Top always looks straight down and Elevation always looks level. Both pan and
+zoom, and turn about the Z axis through the middle of the view, by dragging the compass or by
+right-dragging: in Top the whole window is a dial, with a large see-through compass marking its middle while you
+drag, and in Elevation only the drag left or right
+counts. Each camera remembers where you left it, including its rotation: leave one and come back,
+or reload the model, and it is where it was (including after walking). The first visit to a camera,
+or picking the one you are already in, gives its default, including its rotation: the extents for
+the built-in cameras, the saved view for a named one. Top and Elevation start out facing the model's
++Y direction. The rules come from the camera, not its name: a named view that is parallel and looks
+straight down moves like Top, one that is parallel and exactly level moves like Elevation, and any
+other orbits freely.
 
 Named views are read-only and are matched as closely as this camera allows: the position,
 direction, lens and parallel zoom come from the file, and all of the saved frame stays in view
