@@ -156,6 +156,15 @@ it down to every block inside, once; the latest setting wins for a block with se
 can be undone, and it is written into a saved copy. Layer visibility is not affected: a sub-element on
 a layer that is off stays hidden.
 
+The same window can choose a **magic block**: geometry from the viewer's built-in library that
+replaces every instance of the block, for example a nicer tree for a simple tree crown. The library
+has a placeholder deciduous tree and a palm tree. Each instance is sized uniformly to the height of its
+block's box. A tree also needs ground to grow from, so its box reaches down to the highest visible
+surface below the box's centre (vegetation doesn't count), and stops at its own bottom if there is
+none. Hiding or showing what is below moves it to match. Trees also get their own fixed turn. The
+leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
+The tag then reads "magic", and the sub-element setting doesn't apply.
+
 The Layers, Block definitions and Sun panels close with their × button or from the toolbar. The first
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
@@ -249,7 +258,7 @@ All of these changes, and the north angle, are **remembered automatically** in t
 each model (by file name and size) and restored when you open it again. **Download .3dm** in the file properties
 (click the file name) writes a *copy* of the .3dm with them: layer colours, a Rhino material
 for each layer material set in the viewer (assigned as the layer's render material),
-changed object colour and material sources, and block sub-element settings. Your original file is not touched. Materials with a magic material are named after it (e.g.
+changed object colour and material sources, block sub-element settings and magic blocks. Top-level instances of a block with a magic block are removed, and an instance of a new definition holding it takes the place of each, on the same layer. No existing block definition changes, so instances inside other blocks stay as they are, and the viewer says which. Your original file is not touched. Materials with a magic material are named after it (e.g.
 "Water – 010_WaterBody"), so Auto matches them again when the copy is reopened. "Always off"
 is not saved in the copy.
 
@@ -587,6 +596,8 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | --- | --- |
 | `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort |
 | `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
+| `node tools/test-magic.js` | Checks where a magic block is placed |
+| `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
 | `node tools/probe2.js <file.3dm>` | Prints the shapes of values returned by rhino3dm |
@@ -598,6 +609,7 @@ dist/index.html          the released viewer (the only file anyone needs)
 dist-dev/index.html      development build (git-ignored)
 build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist-dev/, or dist/ with --release
 src/index.html, style.css  page and UI
+src/magicblocks.js       magic block library and how an instance is placed
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour

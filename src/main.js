@@ -318,6 +318,7 @@ async function openBytes(name, bytes, handle = null) {
     model.handle = handle;
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     model.blocks = blockTable(m);
+    model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
     // Rhino's point and spot lights light the scene as lamps (no shadows). Rhino's default
     // intensity (1) gives a lamp about as bright as a street light.
     state.lamps = (m.lights || []).map((l, i) => ({ name: l.name || `${l.dir ? 'Spot' : 'Point'} light ${i + 1}`, src: 'file', on: false,
@@ -347,6 +348,7 @@ async function openBytes(name, bytes, handle = null) {
     buildBlockList();
     if (nestedBlockOff()) await rebuildModel();
     applyLayerMaterials(false);
+    await settleMagicGround();
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
     const back = handle ? await restoreLinks(handle) : [];
     applyFileLocation(m.location);
@@ -431,6 +433,7 @@ function layerEffective(i) {
 
 function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
+  recheckMagicGround();
   saveViewState();
   redraw();
 }
@@ -589,6 +592,7 @@ function showBlocksHelp() {
   Dialog.open({ title: 'Block definitions', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
     <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
+    <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
     <p>Clicking a tag on a selected row sets all the selected blocks.</p>
     <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
@@ -612,6 +616,7 @@ const SUB_SETTINGS = [
 ];
 const layerRows = new RowSelection(), blockRows = new RowSelection();
 const blockSetting = (id) => state.blockSub[id] || 'default';
+const blockMagic = (id) => MAGIC_BY_ID[state.blockMagic[id]?.id] || null;
 const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
 const nestedBlockOff = () => [...state.blockOff].some((id) => model.blocks.get(id).parents.length);
 const objectOff = (i) => { const o = model.objects[i]; return state.hidden.has(i) || (o.k === 'inst' && state.blockOff.has(o.idef)); };
@@ -644,7 +649,7 @@ function blockReachable(id, seen = new Set()) {
   if (state.blockOff.has(id) || seen.has(id)) return false;
   seen.add(id);
   const b = model.blocks.get(id);
-  return b.tops.length > 0 || b.parents.some((p) => blockReachable(p, seen));
+  return b.tops.length > 0 || b.parents.some((p) => !blockMagic(p) && blockReachable(p, seen));
 }
 
 function buildBlockList() {
@@ -683,9 +688,10 @@ function refreshBlockList() {
     row.hidden = !name.includes(filter);
     row.classList.toggle('off', !on);
     row.classList.toggle('inherited-off', on && !blockReachable(key));
-    tag.textContent = set;
-    tag.classList.toggle('set', set !== 'default');
-    tag.title = `${SUB_SETTINGS.find(([id]) => id === set)[1]}. Click to change.`;
+    const magic = blockMagic(key);
+    tag.textContent = magic ? 'magic' : set;
+    tag.classList.toggle('set', !!magic || set !== 'default');
+    tag.title = `${magic ? `Magic block: ${magic.name}` : SUB_SETTINGS.find(([id]) => id === set)[1]}. Click to change.`;
   }
   blockRows.keepShown();
 }
@@ -719,11 +725,11 @@ function openBlockMenu(ids, row, at) {
     { label: 'Select instances', n: instances.length, run: () => selectObjects(instances) },
     subs.length && { label: 'Select sub-blocks', n: subs.length, run: () => revealBlocks([...ids, ...subs]) },
     '-',
-    { label: 'Sub-element setting…', run: () => openBlockDialog(ids, row) },
+    { label: 'Block settings…', run: () => openBlockDialog(ids, row) },
   ].filter(Boolean), at);
 }
 
-// The window for these blocks' sub-element setting.
+// The window for these blocks' magic block and sub-element setting.
 let blockDialogIds = [];
 function openBlockDialog(ids, anchor) {
   blockDialogIds = ids;
@@ -735,16 +741,21 @@ function syncBlockDialog() {
   const ids = blockDialogIds, one = ids.length === 1 ? model.blocks.get(ids[0]) : null;
   const values = new Set(ids.map(blockSetting)), value = values.size === 1 ? [...values][0] : null, subs = subBlocks(ids);
   $('blockTitle').textContent = $('blockTitle').title = one ? one.name : `${ids.length} blocks`;
+  const magics = new Set(ids.map((id) => blockMagic(id)?.id || 'none')), magic = magics.size === 1 ? [...magics][0] : null, anyMagic = ids.some(blockMagic);
+  $('blockMagic').innerHTML = (magic ? '' : '<option value="" selected disabled>Mixed</option>') +
+    [['none', 'None'], ...MAGIC_BLOCKS.map((b) => [b.id, b.name])].map(([id, label]) => `<option value="${id}"${id === magic ? ' selected' : ''}>${label}</option>`).join('');
+  $('blockMagicHint').textContent = !anyMagic ? '' : `Replaces every instance, sized to the height of the block.${ids.some((id) => blockMagic(id) && model.blocks.get(id).parents.length) ? ' In a saved copy, instances inside other blocks stay as they are, as block definitions aren’t changed.' : ''}`;
+  $('blockSub').disabled = anyMagic;
   $('blockSub').innerHTML = (value ? '' : '<option value="" selected disabled>Mixed</option>') +
     SUB_SETTINGS.map(([id, label]) => `<option value="${id}"${id === value ? ' selected' : ''}>${label}</option>`).join('');
-  $('blockHint').textContent = value ? SUB_SETTINGS.find(([id]) => id === value)[2] : 'These blocks have different settings.';
+  $('blockHint').textContent = anyMagic ? 'A magic block’s colours and materials come from its own layers.' : value ? SUB_SETTINGS.find(([id]) => id === value)[2] : 'These blocks have different settings.';
   const apply = $('blockApplySubs');
   apply.textContent = subs.length ? `Apply setting to sub-blocks (${subs.length})` : 'Apply setting to sub-blocks';
-  apply.disabled = !subs.length || !value;
-  apply.title = !subs.length ? 'No sub-blocks inside' : !value ? 'Choose one setting first' : '';
-  $('blockSubsHint').textContent = subs.length ? 'The setting doesn’t change sub-blocks until applied to them, and applying it changes them everywhere they are used.' : '';
+  apply.disabled = !subs.length || !value || anyMagic;
+  apply.title = !subs.length ? 'No sub-blocks inside' : anyMagic ? 'Doesn’t apply to a magic block' : !value ? 'Choose one setting first' : '';
+  $('blockSubsHint').textContent = subs.length && !anyMagic ?'The setting doesn’t change sub-blocks until applied to them, and applying it changes them everywhere they are used.' : '';
   const links = (items, heading) => (items.length ? `${heading}: ${items.slice(0, 6).join(', ')}${items.length > 6 ? ` and ${items.length - 6} more` : ''}` : '');
-  const layers = [...new Set(ids.flatMap((id) => model.blocks.get(id).layers))];
+  const layers = [...new Set(ids.flatMap((id) => { const m = blockMagic(id); return m ? m.parts.map((p) => model.magicLayers[p.layer]) : model.blocks.get(id).layers; }))];
   $('blockLayers').innerHTML = links(layers.map((l) => `<button class="link" data-layer="${l}">${escapeHtml(model.layers[l].fullPath)}</button>`), 'Sub-element layers');
   $('blockParents').innerHTML = one ? links(topParents(one.id).map(blockLink), `Top-level parent block${topParents(one.id).length > 1 ? 's' : ''}`) : '';
 }
@@ -754,6 +765,15 @@ async function setBlockSetting(ids, value, label) {
   for (const id of ids) { if (value === 'default') delete state.blockSub[id]; else state.blockSub[id] = value; }
   await rebuildModel();
   saveEdits();
+  afterBlockChange();
+}
+
+async function setBlockMagic(ids, value, label) {
+  recordUndo(label);
+  for (const id of ids) { if (value === 'none') delete state.blockMagic[id]; else state.blockMagic[id] = { id: value }; }
+  await rebuildModel();
+  saveEdits();
+  buildLayerTree();
   afterBlockChange();
 }
 
@@ -776,6 +796,10 @@ function bindBlocksPanel() {
   const close = () => { $('blockDialog').hidden = true; };
   $('blockClose').addEventListener('click', close);
   $('blockDone').addEventListener('click', close);
+  $('blockMagic').addEventListener('change', (e) => {
+    const n = blockDialogIds.length;
+    setBlockMagic(blockDialogIds, e.target.value, `Change magic block (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
+  });
   $('blockSub').addEventListener('change', (e) => {
     const n = blockDialogIds.length;
     setBlockSetting(blockDialogIds, e.target.value, `Change sub-element setting (${n > 1 ? `${n} blocks` : model.blocks.get(blockDialogIds[0]).name})`);
@@ -818,12 +842,13 @@ function bindLayerMenu() {
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
 // layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
 // in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
+// state.blockMagic: block definition id -> its magic block, { id } (see magicblocks.js).
 // Everything is remembered in this browser per model, and can be written into a
 // copy of the .3dm.
 
 const rgbHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
-const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, blockSub: {} });
+const NO_EDITS = () => ({ layerMat: {}, layerColor: {}, layerSpecial: {}, objEdits: {}, blockSub: {}, blockMagic: {} });
 Object.assign(state, NO_EDITS());
 
 // Swatches and dialogs show materials in Rendered view and display colours otherwise.
@@ -893,15 +918,15 @@ const oldMaterialsKey = () => model && `3dm-viewer:materials:${model.name}:${mod
 // Layers whose material or magic material was set in the viewer.
 const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...Object.keys(state.layerSpecial)]);
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
-  obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length });
+  obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length, magic: Object.keys(state.blockMagic).length });
 
 function saveEdits() {
   const n = editCount(), north = state.sun.north;
   try {
     localStorage.removeItem(oldMaterialsKey());
-    if (n.mat + n.col + n.obj + n.blocks || north !== fileNorth()) {
-      const { layerMat, layerColor, layerSpecial, objEdits, blockSub } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, north }));
+    if (n.mat + n.col + n.obj + n.blocks + n.magic || north !== fileNorth()) {
+      const { layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic } = state;
+      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic, north }));
     } else localStorage.removeItem(editsKey());
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
@@ -930,6 +955,48 @@ async function rebuildModel() {
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
+  await settleMagicGround();
+}
+
+function pushMagicBatches() {
+  renderer.setModel(buildBatches(model));
+  applyLayerVisibility();
+  applyLayerMaterials(false);
+  pushObjectFlags();
+}
+
+// Rebuild if a build placed magic blocks whose ground isn't known yet. Their source blocks are gone
+// from the batches by then, and magic blocks are left out of the look down, so neither is taken for
+// ground. Resolves once they stand on it.
+async function settleMagicGround() {
+  if (!model.magicMissing) return;
+  await lookForMagicGround([...model.magicPoints].filter(([key]) => !model.magicGround.has(key)));
+  pushMagicBatches();
+}
+
+// Finds the ground under [key, point] entries and records it. Returns whether any of it moved.
+async function lookForMagicGround(entries) {
+  const u = 1 / model.metresPerUnit, bottom = Math.min(...renderer.batches.map((b) => b.min[2])) - u;
+  const found = await renderer.groundBelow(entries.map(([, p]) => p), bottom, 0.05 * u, (b) => model.layers[b.layer]?.magic);
+  let moved = false;
+  entries.forEach(([key], i) => {
+    const was = model.magicGround.get(key), z = found[i];
+    if (was === undefined || (was == null) !== (z == null) || Math.abs(was - z) > 0.01 * u) moved = true;
+    model.magicGround.set(key, z);
+  });
+  return moved;
+}
+
+// What is visible decides what is ground, so look again when that may have changed, and rebuild only
+// if a magic block has to move.
+let groundTimer = 0;
+function recheckMagicGround() {
+  if (!model?.magicPoints?.size) return;
+  clearTimeout(groundTimer);
+  groundTimer = setTimeout(async () => {
+    const seen = model;
+    if (seen?.magicPoints?.size && await lookForMagicGround([...seen.magicPoints]) && seen === model) pushMagicBatches();
+  }, 200);
 }
 
 // Put the objects back as they are in the file, then apply attribute changes (object id ->
@@ -954,7 +1021,7 @@ function applyObjectEdits(objEdits = {}) {
 
 const history = { undo: [], redo: [], coalesce: null };
 const UNDO_LIMIT = 100;
-const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, blockSub: state.blockSub,
+const editSnapshot = () => structuredClone({ layerMat: state.layerMat, layerColor: state.layerColor, layerSpecial: state.layerSpecial, objEdits: state.objEdits, blockSub: state.blockSub, blockMagic: state.blockMagic,
   north: state.sun.north });
 
 // Call before a change. Repeated changes with the same key (dragging a slider or colour picker)
@@ -996,12 +1063,14 @@ async function stepHistory(redo) {
 
 // Make the given edit state current, rebuilding only if objects or foliage normals change.
 async function restoreEdits(e) {
-  const objectsChange = JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits) || JSON.stringify(state.blockSub) !== JSON.stringify(e.blockSub);
+  const magicChange = JSON.stringify(state.blockMagic) !== JSON.stringify(e.blockMagic);
+  const objectsChange = magicChange || JSON.stringify(state.objEdits) !== JSON.stringify(e.objEdits) || JSON.stringify(state.blockSub) !== JSON.stringify(e.blockSub);
   const vegBefore = model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
-  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial), blockSub: structuredClone(e.blockSub) });
+  Object.assign(state, { layerMat: structuredClone(e.layerMat), layerColor: structuredClone(e.layerColor), layerSpecial: structuredClone(e.layerSpecial), blockSub: structuredClone(e.blockSub), blockMagic: structuredClone(e.blockMagic) });
   const vegChange = vegBefore !== model.layers.map((_, i) => layerSpecialId(i) === MAT_VEGETATION).join();
   if (objectsChange) applyObjectEdits(e.objEdits);
   if (objectsChange || vegChange) await rebuildModel();
+  if (magicChange) buildLayerTree();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
   if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
@@ -1027,7 +1096,8 @@ function loadEdits() {
     state.layerMat[id] = t === MAT_WATER ? { alpha: m.alpha, gloss: m.gloss } : { rgb: m.rgb, alpha: m.alpha, gloss: m.gloss };
   }
   for (const [id, set] of Object.entries(e.blockSub || {})) if (model.blocks.has(id) && SUB_SOURCES[set]) state.blockSub[id] = set;
-  Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id) });
+  for (const [id, set] of Object.entries(e.blockMagic || {})) if (model.blocks.has(id) && MAGIC_BY_ID[set?.id]) state.blockMagic[id] = set;
+  Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id), magicOf: blockMagic });
   // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
   for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
   applyObjectEdits(e.objEdits);
@@ -1037,9 +1107,10 @@ function loadEdits() {
   if (n.mat) parts.push(`materials on ${n.mat} layer${n.mat > 1 ? 's' : ''}`);
   if (n.obj) parts.push(`${n.obj.toLocaleString()} object${n.obj > 1 ? 's' : ''} changed`);
   if (n.blocks) parts.push(`sub-element settings on ${n.blocks.toLocaleString()} block${n.blocks > 1 ? 's' : ''}`);
+  if (n.magic) parts.push(`magic blocks on ${n.magic.toLocaleString()} block${n.magic > 1 ? 's' : ''}`);
   if (model.savedNorth != null && model.savedNorth !== fileNorth()) parts.push('the north angle');
   model.restored = parts;
-  return n.obj > 0 || n.blocks > 0 || Object.keys(state.layerSpecial).length > 0;
+  return n.obj > 0 || n.blocks > 0 || n.magic > 0 || Object.keys(state.layerSpecial).length > 0;
 }
 
 // Layer visibility, hidden objects and the cameras are the state of looking at a model rather than
@@ -1266,8 +1337,8 @@ function bindMaterialDialog() {
 }
 
 // Write a copy of the .3dm with the viewer's changes (the original is never touched): layer
-// colours, a Rhino material for each layer set in the viewer, object colour/material sources and
-// block sub-element settings.
+// colours, a Rhino material for each layer set in the viewer, object colour/material sources,
+// block sub-element settings and magic blocks (writeMagicBlocks).
 async function downloadCopy() {
   if (!model || !model.bytes) return;
   try {
@@ -1314,6 +1385,7 @@ async function downloadCopy() {
         if (a) { a.colorSource = CS[src.cs]; a.materialSource = MS[src.ms]; }
       }
     }
+    const keptNested = writeMagicBlocks(rhino, doc, rgba);
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
     const out = doc.toByteArray();
@@ -1323,12 +1395,67 @@ async function downloadCopy() {
     a.download = model.name.replace(/\.3dm$/i, '') + ' - viewer edits.3dm';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    if (keptNested.length) notice(`Saved with the original geometry inside other blocks, as block definitions aren’t changed: ${keptNested.join(', ')}.`, false, 8000);
   } catch (e) {
     console.error(e);
     notice(`Could not write the file: ${e.message || e}`, true);
   } finally {
     hideBusy();
   }
+}
+
+// In a copy, top-level instances replaced by a magic block become instances of a new block definition
+// holding it, on new layers, with the attributes the instances had. No existing definition changes,
+// so the replaced ones stay, and instances inside other blocks stay as they are.
+// Returns the names of the blocks left with such instances.
+function writeMagicBlocks(rhino, doc, rgba) {
+  const used = new Map(); // magic block -> top-level instances
+  for (const it of model.objects) {
+    const magic = it.k === 'inst' && it.magicXf && blockMagic(it.idef);
+    if (magic) used.set(magic, [...(used.get(magic) || []), it]);
+  }
+  const lt = doc.layers(), mats = doc.materials(), idefs = doc.instanceDefinitions(), objs = doc.objects();
+  const names = new Set(), layerIndex = {};
+  for (let i = 0; i < idefs.count; i++) names.add(idefs.get(i).name);
+  let parentId = null;
+  const fileLayer = (key) => {
+    if (layerIndex[key] != null) return layerIndex[key];
+    if (!parentId) {
+      const p = new rhino.Layer();
+      Object.assign(p, { name: MAGIC_PARENT_LAYER, color: rgba([0.5, 0.5, 0.5]) });
+      parentId = lt.get(lt.add(p)).id;
+    }
+    const i = model.magicLayers[key], m = new rhino.Material(), l = new rhino.Layer();
+    m.name = model.layers[i].name;
+    m.diffuseColor = rgba(layerLook(i).rgb);
+    mats.add(m);
+    Object.assign(l, { name: model.layers[i].name, parentLayerId: parentId, color: rgba(layerDisplayRgb(i)), renderMaterialIndex: mats.count - 1 });
+    return (layerIndex[key] = lt.add(l));
+  };
+  for (const [magic, items] of used) {
+    const meshes = [], attrs = [];
+    for (const part of magicMeshes(magic, 1 / model.metresPerUnit)) {
+      const mesh = new rhino.Mesh(), a = new rhino.ObjectAttributes();
+      for (let i = 0; i < part.pos.length; i += 3) mesh.vertices().add(part.pos[i], part.pos[i + 1], part.pos[i + 2]);
+      for (let i = 0; i < part.idx.length; i += 3) mesh.faces().addTriFace(part.idx[i], part.idx[i + 1], part.idx[i + 2]);
+      mesh.normals().computeNormals();
+      a.layerIndex = fileLayer(part.layer);
+      meshes.push(mesh); attrs.push(a);
+    }
+    let name = `Magic block - ${magic.name}`;
+    for (let k = 2; names.has(name); k++) name = `Magic block - ${magic.name} ${k}`;
+    names.add(name);
+    const defId = idefs.get(idefs.add(name, '', '', '', [0, 0, 0], meshes, attrs)).id;
+    for (const it of items) {
+      const o = objs.findId(it.id);
+      if (!o) continue;
+      const a = o.attributes(), p = it.magicXf, xf = new rhino.Transform(1);
+      objs.delete(it.id);
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) xf[`m${r}${c}`] = p[r * 4 + c] + (c === 3 ? model.origin[r] : 0);
+      objs.addInstanceObject(new rhino.InstanceReference(defId, xf), a);
+    }
+  }
+  return Object.keys(state.blockMagic).filter((id) => model.blocks.get(id).parents.some((p) => !blockMagic(p))).map((id) => model.blocks.get(id).name);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1354,7 +1481,10 @@ function resetObjectState() {
   syncHiddenButton();
 }
 
+let flagsHidden = '';
 function pushObjectFlags() {
+  const hidden = `${state.hidden.size},${state.blockOff.size}`;
+  if (hidden !== flagsHidden) { flagsHidden = hidden; recheckMagicGround(); }
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
   if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
@@ -1415,7 +1545,7 @@ function sourceControl(objs) {
   }
   if (src === 1 && isMat) {
     const mi = same((o) => o.ai.mi) ? (model.materials[objs[0].ai.mi] ? objs[0].ai.mi : -1) : null;
-    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
+    html += `<select data-mi aria-label="Object material">${opts([[-1, 'Default material'], ...model.materials.filter((m) => !m.magic).map((m) => [m.index, materialLabel(m.index)])], mi)}</select>`;
   }
   html += '</div>';
   // What it resolves to (single object), and what "by parent" means for blocks.
@@ -1613,7 +1743,7 @@ function renderFileInfo() {
     s.curves && ['Curves', fmt(s.curves)],
     s.points && ['Points', fmt(s.points)],
     s.instances && ['Block instances', fmt(s.instances)],
-    ['Layers', fmt(model.layers.length)],
+    ['Layers', fmt(model.layers.filter((l) => !l.magic).length)],
     ['Location', loc ? `${loc.lat.toFixed(4)}°, ${loc.lon.toFixed(4)}°` : 'Not set'],
     hiddenTypes && ['Not shown', hiddenTypes],
     missing && ['No render mesh', missing],
@@ -1627,6 +1757,7 @@ function renderFileInfo() {
   if (n.mat) saved.push(`Materials set on ${plural(n.mat, 'layer')}`);
   if (n.obj) saved.push(`${plural(n.obj, 'object')} with changed colour or material`);
   if (n.blocks) saved.push(`Sub-element settings on ${plural(n.blocks, 'block')}`);
+  if (n.magic) saved.push(`Magic blocks on ${plural(n.magic, 'block')}`);
   const changes = [...saved];
   if (nHidden) changes.push(`${plural(nHidden, 'object')} hidden`);
   if (layerOn.some((on, i) => on !== model.layers[i].visible)) changes.push('Layer visibility changed');
@@ -1653,9 +1784,9 @@ async function revertChanges() {
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
-  if (n.mat + n.col + n.obj + n.blocks || state.sun.north !== north) recordUndo('Revert changes');
+  if (n.mat + n.col + n.obj + n.blocks + n.magic || state.sun.north !== north) recordUndo('Revert changes');
   setSun({ north });
-  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length || n.blocks || nestedBlockOff();
+  const rebuild = Object.keys(state.objEdits).length || Object.keys(state.layerSpecial).length || n.blocks || n.magic || nestedBlockOff();
   Object.assign(state, NO_EDITS());
   state.hidden.clear();
   state.blockOff.clear();
@@ -1669,6 +1800,7 @@ async function revertChanges() {
   applyLayerVisibility();
   applyLayerMaterials();
   buildLayerTree.refresh?.();
+  if (n.magic) buildLayerTree();
   afterBlockChange();
   pushObjectFlags();
   syncHiddenButton();
@@ -1802,6 +1934,7 @@ function bindSunPanel() {
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
+  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
   $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncSunPanel(); redraw(); });
   $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
   $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
@@ -1938,7 +2071,6 @@ function setCustomLocation(c, typing = false) {
 // A weather file from the Weather file dialog or dropped onto the window. A new one is used
 // for the location straight away, when it has one.
 async function loadEpw(file) {
-  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
   const bytes = new Uint8Array(await file.arrayBuffer());
   try { setEpw(EPW.fromBytes(bytes, file.name), bytes); }
   catch (e) { notice(`Could not read ${file.name}: ${e.message}`, true); return; }

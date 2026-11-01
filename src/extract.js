@@ -338,6 +338,7 @@ async function extractScene(rhino, doc, onProgress) {
     l.materialRgb = m ? m.rgb : DEFAULT_MATERIAL.rgb;
     l.materialAlpha = m ? m.alpha : 1;
   }
+  const magicLayers = addMagicLayers(layers, materials);
 
   // Attribute snapshot: plain values, so items and block definitions outlive the document.
   // cs colour source (0 layer, 1 object, 2 material, 3 parent); ms material source (0 layer,
@@ -470,7 +471,7 @@ async function extractScene(rhino, doc, onProgress) {
     }
     items.push(it);
   }
-  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, defs, items,
+  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
     stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
 }
 
@@ -533,6 +534,36 @@ function blockTable(scene) {
   return out;
 }
 
+// A block definition's box in its own coordinates, sub-blocks included ([x0, y0, z0, x1, y1, z1]), or
+// null if it holds no geometry.
+function defBox(scene, id) {
+  const boxes = (scene.defBoxes ||= new Map());
+  if (boxes.has(id)) return boxes.get(id);
+  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], active = new Set();
+  const take = (p, xf) => {
+    for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) {
+      const v = xf[k * 4] * p[i] + xf[k * 4 + 1] * p[i + 1] + xf[k * 4 + 2] * p[i + 2] + xf[k * 4 + 3];
+      if (v < b[k]) b[k] = v;
+      if (v > b[k + 3]) b[k + 3] = v;
+    }
+  };
+  const walk = (defId, xf) => {
+    const def = scene.defs.get(defId);
+    if (!def || active.has(defId)) return;
+    active.add(defId);
+    for (const e of def.entries) {
+      if (e.k === 'inst') walk(e.idef, mulRM(xf, e.xf));
+      else if (e.k === 'mesh') for (const part of e.parts) take(part.pos, xf);
+      else take(e.k === 'line' ? e.segs : e.p, xf);
+    }
+    active.delete(defId);
+  };
+  walk(id, new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+  const box = b[0] <= b[3] ? b : null;
+  boxes.set(id, box);
+  return box;
+}
+
 // Directions to look for a batch's outermost vertices in, both ways along each: most of them level,
 // as models are mostly wide and flat.
 const EXTREME_AXES = (() => {
@@ -579,6 +610,13 @@ function buildBatches(scene) {
   // The block settings made in the viewer: a definition's sub-element setting, and whether it is
   // shown. A hidden block's top-level instances stay in the batches, hidden by their object flags.
   const subSetting = scene.subSetting || (() => null), blockShown = scene.blockShown || (() => true);
+  // The magic block replacing a definition (magicblocks.js), if any. The ground under its instances
+  // is found on the GPU, so not during a build: an instance not yet in scene.magicGround is placed
+  // without it, and magicMissing tells the caller to look it up and build again.
+  const magicOf = scene.magicOf || (() => null), unit = 1 / (scene.metresPerUnit || 1);
+  const magicGround = (scene.magicGround ||= new Map());
+  scene.magicPoints = new Map();
+  scene.magicMissing = false;
 
   let rec = null; // the item being emitted
   // Geometry that needs no transform (xf null) is the same on every rebuild, so its bounding
@@ -645,10 +683,31 @@ function buildBatches(scene) {
     a.nv += 1;
     stats.points++;
   };
+  const emitMagic = (block, idefId, xf, layerChain, depth, objId) => {
+    const box = defBox(scene, idefId);
+    if (!box) return;
+    const meshes = magicMeshes(block, unit), source = magicSource(box, xf);
+    let ground = null;
+    if (block.ground) {
+      const key = `${source.x.toFixed(3)},${source.y.toFixed(3)},${source.top.toFixed(3)}`;
+      scene.magicPoints.set(key, source);
+      if (magicGround.has(key)) ground = magicGround.get(key);
+      else scene.magicMissing = true;
+    }
+    const seed = seedOf(source.x, source.y, source.lo), place = magicPlacement(block, source, xf, ground, seed);
+    if (depth === 0) rec.magicXf = place;
+    for (const m of meshes) {
+      const L = scene.magicLayers[m.layer], look = resolveLook(scene, { layer: L, cs: 0, oc: [0, 0, 0], ms: 0, mi: -1 }, null);
+      layers[L].count++;
+      emitMesh(m, [...new Set([...layerChain, L])].sort((a, b) => a - b), look, place, special(look), seed, objId, L);
+    }
+  };
   const expanding = new Set(); // a damaged file could have a block contain itself
   const instantiate = (idefId, xf, parentLook, layerChain, depth, objId) => {
     const def = defs.get(idefId);
     if (!def || depth > 24 || expanding.has(idefId)) return;
+    const magic = magicOf(idefId);
+    if (magic) { emitMagic(magic, idefId, xf, layerChain, depth, objId); return; }
     expanding.add(idefId);
     const seed = seedOf(xf[3], xf[7], xf[11]), sources = SUB_SOURCES[subSetting(idefId)];
     for (const e of def.entries) {
@@ -671,6 +730,7 @@ function buildBatches(scene) {
 
   items.forEach((it, objId) => {
     rec = it;
+    it.magicXf = null;
     it.min = [Infinity, Infinity, Infinity]; it.max = [-Infinity, -Infinity, -Infinity]; it.triangles = 0;
     it.layer = it.ai.layer;
     const look = resolveLook(scene, it.ai, null), ls = [it.ai.layer];

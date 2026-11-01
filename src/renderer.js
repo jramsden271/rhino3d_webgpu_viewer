@@ -1583,16 +1583,10 @@ class Renderer {
       this.probeBufs = [0, 1, 2, 3, 4].map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
       this.probeBGs = null;
     }
-    // Rebuilt when the object flags buffer is replaced (it grows with the model). The screen-sized
-    // textures are not bound (the pick pipeline reads neither): a resize destroys them, and a
-    // bind group still holding one made every probe fail, leaving the walker with a stale map.
+    // Rebuilt when the object flags buffer is replaced (it grows with the model).
     if (!this.probeBGs || this.probeFlagsBuf !== this.objFlagsBuf) {
       this.probeFlagsBuf = this.objFlagsBuf;
-      const none = this.noGbuf.createView();
-      this.probeBGs = this.probeBufs.map((buffer) => dev.createBindGroup({ layout: this.frameLayout, entries: [
-        { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
-        { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
-        { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] }));
+      this.probeBGs = this.probeBufs.map((buffer) => this.probeBindGroup(buffer));
     }
     const views = [{ vp: M4.mul(M4.ortho(q.half, 1, 0, q.top - q.bottom), M4.lookAt([q.x, q.y, q.top], [q.x, q.y, q.top - 1], [0, 1, 0])), rect: [0, 0, G, G] }];
     const zm = (q.z0 + q.z1) / 2, hh = (q.z1 - q.z0) / 2;
@@ -1641,6 +1635,72 @@ class Renderer {
       return { ground: all.subarray(0, G * G * 4), walls };
     }, () => null).finally(() => { this.probeBusy = false; });
   }
+
+  // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys
+  // them, and a bind group still holding one made every probe fail, leaving the walker with a stale map.
+  probeBindGroup(buffer) {
+    const none = this.noGbuf.createView();
+    return this.device.createBindGroup({ layout: this.frameLayout, entries: [
+      { binding: 0, resource: { buffer } }, { binding: 1, resource: this.shadowView }, { binding: 2, resource: this.shadowCmp },
+      { binding: 3, resource: none }, { binding: 4, resource: { buffer: this.objFlagsBuf } },
+      { binding: 5, resource: this.lampShadowView }, { binding: 6, resource: none }] });
+  }
+
+  // The ground below many points at once, by the same rules as probe(): the highest visible surface
+  // below each point ({ x, y, top }), down to `bottom`, leaving out vegetation and any batch `skip`
+  // says to. Each point looks straight down through one texel of half size `half`. Resolves to an
+  // array of heights, null where there is nothing (or if the GPU rejected the work).
+  groundBelow(points, bottom, half, skip) {
+    const run = async () => {
+      const out = new Array(points.length).fill(null);
+      if (!this.batches.length) return out;
+      const dev = this.device, S = PROBE.groundBatch, U = GPUBufferUsage;
+      if (!this.groundTex) {
+        const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+        this.groundTex = dev.createTexture({ size: [S, S], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.groundDepth = dev.createTexture({ size: [S, S], format: DEPTH, usage: RA });
+        this.groundRead = dev.createBuffer({ size: S * S * 16, usage: U.MAP_READ | U.COPY_DST });
+        this.groundBuf = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
+      }
+      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION && !skip(b));
+      const group = this.probeBindGroup(this.groundBuf), color = this.groundTex.createView(), depth = this.groundDepth.createView();
+      for (let from = 0; from < points.length; from += S * S) {
+        const n = Math.min(S * S, points.length - from);
+        dev.pushErrorScope('validation');
+        for (let i = 0; i < n; i++) {
+          const p = points[from + i], vp = M4.mul(M4.ortho(half, 1, 0, Math.max(p.top - bottom, half)), M4.lookAt([p.x, p.y, p.top], [p.x, p.y, p.top - 1], [0, 1, 0]));
+          dev.queue.writeBuffer(this.groundBuf, 0, Float32Array.from(vp));
+          const enc = dev.createCommandEncoder(), load = i ? 'load' : 'clear';
+          const pass = enc.beginRenderPass({
+            colorAttachments: [{ view: color, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: load, storeOp: 'store' }],
+            depthStencilAttachment: { view: depth, depthClearValue: 0, depthLoadOp: load, depthStoreOp: 'store' },
+          });
+          pass.setPipeline(this.pipes.pick);
+          pass.setViewport(i % S, Math.floor(i / S), 1, 1, 0, 1);
+          pass.setScissorRect(i % S, Math.floor(i / S), 1, 1);
+          pass.setBindGroup(0, group);
+          this.cull(vp, true);
+          for (const b of solid) {
+            if (!this.seen(b)) continue;
+            pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+            pass.setIndexBuffer(b.gpu.idx, 'uint32');
+            this.drawCells(pass, b);
+          }
+          pass.end();
+          if (i === n - 1) enc.copyTextureToBuffer({ texture: this.groundTex }, { buffer: this.groundRead, bytesPerRow: S * 16 }, [S, S]);
+          dev.queue.submit([enc.finish()]);
+        }
+        const failed = await dev.popErrorScope();
+        await this.groundRead.mapAsync(GPUMapMode.READ);
+        const v = new Float32Array(this.groundRead.getMappedRange());
+        if (!failed) for (let i = 0; i < n; i++) if (v[i * 4 + 3] > 0) out[from + i] = v[i * 4 + 2];
+        this.groundRead.unmap();
+      }
+      return out;
+    };
+    this.groundQueue = (this.groundQueue || Promise.resolve()).then(run, run);
+    return this.groundQueue;
+  }
 }
 
-const PROBE = { ground: 128, wallW: 32, wallH: 16 };
+const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };

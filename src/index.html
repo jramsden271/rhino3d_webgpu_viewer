@@ -200,6 +200,8 @@
   <div id="blockDialog" class="chrome popover" hidden role="dialog" aria-labelledby="blockTitle">
     <div class="panel-head"><span id="blockTitle" class="popover-title"></span><button class="x" id="blockClose" aria-label="Close">×</button></div>
     <div class="pop-body">
+      <label class="stack-row">Magic block <select id="blockMagic"></select></label>
+      <div class="fine" id="blockMagicHint"></div>
       <label class="stack-row">Sub-elements <select id="blockSub"></select></label>
       <div class="fine" id="blockHint"></div>
       <button class="btn small stretch" id="blockApplySubs"></button>
@@ -285,7 +287,7 @@
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
         <dt>Messages</dt><dd>The bell (top left) keeps the messages about this model, until you dismiss them or open another model</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
-        <dt>Blocks</dt><dd>The Block definitions panel lists the blocks in use · its checkbox hides every copy of a block · its tag chooses where the block's sub-elements get their colour and material · right-click for more</dd>
+        <dt>Blocks</dt><dd>The Block definitions panel lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
@@ -299,6 +301,7 @@
 <script src="../vendor/package/rhino3dm.min.js"></script>
 <script src="math.js"></script>
 <script src="materials.js"></script>
+<script src="magicblocks.js"></script>
 <script src="extract.js"></script>
 <script src="dialog.js"></script>
 <script src="cities.js"></script>
