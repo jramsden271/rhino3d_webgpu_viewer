@@ -14,6 +14,8 @@
 // Space jumps (an upward kick, then gravity). E and Q rise and sink at a steady speed, ignoring
 // gravity while held; sinking stops on the ground. With Fly on there is no gravity: the walker
 // hovers wherever E and Q leave it, stays level off edges, and lands when ground comes up to it.
+// Turning Fly on while standing lifts the walker a few metres first, after a crouch: the view dips,
+// pauses, and comes back to the horizontal on the way up.
 //
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
@@ -35,6 +37,8 @@ const WALK = {
   SUBSTEP: 0.1,     // longest single move, so thin walls cannot be stepped over
   GRAVITY: 9.81,
   JUMP: 3.5,        // take-off speed (m/s) of a jump: about 0.6 m high
+  LIFT: 10,         // take-off speed (m/s) on turning Fly on: about 5 m high
+  CROUCH: 0.12,     // seconds the view pauses, dipped by DIP, before that take-off
   CLIMB: 2,         // rising and sinking speed (m/s) with E and Q; Shift multiplies it by RUN
   GROUND_HALF: 1.5, // the ground map covers ±this around the walker
   REACH: 0.6,       // the wall views look this far out
@@ -45,6 +49,11 @@ const WALK = {
   DIP_HEIGHT: 10,   // a fall of this many metres gets all of DIP (linear from nothing)
   DIP_FADE: 20,     // a view this many degrees below the horizontal has no jerk (linear from DIP at level)
   JERK: 0.03,       // time constant for that jerk
+  BOB: 0.03,        // how far (m) the eye bobs above and below its height, at any speed
+  BOB_RATE: 2,      // bobs a second
+  BOB_RUN: 0.06,    // the same with Shift held
+  BOB_RUN_RATE: 2.8,
+  BOB_EASE: 0.12,   // time constant for the bob starting and dying away
 };
 
 const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
@@ -88,7 +97,7 @@ class Walker {
     this.pending = true;
     this.keys.clear();
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
-      lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, jerk: false, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
+      lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, jerk: false, crouch: 0, bob: 0, bobHeight: 0, bobPhase: 0, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
     this.fov0 = camera.fov;
     camera.distance = 5 * u; // keeps the near plane and haze sensible at eye level
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
@@ -133,9 +142,22 @@ class Walker {
   blur() { this.keys.clear(); }
 
   // Jumps from the ground (not while flying, where E rises instead).
-  jump() {
-    if (!this.grounded || this.settings.fly || performance.now() < this.lockUntil) return;
-    Object.assign(this, { grounded: false, vz: WALK.JUMP * this.u, air: 0, fallFrom: this.foot });
+  jump() { if (!this.settings.fly) this.kick(WALK.JUMP); }
+
+  // Fly was just turned on: crouches, then update() takes off, slowing to a hover as gravity would
+  // stop a jump. A view pointing up dips to below the horizontal.
+  lift() {
+    if (!this.active || !this.ready || this.crouch) return;
+    const lim = (89 * Math.PI) / 180;
+    this.jerk = Math.min(lim, Math.max(0, this.ctx.camera.pitch) + (WALK.DIP * Math.PI) / 180);
+    this.level = false;
+    this.crouch = WALK.CROUCH;
+  }
+
+  get ready() { return this.grounded && performance.now() >= this.lockUntil; }
+
+  kick(speed) {
+    if (this.ready) Object.assign(this, { grounded: false, vz: speed * this.u, air: 0, fallFrom: this.foot });
   }
 
   // A long fall on entry ends as soon as the person moves or clicks (unless flying: then the
@@ -148,6 +170,7 @@ class Walker {
 
   // Drag to look: dx, dy in CSS pixels. The view follows the pointer.
   turn(dx, dy) {
+    if (this.crouch) return; // over in a moment, and the dip has to finish where it started
     const { camera } = this.ctx, eye = camera.eye;
     const lim = (89 * Math.PI) / 180;
     this.level = this.jerk = false;
@@ -252,6 +275,7 @@ class Walker {
     const want = [(fwd[0] * mf + right[0] * mr) * sp, (fwd[1] * mf + right[1] * mr) * sp];
     this.vel = now < this.lockUntil ? [0, 0] : [this.vel[0] + (want[0] - this.vel[0]) * k, this.vel[1] + (want[1] - this.vel[1]) * k];
     if (!ml && Math.hypot(...this.vel) < 0.02) this.vel = [0, 0];
+    const p0 = this.pos;
     if (this.vel[0] || this.vel[1]) this.move([this.vel[0] * dt * u, this.vel[1] * dt * u]);
     const p = this.pos;
 
@@ -283,8 +307,8 @@ class Walker {
       this.air += dt;
       // Only a fall under gravity counts towards levelling the view on landing.
       if (climb || fly) this.fallFrom = this.foot;
-      if (fly && !climb) this.vz = 0;
-      else if (!climb) this.vz -= WALK.GRAVITY * u * dt;
+      if (!climb) this.vz -= WALK.GRAVITY * u * dt;
+      if (fly && !climb) this.vz = Math.max(0, this.vz); // rising slows as usual, then hovers
       const z = this.foot + this.vz * dt;
       // Rising passes through ledges; coming down (or hovering) lands on them.
       if (g != null && z <= g && this.vz <= 0) this.land(g);
@@ -294,9 +318,22 @@ class Walker {
       if (!this.grounded && (this.foot < mn[2] - 2 * u || (below == null && this.air > WALK.LOST && !fly))) this.lost(now);
     }
     this.lag *= Math.exp(-dt / WALK.EASE);
+    // The bob follows the distance really covered, so pushing against a wall does not bob. It stops
+    // in the air and while flying.
+    const moved = dt && this.grounded && !fly ? Math.hypot(p[0] - p0[0], p[1] - p0[1]) / u / dt : 0;
+    const run = this.ctx.shift();
+    this.bobHeight += ((moved > 0.1 ? (run ? WALK.BOB_RUN : WALK.BOB) : 0) - this.bobHeight) * (1 - Math.exp(-dt / WALK.BOB_EASE));
+    this.bobPhase = (this.bobPhase + 2 * Math.PI * (run ? WALK.BOB_RUN_RATE : WALK.BOB_RATE) * dt) % (2 * Math.PI);
+    this.bob = this.bobHeight * Math.sin(this.bobPhase) * u;
     if (this.jerk) {
       camera.pitch = this.jerk + (camera.pitch - this.jerk) * Math.exp(-dt / WALK.JERK);
-      if (this.jerk - camera.pitch < 0.003) { camera.pitch = this.jerk; this.jerk = false; this.level = true; }
+      if (this.jerk - camera.pitch < 0.003) { camera.pitch = this.jerk; this.jerk = false; this.level = !this.crouch; }
+    } else if (this.crouch) {
+      if ((this.crouch -= dt) <= 0) {
+        this.crouch = 0;
+        this.level = true;
+        if (fly) this.kick(WALK.LIFT); // unless Fly was turned off again
+      }
     } else if (this.level) {
       camera.pitch *= Math.exp(-dt / 0.15);
       if (camera.pitch < 0.003) { camera.pitch = 0; this.level = false; }
@@ -343,7 +380,7 @@ class Walker {
   }
 
   updateCamera() {
-    const { camera } = this.ctx, eye = [this.pos[0], this.pos[1], this.foot + (WALK.EYE * this.u) + this.lag];
+    const { camera } = this.ctx, eye = [this.pos[0], this.pos[1], this.foot + (WALK.EYE * this.u) + this.lag + this.bob];
     camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
   }
 }
