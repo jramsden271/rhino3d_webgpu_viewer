@@ -308,10 +308,12 @@ tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`
 drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
 the weather in the Weather panel and, when it has a latitude and longitude, the location.
 
-Click **Weather** on the toolbar for the **Weather panel**: the air temperature, relative
-humidity, wind speed and direction, cloud cover, and global horizontal, direct normal and diffuse
-horizontal irradiance at the Sun panel's date and time. Values are interpolated between the
-file's hourly records, each taken as the middle of its hour.
+Click **Weather** on the toolbar for the **Weather panel**, at the Sun panel's date and time. One
+row shows the air temperature, relative humidity and wind speed, with a compass arrow pointing
+the way the wind blows (north up; hover for the direction it comes from). **More** opens the
+cloud cover, the global horizontal, direct normal and diffuse horizontal irradiance, and the
+Cloud speed slider. Values are interpolated between the file's hourly records, each taken as the
+middle of its hour.
 
 ### Clouds and daylight
 
@@ -347,7 +349,7 @@ needs no location.
   moonlit at night, and hide the stars. The sun is hidden when a cloud is in front of it, which
   is exactly when the camera stands in that cloud's shadow.
 - **The clouds drift with the wind**, from the file's wind direction at its speed times the
-  **Cloud speed** slider (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
+  **Cloud speed** slider under **More** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
   up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
   drift easier to see. Like the water ripples, they stop after 15 s without input, or at once
   with **Animations** off in the render mode menu, which saves the graphics card work on large

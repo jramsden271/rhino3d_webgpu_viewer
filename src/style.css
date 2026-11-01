@@ -409,6 +409,10 @@ body.walking .walk-frame { display: block; }
 .sun-weather dt { color: var(--muted); }
 .sun-weather dd { margin: 0; }
 .sun-weather b { font-weight: 600; }
+.wx-now { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-now > span { display: inline-flex; align-items: center; gap: 4px; }
+.wx-now svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; }
+.wx-now .needle { fill: var(--accent); stroke: none; }
 #sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 /* North angle in the file panel */
 .north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }

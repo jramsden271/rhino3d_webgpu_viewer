@@ -122,13 +122,16 @@
       <span class="panel-actions"><label class="switch" title="Weather on/off: the weather file's clouds and, with the sun on, its sunshine and sky light"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close weather panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
-      <div class="field">
-        <div class="field-label"><span id="weatherSrc"></span><output id="weatherWhen" title="Date and time from the Sun panel"></output></div>
-        <div id="weatherBody" class="sun-weather"></div>
-      </div>
-      <div class="field" id="cloudSpeedField">
-        <div class="field-label"><span>Cloud speed</span><output id="cloudSpeedOut"></output></div>
-        <input type="range" id="cloudSpeed" min="0" max="100" step="1" title="The clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+      <div id="weatherBody" class="sun-weather"></div>
+      <div class="field" id="weatherMoreField">
+        <div class="field-label"><button class="field-toggle" id="weatherToggle" aria-controls="weatherDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>More</button></div>
+        <div id="weatherDetails" class="field-details" hidden>
+          <div id="weatherMore" class="sun-weather"></div>
+          <div class="field">
+            <div class="field-label"><span>Cloud speed</span><output id="cloudSpeedOut"></output></div>
+            <input type="range" id="cloudSpeed" min="0" max="100" step="1" title="The clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+          </div>
+        </div>
       </div>
     </div>
   </section>

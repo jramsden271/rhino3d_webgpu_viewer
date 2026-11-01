@@ -18,6 +18,7 @@ const state = {
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
   weatherPanel: false,
+  weatherMore: false, // the Weather panel's More section is open
   weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // details: the Details section is open.
@@ -1822,10 +1823,10 @@ function toggleWeatherPanel() {
 function syncWeather(month, day) {
   if (!state.weatherPanel) return;
   const el = $('weatherBody'), e = site.epw;
-  $('weatherSrc').textContent = e ? e.location.name || e.fileName : 'No weather file';
-  $('weatherSrc').title = e ? e.fileName : '';
-  $('weatherWhen').value = `${day} ${MONTHS[month - 1]} · ${fmtHour(state.sun.hour)}`;
-  $('cloudSpeedField').hidden = !e;
+  $('weatherMoreField').hidden = !e;
+  $('weatherToggle').setAttribute('aria-expanded', String(state.weatherMore));
+  $('weatherToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherMore);
+  $('weatherDetails').hidden = !state.weatherMore;
   $('cloudSpeed').value = clouds.speed;
   $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
   if (!e) {
@@ -1836,12 +1837,16 @@ function syncWeather(month, day) {
   const sky = weatherSky(e, state.sun.doy, state.sun.hour, activeLocation() ? sunPosition().altitude : 30);
   const cloud = !sky || sky.source === 'none' ? '—'
     : `<b>${Math.round(sky.cover * 10)}</b>/10 <span class="fine">${sky.source === 'observed' ? 'observed' : 'from radiation'}</span>`;
-  const wind = w.windSpeed === null ? '—' : w.windSpeed < 0.05 ? '<b>Calm</b>'
-    : `<b>${v(w.windSpeed, 1)}</b> m/s${w.windDirection === null ? '' : ` from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°)`}`;
-  el.innerHTML = `<dl class="wx">
-    <dt>Air temperature</dt><dd><b>${v(w.dryBulb, 1)}</b> °C</dd>
-    <dt>Relative humidity</dt><dd><b>${v(w.relativeHumidity)}</b>%</dd>
-    <dt>Wind</dt><dd>${wind}</dd>
+  const reading = (x, d, unit) => (x === null ? '—' : `<span><b>${x.toFixed(d)}</b>${unit}</span>`);
+  const blowing = w.windSpeed >= 0.05 && w.windDirection !== null; // null >= 0.05 is false
+  const windTitle = blowing ? `Wind from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°). The arrow points the way it blows, with north up.` : 'Wind';
+  // The file gives the direction the wind comes from; the arrow points the way it goes.
+  const needle = blowing ? `<path class="needle" transform="rotate(${(w.windDirection + 180).toFixed(1)} 12 12)" d="M12 5.5 15.5 18 12 15.6 8.5 18Z"/>` : '';
+  el.innerHTML = `<div class="wx-now">
+    <span title="Air temperature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg>${reading(w.dryBulb, 1, ' °C')}</span>
+    <span title="Relative humidity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.7 5.66 5.66a8 8 0 1 1-11.31 0Z"/></svg>${reading(w.relativeHumidity, 0, '%')}</span>
+    <span title="${windTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/>${needle}</svg>${w.windSpeed !== null && w.windSpeed < 0.05 ? '<b>Calm</b>' : reading(w.windSpeed, 1, ' m/s')}</span></div>`;
+  $('weatherMore').innerHTML = `<dl class="wx">
     <dt>Cloud cover</dt><dd title="${sky?.source === 'radiation' ? 'This file has no usable cloud observations, so the cover is estimated from the share of diffuse light, by day, and filled in overnight' : 'Total sky cover from the weather file'}">${cloud}</dd>
     <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
     <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
@@ -1933,6 +1938,7 @@ function setCustomLocation(c, typing = false) {
 // A weather file from the Weather file dialog or dropped onto the window. A new one is used
 // for the location straight away, when it has one.
 async function loadEpw(file) {
+  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
   const bytes = new Uint8Array(await file.arrayBuffer());
   try { setEpw(EPW.fromBytes(bytes, file.name), bytes); }
   catch (e) { notice(`Could not read ${file.name}: ${e.message}`, true); return; }
