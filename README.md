@@ -270,6 +270,11 @@ With the sun on and a weather file loaded, the weather shows in the sky and the 
 cloud on the toolbar's Weather button (filled white while on) and the switch on the Weather
 panel turn this on and off; off, the sky and light are a clear day's, as without a file.
 
+With the sun off, perspective views still show the clouds, as many as the file gives for the Sun
+panel's date and time and drifting with its wind, on a neutral daytime sky that does not change
+with the date or time. The model keeps its usual lighting, so there are no cloud shadows. This
+needs no location.
+
 - **Cloud cover** comes from the file's total sky cover (tenths), which nearly every EPW has,
   day and night, and which in most files comes from observations. Where it is missing or does
   not look like observations (not whole tenths, or never changing), it is estimated by day

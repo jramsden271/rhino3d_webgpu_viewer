@@ -156,6 +156,18 @@ function frameState() {
     if ((light.up > 0 || byMoon) && !state.xray) {
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
+  } else if (!camera.ortho) {
+    // With the sun off, the weather's clouds still drift across a neutral day's sky, whatever the
+    // date and time. The model keeps its usual light, so no cloud shadows. Orthographic views draw
+    // no clouds, so they keep the usual backdrop.
+    const wx = currentSky(NEUTRAL_ALTITUDE);
+    if (wx) {
+      const light = sunLight(NEUTRAL_ALTITUDE);
+      overcastSky(light, wx.cover);
+      s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
+      s.skyOnly = true;
+      s.clouds = { cover: wx.cover, drift: clouds.drift, haze: 1 };
+    }
   }
   return s;
 }
@@ -165,6 +177,7 @@ function frameState() {
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
 const clouds = { drift: [0, 0], last: 0, speed: prefs.cloudSpeed >= 0 && prefs.cloudSpeed <= CLOUD_SPEED_MAX ? prefs.cloudSpeed : 10 };
+const NEUTRAL_ALTITUDE = 45; // the sun's height (degrees) whose sky colours are shown with the sun off
 
 // The weather as the sky and light show it: null without a weather file or with the weather
 // switched off (the Weather button's icon or the switch on its panel).
@@ -193,8 +206,8 @@ function overcastSky(light, cover) {
 function driftClouds(now) {
   const dt = Math.min(0.1, (now - (clouds.last || now)) / 1000);
   clouds.last = now;
-  if (!state.sun.on || !site.epw || !clouds.speed) return false;
-  const wx = currentSky(sunPosition().altitude);
+  if (!site.epw || !clouds.speed || (!state.sun.on && camera.ortho)) return false;
+  const wx = currentSky(state.sun.on ? sunPosition().altitude : NEUTRAL_ALTITUDE);
   if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
   const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
   // Wrapped well before the noise's coordinates lose precision; a jump every few hundred km.

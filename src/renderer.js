@@ -64,7 +64,7 @@ struct Frame {
   skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
   stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
-  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene)
+  skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene), w = draw the sky
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
   marker: vec4f,    // where walking would start: xyz centre, w = radius (model units, 0 = none)
   shadow: array<mat4x4f, ${CASCADES}>,
@@ -243,8 +243,8 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
 }
 @fragment fn fsBg(in: BgOut) -> @location(0) vec4f {
   let screen = mix(F.bgBot.rgb, F.bgTop.rgb, in.ndc.y * 0.5 + 0.5);
-  if (F.sunDir.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
-  // Sun lighting in perspective: a real sky. Gradient by elevation of the view ray, plus the sun.
+  if (F.skySun.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
+  // A real sky in perspective, for the sun or the weather. Gradient by elevation of the view ray, plus the sun.
   let t = F.camRight.w;
   let dir = normalize(F.viewDir.xyz + F.camRight.xyz * in.ndc.x * t * F.camUp.w + F.camUp.xyz * in.ndc.y * t);
   var col = mix(F.bgBot.rgb, F.bgTop.rgb, pow(clamp(dir.z, 0.0, 1.0), 0.55));
@@ -259,7 +259,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   col += starField(dir) * night * (1.0 - 0.6 * F.moon.w * moonUp) * smoothstep(0.0, 0.12, dir.z);
   col = mix(col, F.bgBot.rgb * 0.94, smoothstep(0.0, -0.08, dir.z));   // below the horizon
   let sky = col;
-  let above = smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);
+  let above = F.sunDir.w * smoothstep(-0.02, 0.02, L.z) * smoothstep(-0.0015, 0.0015, dir.z);   // none with the sun off
   let d = max(dot(dir, L), 0.0);
   // A low sun is orange-red, and so is the glow around it.
   let high = smoothstep(0.0, 0.25, L.z);
@@ -1365,7 +1365,7 @@ class Renderer {
     f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
     f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
-    f.set(sun ? [...sun.sunDir, 0] : [0, 0, 1, 0], 96);
+    f.set(sun ? [...sun.sunDir, 1] : [0, 0, 1, s.skyOnly ? 1 : 0], 96);
     // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:
     // far from the file's origin (map coordinates), float precision would break up fine grain.
     const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];
