@@ -116,7 +116,7 @@ View changes, date and time, hiding objects, turning layers on or off and the si
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
 
-In the Layers and Blocks panels, click a row to select it, Ctrl-click to add or remove a row, and
+In the Layers and Block definitions panels, click a row to select it, Ctrl-click to add or remove a row, and
 Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
 selected rows.
 
@@ -126,15 +126,16 @@ visibility saved in the file. Right-click a layer for:
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
-- **Show all** / **Hide all**: turn the layer and all its sub-layers on or off.
 
-The Blocks panel appears for models with blocks. It lists each block definition that has an
+Double-click a layer's row to open its colour or material window, as its square does.
+
+The Block definitions panel appears for models with blocks. It lists each block definition that has an
 instance, including those only used inside other blocks, with its number of copies in the model
 (a sub-block used 3 times in a block placed 10 times has 30). Right-click a block for:
 
 - **Select instances**: its visible top-level instances.
 - **Select sub-blocks**: adds every block inside it, at any depth, to the selected rows.
-- **Sub-element setting**, **Show** and **Hide**.
+- **Sub-element setting**: as clicking its tag or double-clicking its row.
 
 Unticking a block hides every copy of it, like turning a layer off: a copy shows only if it and
 every block around it are ticked. A row is dimmed when none of its copies can show because of the
@@ -155,8 +156,9 @@ it down to every block inside, once; the latest setting wins for a block with se
 can be undone, and it is written into a saved copy. Layer visibility is not affected: a sub-element on
 a layer that is off stays hidden.
 
-The Layers, Blocks and Sun panels close with their × button or from the toolbar. Layers and Blocks
-share a place, so opening one closes the other.
+The Layers, Block definitions and Sun panels close with their × button or from the toolbar. The first
+two can be open together, sharing the height the other panels leave. Drag the left edge of any of
+these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
@@ -253,7 +255,7 @@ is not saved in the copy.
 
 **Inspect and hide objects.** The object panel can be dragged by its title bar; it then stays
 put until it closes. Click a surface or mesh to select the whole object (a block
-instance is one object) and show its type, block name (click to find it in the Blocks panel), layer (click to find it in the Layers
+instance is one object) and show its type, block name (click to find it in the Block definitions panel), layer (click to find it in the Layers
 panel), material, size, triangle count, Rhino user text and ID (click to copy). Shift-click
 adds or removes objects; with several selected the panel summarises types, layers, overall
 extent and triangles. **Hide** (or `H`) removes the selection from view, including its edges,

@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
@@ -476,6 +476,7 @@ function buildLayerTree() {
       refreshRows();
       layerRows.keepShown();
     });
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(i, row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
@@ -539,14 +540,10 @@ function openLayerMenu(picked, tree, [x, y]) {
     const set = new Set(layers);
     return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
-  const setOn = (on) => { for (const l of tree || picked) layerOn[l] = on; applyLayerVisibility(); buildLayerTree.refresh(); renderFileInfo(); };
   const own = visibleOn(picked), all = tree && visibleOn(tree);
   showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
-    '-',
-    { label: 'Show all', run: () => setOn(true) },
-    { label: 'Hide all', run: () => setOn(false) },
   ].filter(Boolean), [x, y]);
 }
 
@@ -577,6 +574,24 @@ function showMenu(titleText, items, [x, y]) {
 }
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
+
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+
+function showLayersHelp() {
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
+    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+    ${ROW_SELECT_HELP('layers')}
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+}
+
+function showBlocksHelp() {
+  Dialog.open({ title: 'Block definitions', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
+    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
+    ${ROW_SELECT_HELP('blocks')}
+    <p>Clicking a tag on a selected row sets all the selected blocks.</p>
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+}
 
 // ---------------------------------------------------------------------------------------------
 // Blocks
@@ -645,6 +660,7 @@ function buildBlockList() {
     const cb = row.querySelector('input');
     cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
     row.querySelector('.block-tag').addEventListener('click', () => openBlockDialog(blockRows.take(b.id), row));
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openBlockDialog(blockRows.take(b.id), row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
@@ -703,9 +719,6 @@ function openBlockMenu(ids, row, at) {
     subs.length && { label: 'Select sub-blocks', n: subs.length, run: () => revealBlocks([...ids, ...subs]) },
     '-',
     { label: 'Sub-element setting…', run: () => openBlockDialog(ids, row) },
-    '-',
-    { label: 'Show', run: () => setBlocksOn(ids, true) },
-    { label: 'Hide', run: () => setBlocksOn(ids, false) },
   ].filter(Boolean), at);
 }
 
@@ -755,6 +768,7 @@ function bindBlocksPanel() {
   $('blockFilter').addEventListener('input', refreshBlockList);
   $('blockList').addEventListener('scroll', closeLayerMenu);
   $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
+  $('blocksHelp').addEventListener('click', showBlocksHelp);
   document.querySelectorAll('[data-blocks]').forEach((b) => b.addEventListener('click', () => {
     if (model) setBlocksOn(blockRows.rows.filter((r) => !r.row.hidden).map((r) => r.key), b.dataset.blocks === 'all');
   }));
@@ -1124,6 +1138,46 @@ function placePopover(dlg, anchor, panel) {
   dlg.style.left = Math.max(12, (side.width ? side.left : r.left) - d.width - 10) + 'px';
 }
 
+// The right-hand panels share a column, whose width is set by dragging the left edge of any of them
+// (double-click for the default). Remembered between sessions. Phones use the full window width.
+const SIDE_WIDTH = 300, SIDE_EDGE = 6; // px; SIDE_EDGE: how close to the edge a drag can start
+state.sideWidth = SIDE_WIDTH;
+function setSideWidth(w) {
+  state.sideWidth = Math.round(Math.max(SIDE_WIDTH, Math.min(w, window.innerWidth * 0.6)));
+  document.querySelector('.side').style.setProperty('--side-width', state.sideWidth + 'px');
+  // Windows beside the column move with it.
+  for (const [dlg, panel] of [[$('matDialog'), $('layersPanel')], [$('blockDialog'), $('blocksPanel')]]) {
+    if (!dlg.hidden && !panel.hidden) dlg.style.left = Math.max(12, panel.getBoundingClientRect().left - dlg.offsetWidth - 10) + 'px';
+  }
+}
+
+function bindSideResize() {
+  const side = document.querySelector('.side');
+  const edgePanel = (e) => {
+    const p = e.target.closest?.('.panel');
+    return p && !window.matchMedia('(max-width: 720px)').matches && e.clientX - p.getBoundingClientRect().left <= SIDE_EDGE ? p : null;
+  };
+  let from = null;
+  side.addEventListener('pointermove', (e) => {
+    if (from) setSideWidth(from.width + from.x - e.clientX);
+    else side.classList.toggle('at-edge', !!edgePanel(e));
+  });
+  side.addEventListener('pointerleave', () => { if (!from) side.classList.remove('at-edge'); });
+  side.addEventListener('pointerdown', (e) => {
+    const p = e.button === 0 && edgePanel(e);
+    if (!p) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.setPointerCapture(e.pointerId);
+    from = { x: e.clientX, width: side.offsetWidth };
+  }, true);
+  const end = () => { if (from) { from = null; savePrefs(); } };
+  side.addEventListener('pointerup', end);
+  side.addEventListener('pointercancel', end);
+  side.addEventListener('dblclick', (e) => { if (edgePanel(e)) { setSideWidth(SIDE_WIDTH); savePrefs(); } });
+  if (prefs.sideWidth > SIDE_WIDTH) setSideWidth(prefs.sideWidth);
+}
+
 // Top-level objects on a layer whose colour (or material) does not come from the layer, so a
 // layer setting does not change them.
 function objectsNotFollowingLayer(i, kind) {
@@ -1375,7 +1429,7 @@ function sourceControl(objs) {
       html += `<div class="fine">${chip(shownRgb(look))}${rgbHex(shownRgb(look))}</div>`;
     }
   }
-  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Blocks panel.</div>';
+  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Block definitions panel.</div>';
   return html;
 }
 
@@ -2832,12 +2886,10 @@ function setMode(m) {
 function toggle(key) {
   state[key] = !state[key];
   savePrefs();
-  if (key === 'layers' || key === 'blocks') { // one at a time
-    if (state[key]) state[key === 'layers' ? 'blocks' : 'layers'] = false;
-    $('layersPanel').hidden = !state.layers;
+  if (key === 'layers') $('layersPanel').hidden = !state.layers;
+  if (key === 'blocks') {
     $('blocksPanel').hidden = !state.blocks;
     if (!state.blocks) $('blockDialog').hidden = true;
-    if (state.blocks) $('matDialog').hidden = true;
   }
   syncToolbar();
   redraw();
@@ -2940,9 +2992,11 @@ function bindUi() {
   bindCompass();
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
+  $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
   layerRows.bind($('layerTree'));
   bindBlocksPanel();
+  bindSideResize();
   renderRecent();
   $('btnUndo').addEventListener('click', () => stepHistory(false));
   $('btnRedo').addEventListener('click', () => stepHistory(true));

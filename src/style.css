@@ -88,16 +88,17 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 
-.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: 300px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side { position: absolute; top: 12px; right: 12px; bottom: 70px; width: min(var(--side-width, 300px), calc(100vw - 24px)); display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.side.at-edge .panel, .side.at-edge .panel * { cursor: ew-resize; }
+.side.at-edge .panel::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); z-index: 1; }
 .panel { position: relative; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto; }
 .panel[hidden] { display: none; }
-.layers-panel { flex: 1 1 auto; min-height: 140px; }
+.layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
 .sun-panel { flex: none; max-height: 100%; overflow-y: auto; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; align-items: center; gap: 12px; font-weight: 400; font-size: 12px; }
 .panel-actions .x { margin: -2px -6px -2px -4px; }
 .panel-actions .x.q { font-size: 14px; font-weight: 600; margin-right: -10px; }
-.panel-foot { padding: 8px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border); }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
 .layer-row:hover { background: var(--hover); }
