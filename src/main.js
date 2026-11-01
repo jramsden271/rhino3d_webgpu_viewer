@@ -242,7 +242,7 @@ function loop() {
   }
   if (renderer.dirty) {
     anim.drawn = now;
-    renderer.dirty = false; renderer.draw(frameState()); positionInspector();
+    renderer.dirty = false; renderer.draw(frameState()); positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
   }
   requestAnimationFrame(loop);
@@ -1906,6 +1906,77 @@ function bindPointer() {
   });
 }
 
+// The compass: turned so that its arrow points to north on the screen, with the N kept upright.
+// The way the view faces along the ground is the yaw + 180°, at any pitch.
+function syncCompass() {
+  const r = (camera.yaw * 180) / Math.PI + 180 - state.sun.north;
+  $('compassDial').setAttribute('transform', `rotate(${r})`);
+  $('compassN').setAttribute('transform', `rotate(${-r} 0 -21)`);
+}
+
+// Turns the view the short way round to face a compass bearing (degrees clockwise from north),
+// keeping its tilt: around the middle of the view, or on the spot when walking.
+function faceBearing(bearing) {
+  if (!model) return;
+  const from = camera.yaw, full = 2 * Math.PI, to = ((state.sun.north - bearing) * Math.PI) / 180 - Math.PI;
+  const turn = ((((to - from + Math.PI) % full) + full) % full) - Math.PI;
+  if (Math.abs(turn) < 1e-4) return;
+  if (camera.ortho) { viewNow = null; syncToolbar(); }
+  const t0 = performance.now(), dur = 260;
+  const step = (now) => {
+    const t = Math.min(1, (now - t0) / dur), k = 1 - Math.pow(1 - t, 3);
+    setHeading(from + turn * k);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function setHeading(yaw) {
+  const eye = camera.eye;
+  camera.yaw = yaw;
+  if (walker.active) camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
+  redraw();
+}
+
+// Dragging the compass turns it like a dial, and the view with it. The drag only starts once the
+// pointer has moved, so double-clicks still reach the N and the ticks, and it carries on outside
+// the compass, where the angle is easier to control. Too near the middle, the angle means little.
+function bindCompass() {
+  const el = $('compass');
+  let drag = null;
+  const angle = (e) => {
+    const r = el.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
+    return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: angle(e), moved: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.moved) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+      drag.moved = true;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('dragging');
+      if (camera.ortho) { viewNow = null; syncToolbar(); }
+    }
+    const a = angle(e);
+    if (a === null) return;
+    if (drag.at !== null) {
+      const full = 2 * Math.PI;
+      setHeading(camera.yaw + ((((a - drag.at + Math.PI) % full) + full) % full) - Math.PI);
+    }
+    drag.at = a;
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    el.classList.remove('dragging');
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+}
+
 function pinchInfo() {
   const [a, b] = [...pointers.values()];
   return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
@@ -2590,6 +2661,8 @@ function bindUi() {
   document.querySelector('[data-act="sun"]').addEventListener('click', toggleSunPanel);
   $('sunCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleSunPanel(); }); // the gaps round the icon
   $('sunQuick').addEventListener('click', () => setSun({ on: !state.sun.on }));
+  document.querySelectorAll('.compass-point').forEach((p) => p.addEventListener('dblclick', () => faceBearing(+p.dataset.bearing)));
+  bindCompass();
   $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   bindLayerMenu();

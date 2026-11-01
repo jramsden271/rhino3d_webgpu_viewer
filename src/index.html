@@ -38,6 +38,34 @@
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
+  <div id="compass" class="chrome compass" role="img" aria-label="Compass" title="Drag to rotate the view">
+    <svg viewBox="-34 -34 68 68" aria-hidden="true">
+      <g id="compassDial">
+        <path class="compass-arrow" d="M0-12 6.5 11 0 7-6.5 11Z"/>
+        <g class="compass-point" data-bearing="90">
+          <title>East: double-click to face east</title>
+          <circle cx="24" cy="0" r="9"/>
+          <path class="compass-tick" d="M26 0h4"/>
+        </g>
+        <g class="compass-point" data-bearing="180">
+          <title>South: double-click to face south</title>
+          <circle cx="0" cy="24" r="9"/>
+          <path class="compass-tick" d="M0 26v4"/>
+        </g>
+        <g class="compass-point" data-bearing="270">
+          <title>West: double-click to face west</title>
+          <circle cx="-24" cy="0" r="9"/>
+          <path class="compass-tick" d="M-26 0h-4"/>
+        </g>
+        <g id="compassN" class="compass-point" data-bearing="0">
+          <title>North: double-click to face north</title>
+          <circle cx="0" cy="-21" r="11"/>
+          <text x="0" y="-21">N</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+
   <div class="side">
   <aside id="layersPanel" class="chrome panel layers-panel" hidden>
     <div class="panel-head">
@@ -221,6 +249,7 @@
         <dt>Messages</dt><dd>The bell (top left) keeps the messages about this model, until you dismiss them or open another model</dd>
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
+        <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Front · <kbd>3</kbd> Right · <kbd>4</kbd> Perspective · <kbd>5</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>

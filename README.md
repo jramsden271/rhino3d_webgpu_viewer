@@ -32,6 +32,8 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom (towards the cursor) | Wheel · pinch | |
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
+| Rotate the view | Drag the compass (bottom left) | |
+| Face north, east, south or west | Compass: double-click the N or a tick | |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `5` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
@@ -43,6 +45,11 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Weather panel | Toolbar: Weather | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
+
+The **compass** at the bottom left points to north on the screen, from the model's north angle
+(click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
+carries on outside the compass, where it is easier to control. Double-click its **N**, or the
+tick for east, south or west, to turn the view to face that way, keeping its tilt.
 
 The **camera button** on the toolbar shows the current view and opens a list of Top, Front, Right, Perspective and Walk, with any views
 saved by name in the Rhino file above them. Top, Front and Right are parallel (no perspective)
