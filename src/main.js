@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
@@ -38,10 +38,15 @@ const site = { custom: null, epw: null, use: null };
 // The open model's results files: { id, name, size, parser, data }, parser and data null if nothing
 // recognises a bound file any more. They are only ever read.
 let results = [];
+ColourScales.choices = prefs.colourScales || {};
 // The CFD streamlines panel. on: its master switch. off: keys (streamlineKey) of what is unticked,
 // streamlines and polylines alike. collapsed: keys of the streamlines folded up. lines: what was
 // given to the renderer, a { key, parts: [{ key, range }] } for each streamline and its polylines.
 state.streamlines = { panel: false, on: true, off: new Set(), collapsed: new Set(), lines: [] };
+// The CFD map panel. on: its master switch. off: keys of the unticked maps. collapsed: of those
+// folded up. picked: map key -> the name of the result shown. z: metres moved up. list: what was
+// given to the renderer, a { key, map, label } for each map.
+state.maps = { panel: false, on: true, off: new Set(), collapsed: new Set(), picked: {}, z: 0, list: [] };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
@@ -135,6 +140,8 @@ function frameState() {
   };
   if (!model) return s;
   const SL = state.streamlines;
+  s.resultMaps = state.maps.on ? state.maps.list.flatMap((m, i) => (state.maps.off.has(m.key) ? [] : [i])) : [];
+  s.resultMapZ = state.maps.z / model.metresPerUnit;
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
@@ -1147,7 +1154,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1160,6 +1167,7 @@ function restoreLayersAndHidden(saved) {
   for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   state.streamlines.on = saved.streamlines?.on !== false;
   state.streamlines.off = new Set(saved.streamlines?.off || []);
+  Object.assign(state.maps, { on: saved.maps?.on !== false, off: new Set(saved.maps?.off || []), picked: saved.maps?.picked || {}, z: Number.isFinite(saved.maps?.z) ? saved.maps.z : 0 });
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
@@ -2188,6 +2196,7 @@ function syncResults() {
   $('btnResultsFiles').title = n ? `Results files: ${results.map((r) => r.name).join(', ')}` : 'Add results files';
   $('btnResults').hidden = !results.some((r) => r.data);
   fillStreamlines();
+  fillMaps();
   fillResultsMenu();
   resultsDialog?.refresh();
   redraw();
@@ -2231,13 +2240,40 @@ function openResultsDialog() {
 // The toolbar's Results menu: one item for each kind of result there is.
 let resultsList = null, resultsMenu = null;
 function bindResultsMenu() {
-  resultsList = new ChoiceList({ label: 'Results', onPick: (id) => { resultsMenu.close(); if (id === 'streamlines') toggleStreamlinesPanel(); } });
+  // An item's checkbox shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
+  resultsList = new ChoiceList({ label: 'Results', onPick: (id, e) => {
+    if (e.target.closest('.box')) { if (id === 'streamlines') setStreamlinesOn(!state.streamlines.on); else setMapsOn(!state.maps.on); }
+    else if (id === 'streamlines') toggleStreamlinesPanel();
+    else toggleMapPanel();
+  } });
   resultsMenu = new ToolbarMenu($('btnResults'), { label: 'Results' });
   resultsMenu.body.append(resultsList.el);
 }
 function fillResultsMenu() {
-  resultsList.setGroups(state.streamlines.lines.length ? [{ items: [{ id: 'streamlines', label: 'CFD streamlines' }] }] : []);
-  resultsList.setActive(state.streamlines.panel ? 'streamlines' : null);
+  const items = [];
+  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: true });
+  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: true });
+  resultsList.setGroups(items.length ? [{ items }] : []);
+  syncResultsMenu();
+}
+function syncResultsMenu() {
+  const sync = (id, { on, panel }) => {
+    if (!resultsList.item(id)) return;
+    resultsList.setChecked(id, on);
+    resultsList.setOpen(id, panel);
+  };
+  sync('streamlines', state.streamlines);
+  sync('map', state.maps);
+}
+
+// A colour scale's legend, as HTML, with a dropdown when its metric has other scales to pick from.
+function colourLegendHtml(scale, title, unit) {
+  const L = ColourScales.legend(scale), all = scale.metric ? ColourScales.forMetric(scale.metric) : [];
+  const bar = L.cells ? L.cells.map((c) => `<span style="background:${c.color}" title="${escapeHtml(c.label)}"></span>`).join('') : `<span style="background:${L.gradient}"></span>`;
+  const ticks = L.ticks.map((t) => `<span class="${t.at <= 0 ? 'first' : t.at >= 1 ? 'last' : ''}" style="left:${(t.at * 100).toFixed(1)}%">${t.text}</span>`).join('');
+  return `<div class="res-legend"><div class="res-legend-head"><span>${escapeHtml(title)}</span><span>${escapeHtml(unit || '')}</span></div>
+    ${all.length > 1 ? `<select data-metric="${scale.metric}" aria-label="Colour scale for ${escapeHtml(title)}" title="Colour scale, used for this kind of data across the viewer">${all.map((s) => `<option value="${s.id}"${s === scale ? ' selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}</select>` : ''}
+    <div class="res-scale">${bar}</div><div class="res-ticks">${ticks}</div></div>`;
 }
 
 // The CFD streamlines panel, and the lines it shows.
@@ -2246,7 +2282,7 @@ const streamlineKey = (file, line) => `${file.name}|${line.name}`;
 function toggleStreamlinesPanel() {
   state.streamlines.panel = !state.streamlines.panel;
   $('streamlinesPanel').hidden = !state.streamlines.panel;
-  resultsList.setActive(state.streamlines.panel ? 'streamlines' : null);
+  syncResultsMenu();
 }
 
 function setStreamlinesOn(on) {
@@ -2259,7 +2295,9 @@ function setStreamlinesOn(on) {
 function fillStreamlines() {
   const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines') : [];
   const all = files.flatMap((file) => file.data.streamlines.map((line) => ({ file, line })));
-  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin) : null;
+  const wind = ColourScales.preferred('windSpeed');
+  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed)) : null;
+  setHtml($('streamlineLegend'), all.length ? colourLegendHtml(wind, 'Velocity', ColourScales.metrics.windSpeed.unit) : '');
   renderer.setResultLines(v);
   SL.lines = all.map(({ file, line }, i) => {
     const key = streamlineKey(file, line);
@@ -2299,6 +2337,7 @@ function fillStreamlines() {
 function syncStreamlines() {
   const SL = state.streamlines;
   $('streamlinesOn').checked = SL.on;
+  syncResultsMenu();
   for (const row of $('streamlineList').children) {
     const on = !SL.off.has(row.dataset.key), parent = row.dataset.parent;
     row.querySelector('input').checked = on;
@@ -2307,6 +2346,172 @@ function syncStreamlines() {
     row.hidden = SL.collapsed.has(parent);
     row.querySelector('.caret').classList.toggle('collapsed', SL.collapsed.has(row.dataset.key));
   }
+}
+
+// The CFD map panel, and the maps it shows.
+const resultScale = (r) => (r.metric ? ColourScales.preferred(r.metric) : (r.dataScale ||= ColourScales.fromData(r.values)));
+const resultUnit = (r) => (r.metric ? ColourScales.metrics[r.metric].unit : r.unit);
+const pickedResult = (m) => m.map.results.find((r) => r.name === state.maps.picked[m.key]) || m.map.results[0];
+
+function toggleMapPanel() {
+  state.maps.panel = !state.maps.panel;
+  $('mapPanel').hidden = !state.maps.panel;
+  syncResultsMenu();
+}
+
+function setMapsOn(on) {
+  state.maps.on = on;
+  syncMaps();
+  hideMapHover();
+  saveViewState();
+  redraw();
+}
+
+function showMapResult(i) {
+  const m = state.maps.list[i], r = pickedResult(m);
+  renderer.setMapResult(i, cfdMapValues(r), ColourScales.ramp(resultScale(r)));
+}
+
+function fillMaps() {
+  const M = state.maps, files = model ? results.filter((r) => r.parser?.id === 'cfdMap') : [];
+  M.list = files.flatMap((file) => file.data.maps.map((map) => ({ key: `${file.name}|${map.name}`, map, file,
+    label: files.length > 1 ? `${map.name} · ${file.name}` : map.name })));
+  renderer.setResultMaps(M.list.map(({ map }) => ({ pos: cfdMapVertices(map, model.metresPerUnit, model.origin), indices: map.indices })));
+  M.list.forEach((_, i) => showMapResult(i));
+  if (M.panel && !M.list.length) toggleMapPanel();
+  const changed = () => { syncMaps(); hideMapHover(); saveViewState(); redraw(); };
+  const caret = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+  $('mapList').replaceChildren(...M.list.flatMap((m, i) => {
+    const top = document.createElement('div');
+    top.className = 'layer-row';
+    top.title = `${m.map.name} in ${m.file.name}`;
+    top.dataset.key = m.key;
+    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox"><span class="layer-name"></span>`;
+    top.querySelector('.layer-name').textContent = m.label;
+    top.querySelector('.caret').addEventListener('click', () => {
+      if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
+      syncMaps();
+    });
+    top.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) M.off.delete(m.key); else M.off.add(m.key);
+      changed();
+    });
+    const kids = m.map.results.map((r) => {
+      const row = document.createElement('label'), unit = resultUnit(r);
+      row.className = 'layer-row';
+      row.style.paddingLeft = '26px';
+      row.dataset.parent = m.key;
+      row.dataset.result = r.name;
+      row.innerHTML = `<span class="caret empty"></span><input type="radio" name="map-${i}"><span class="layer-name"></span>`;
+      row.querySelector('.layer-name').textContent = unit ? `${r.name} [${unit}]` : r.name;
+      row.querySelector('input').addEventListener('change', () => {
+        M.picked[m.key] = r.name;
+        showMapResult(i);
+        changed();
+      });
+      return row;
+    });
+    return [top, ...kids];
+  }));
+  syncMaps();
+}
+
+function syncMaps() {
+  const M = state.maps;
+  $('mapOn').checked = M.on;
+  syncResultsMenu();
+  $('mapZ').value = M.z;
+  $('mapZOut').value = `${M.z > 0 ? '+' : ''}${M.z.toFixed(1)} m`;
+  for (const row of $('mapList').children) {
+    const parent = row.dataset.parent, input = row.querySelector('input');
+    if (parent) {
+      const m = M.list.find((x) => x.key === parent);
+      input.checked = pickedResult(m).name === row.dataset.result;
+      row.hidden = M.collapsed.has(parent);
+      row.classList.toggle('inherited-off', !M.on || M.off.has(parent));
+    } else {
+      const on = !M.off.has(row.dataset.key);
+      input.checked = on;
+      row.classList.toggle('off', !on);
+      row.classList.toggle('inherited-off', on && !M.on);
+      row.querySelector('.caret').classList.toggle('collapsed', M.collapsed.has(row.dataset.key));
+    }
+  }
+  setHtml($('mapLegends'), M.list.filter((m) => !M.off.has(m.key)).map((m) => {
+    const r = pickedResult(m);
+    return colourLegendHtml(resultScale(r), M.list.length > 1 ? `${m.label}: ${r.name}` : r.name, resultUnit(r));
+  }).join(''));
+}
+
+// A colour scale picked for a kind of data applies wherever that data is shown.
+function setColourScale(metric, id) {
+  ColourScales.choices[metric] = id;
+  savePrefs();
+  state.maps.list.forEach((m, i) => { if (pickedResult(m).metric === metric) showMapResult(i); });
+  syncMaps();
+  if (metric === 'windSpeed') fillStreamlines();
+  syncComfortPanel();
+  redraw();
+}
+
+// The panel that follows the mouse over a map, with what the map holds there.
+let mapHoverAt = null, mapHoverRead = null, mapHoverBusy = false;
+function hideMapHover() { mapHoverAt = null; $('mapHover').hidden = true; }
+
+function mapHoverMove(e) {
+  const shown = model && state.maps.on && state.maps.list.some((m) => !state.maps.off.has(m.key));
+  if (!shown || walker.active || drag || pointers.size) { hideMapHover(); return; }
+  mapHoverAt = { clientX: e.clientX, clientY: e.clientY };
+  placeMapHover();
+  if (!mapHoverBusy) readMapHover();
+}
+
+function placeMapHover() {
+  const el = $('mapHover'), gap = 16, { clientX: x, clientY: y } = mapHoverAt;
+  el.style.left = `${x + gap + el.offsetWidth > innerWidth ? x - gap - el.offsetWidth : x + gap}px`;
+  el.style.top = `${y + gap + el.offsetHeight > innerHeight ? y - gap - el.offsetHeight : y + gap}px`;
+}
+
+async function readMapHover() {
+  mapHoverBusy = true;
+  try {
+    // One read at a time, then the latest place the mouse has moved to, if it has.
+    while (mapHoverAt && mapHoverAt !== mapHoverRead) {
+      mapHoverRead = mapHoverAt;
+      const s = frameState();
+      s.pickMaps = true;
+      const h = await renderer.pick(...toDevice(mapHoverRead), camera.viewProj(), s);
+      if (!mapHoverAt) break;
+      showMapHover(h);
+      placeMapHover();
+    }
+  } finally { mapHoverBusy = false; }
+}
+
+function showMapHover(h) {
+  const el = $('mapHover'), m = h && h.map !== undefined ? state.maps.list[h.map] : null;
+  const f = m && cfdMapFind(m.map, (h.p[0] + model.origin[0]) * model.metresPerUnit, (h.p[1] + model.origin[1]) * model.metresPerUnit, (h.p[2] + model.origin[2]) * model.metresPerUnit - state.maps.z);
+  if (!f) { el.hidden = true; return; }
+  const picked = pickedResult(m), num = (v) => v.toFixed(Math.abs(v) < 10 ? 2 : 1);
+  const rows = m.map.results.map((r) => {
+    const v = cfdMapValueAt(r, f), scale = resultScale(r), unit = resultUnit(r);
+    return { on: r === picked, label: r === picked && !Number.isNaN(v) ? ColourScales.label(scale, v) : null,
+      html: `<div class="row${r === picked ? ' on' : ''}"><i style="background:${Number.isNaN(v) ? 'transparent' : ColourScales.css(scale, v)}"></i><span>${escapeHtml(r.name)}</span><b>${Number.isNaN(v) ? 'no data' : `${num(v)}${unit ? ` ${escapeHtml(unit)}` : ''}`}</b></div>` };
+  });
+  const band = rows.find((r) => r.label)?.label;
+  setHtml(el, `<div class="head">${escapeHtml(m.map.name)}</div>${rows.map((r) => r.html).join('')}${band ? `<div class="band">${escapeHtml(picked.name)}: ${escapeHtml(band)}</div>` : ''}`);
+  el.hidden = false;
+}
+
+function bindMapPanel() {
+  $('mapOn').addEventListener('change', (e) => setMapsOn(e.target.checked));
+  $('mapClose').addEventListener('click', () => state.maps.panel && toggleMapPanel());
+  $('mapZ').addEventListener('input', (e) => { state.maps.z = +e.target.value; syncMaps(); saveViewState(); redraw(); });
+  for (const id of ['mapLegends', 'streamlineLegend']) {
+    $(id).addEventListener('change', (e) => { if (e.target.dataset.metric) setColourScale(e.target.dataset.metric, e.target.value); });
+  }
+  canvas.addEventListener('pointermove', mapHoverMove);
+  canvas.addEventListener('pointerleave', hideMapHover);
 }
 
 function bindStreamlinesPanel() {
@@ -3116,10 +3321,15 @@ function syncComfortPanel() {
     setHtml($('comfortInputs'), '');
     return;
   }
-  const cat = utciCategory(r.value);
-  $('comfortRead').style.setProperty('--cat', cat.color);
+  const cat = utciCategory(r.value), scale = ColourScales.preferred('utci');
+  // Each band's cell shows the colour in its middle (the same as all of it, on a grouped scale).
+  const cellColour = (c, i) => {
+    const before = UTCI_CATEGORIES[i - 1]?.below, mid = Number.isFinite(before) && Number.isFinite(c.below) ? (before + c.below) / 2 : Number.isFinite(before) ? before + 1 : c.below - 1;
+    return ColourScales.css(scale, mid);
+  };
+  $('comfortRead').style.setProperty('--cat', ColourScales.css(scale, r.value));
   setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
-    <div class="utci-scale">${UTCI_CATEGORIES.map((c) => `<span style="background:${c.color}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
+    <div class="utci-scale">${UTCI_CATEGORIES.map((c, i) => `<span style="background:${cellColour(c, i)}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
     ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}
     ${comfortCloudNote(r)}`);
   const s = sunlight, pos = r.pos;
@@ -3322,6 +3532,7 @@ function bindUi() {
   bindModeMenu();
   bindResultsMenu();
   bindStreamlinesPanel();
+  bindMapPanel();
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
@@ -3346,7 +3557,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));

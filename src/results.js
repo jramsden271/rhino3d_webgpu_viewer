@@ -86,12 +86,145 @@ function streamlinePolylines({ xyz, velocity, starts, ends }) {
   return polylines;
 }
 
+// A blank, "null" or otherwise unusable value counts as missing.
+const resultNumber = (s) => {
+  const v = s === undefined || s.trim() === '' ? NaN : +s;
+  return Number.isFinite(v) ? v : NaN;
+};
+
+// CFX values on a surface: one or more [Name], [Data] (nodes, each with any number of results) and
+// [Faces] (three or more node numbers) sections. Gives { maps: [{ name, points (metres, x, y, z, ...),
+// indices (triangles, as rows of points), results: [{ name, unit, metric, values }], faces,
+// skippedFaces, missing }] }. A node without a position loses its faces (skippedFaces), and a
+// value it lacks is NaN (missing: how many nodes lack any).
+function parseCfdMap(text) {
+  if (!/^\[Faces\]\s*$/m.test(text)) return null;
+  const maps = [];
+  let section = null, cur = null, cols = null, scale = 1;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] === '[') {
+      section = line.toLowerCase();
+      if (section === '[name]') cur = null;
+      if (section === '[data]') cols = null;
+      continue;
+    }
+    if (section === '[name]') {
+      cur = { name: line, row: new Map(), xyz: [], tris: [], results: [], faces: 0, skippedFaces: 0, missing: 0 };
+      maps.push(cur);
+    } else if (!cur) return null;
+    else if (section === '[data]' && !cols) {
+      const heads = line.split(',').map(resultColumn), at = (n) => heads.findIndex((h) => h.name === n);
+      cols = { node: at('node number'), x: at('x'), y: at('y'), z: at('z'), rest: [] };
+      if ([cols.node, cols.x, cols.y, cols.z].includes(-1)) return null;
+      const units = heads[cols.x].unit;
+      scale = units === null ? 1 : LENGTH_IN_METRES[units.toLowerCase()];
+      if (!scale || heads[cols.y].unit !== units || heads[cols.z].unit !== units) return null;
+      heads.forEach((h, k) => {
+        if (![cols.node, cols.x, cols.y, cols.z].includes(k)) {
+          cols.rest.push(k);
+          const name = line.split(',')[k].trim().replace(/\s*\[.*\]$/, '');
+          cur.results.push({ name, unit: h.unit, metric: ColourScales.metricOf(name, h.unit), values: [] });
+        }
+      });
+      if (!cols.rest.length) return null;
+    } else if (section === '[data]') {
+      const r = line.split(',');
+      cur.row.set(+r[cols.node], cur.xyz.length / 3);
+      cur.xyz.push(resultNumber(r[cols.x]) * scale, resultNumber(r[cols.y]) * scale, resultNumber(r[cols.z]) * scale);
+      let lacks = false;
+      cols.rest.forEach((k, i) => {
+        const v = resultNumber(r[k]);
+        if (Number.isNaN(v)) lacks = true;
+        cur.results[i].values.push(v);
+      });
+      if (lacks) cur.missing++;
+    } else if (section === '[faces]') {
+      cur.faces++;
+      const ids = line.split(',').map((s) => cur.row.get(+s));
+      if (ids.length < 3 || ids.some((k) => k === undefined || Number.isNaN(cur.xyz[k * 3] + cur.xyz[k * 3 + 1] + cur.xyz[k * 3 + 2]))) { cur.skippedFaces++; continue; }
+      for (let i = 1; i + 1 < ids.length; i++) cur.tris.push(ids[0], ids[i], ids[i + 1]);
+    }
+  }
+  const usable = maps.filter((m) => m.tris.length);
+  if (!usable.length) return null;
+  return { maps: usable.map(({ name, xyz, tris, results, faces, skippedFaces, missing }) => ({ name, faces, skippedFaces, missing,
+    points: Float64Array.from(xyz), indices: Uint32Array.from(tris),
+    results: results.map((r) => ({ ...r, values: Float32Array.from(r.values) })) })) };
+}
+
+// A map's positions for the GPU, in the model's units relative to its origin.
+function cfdMapVertices(map, metresPerUnit, origin) {
+  const pos = new Float32Array(map.points.length);
+  for (let i = 0; i < pos.length; i++) pos[i] = map.points[i] / metresPerUnit - origin[i % 3];
+  return pos;
+}
+
+// A result's values for the GPU: missing ones become a huge number, which hides the faces around them.
+const CFD_MAP_MISSING = 1e30;
+function cfdMapValues(result) {
+  return result.values.map((v) => (Number.isNaN(v) ? CFD_MAP_MISSING : v));
+}
+
+// Finds the triangle under a point, using a grid over the map in plan.
+// -> { a, b, c (rows of points), wa, wb, wc (weights) }, the one nearest z where several overlap.
+function cfdMapFind(map, x, y, z) {
+  const P = map.points, T = map.indices, n = T.length / 3;
+  if (!map.grid) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < T.length; i++) {
+      const k = T[i] * 3;
+      x0 = Math.min(x0, P[k]); x1 = Math.max(x1, P[k]); y0 = Math.min(y0, P[k + 1]); y1 = Math.max(y1, P[k + 1]);
+    }
+    const w = Math.max(x1 - x0, 1e-9), h = Math.max(y1 - y0, 1e-9), size = Math.sqrt((w * h) / Math.max(n, 1));
+    const nx = Math.min(4096, Math.max(1, Math.ceil(w / size))), ny = Math.min(4096, Math.max(1, Math.ceil(h / size)));
+    const ix = (v) => Math.min(nx - 1, Math.max(0, Math.floor(((v - x0) / w) * nx))), iy = (v) => Math.min(ny - 1, Math.max(0, Math.floor(((v - y0) / h) * ny)));
+    const start = new Uint32Array(nx * ny + 1);
+    const each = (t, fn) => {
+      const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+      const i0 = ix(Math.min(P[a], P[b], P[c])), i1 = ix(Math.max(P[a], P[b], P[c])), j0 = iy(Math.min(P[a + 1], P[b + 1], P[c + 1])), j1 = iy(Math.max(P[a + 1], P[b + 1], P[c + 1]));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(i + j * nx);
+    };
+    for (let t = 0; t < n; t++) each(t, (c) => { start[c + 1]++; });
+    for (let c = 0; c < nx * ny; c++) start[c + 1] += start[c];
+    const fill = start.slice(), items = new Uint32Array(start[nx * ny]);
+    for (let t = 0; t < n; t++) each(t, (c) => { items[fill[c]++] = t; });
+    map.grid = { x0, y0, x1, y1, nx, ny, ix, iy, start, items };
+  }
+  const G = map.grid;
+  if (x < G.x0 || x > G.x1 || y < G.y0 || y > G.y1) return null;
+  const c = G.ix(x) + G.iy(y) * G.nx, E = 1e-4;
+  let best = null, bestGap = Infinity;
+  for (let i = G.start[c]; i < G.start[c + 1]; i++) {
+    const t = G.items[i], a = T[t * 3], b = T[t * 3 + 1], d = T[t * 3 + 2];
+    const ax = P[a * 3], ay = P[a * 3 + 1], bx = P[b * 3], by = P[b * 3 + 1], dx = P[d * 3], dy = P[d * 3 + 1];
+    const det = (by - dy) * (ax - dx) + (dx - bx) * (ay - dy);
+    if (!det) continue;
+    const wa = ((by - dy) * (x - dx) + (dx - bx) * (y - dy)) / det, wb = ((dy - ay) * (x - dx) + (ax - dx) * (y - dy)) / det, wc = 1 - wa - wb;
+    if (wa < -E || wb < -E || wc < -E) continue;
+    const gap = Math.abs(wa * P[a * 3 + 2] + wb * P[b * 3 + 2] + wc * P[d * 3 + 2] - z);
+    if (gap < bestGap) { bestGap = gap; best = { a, b, c: d, wa, wb, wc }; }
+  }
+  return best;
+}
+
+// A result's value at a place from cfdMapFind; NaN if a corner lacks it.
+const cfdMapValueAt = (result, h) => result.values[h.a] * h.wa + result.values[h.b] * h.wb + result.values[h.c] * h.wc;
+
 const RESULT_PARSERS = [
   { id: 'cfdStreamlines', name: 'CFD streamlines', extensions: ['.csv'], parse: parseCfdStreamlines,
     describe({ streamlines }) {
       const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`;
       return [count(streamlines.length, 'streamline'), count(streamlines.reduce((s, l) => s + l.polylines.length, 0), 'polyline'),
         count(streamlines.reduce((s, l) => s + l.segments, 0), 'segment')].join(' · ');
+    } },
+  { id: 'cfdMap', name: 'CFD map', extensions: ['.csv'], parse: parseCfdMap,
+    describe({ maps }) {
+      const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`, sum = (f) => maps.reduce((s, m) => s + f(m), 0);
+      const missing = sum((m) => m.missing), skipped = sum((m) => m.skippedFaces);
+      return [count(maps.length, 'map'), count(sum((m) => m.results.length), 'result'), count(sum((m) => m.faces), 'face'),
+        ...(missing ? [`${count(missing, 'node')} without some results`] : []), ...(skipped ? [`${count(skipped, 'face')} not usable`] : [])].join(' · ');
     } },
 ];
 
@@ -109,19 +242,10 @@ function parseResultsFile(bytes, fileName) {
   return null;
 }
 
-// Display colours along the velocity scale, from 0 to STREAMLINE_MAX_SPEED m/s.
-const STREAMLINE_MAX_SPEED = 10;
-const STREAMLINE_COLOURS = [[30, 90, 255], [30, 190, 70], [255, 150, 0], [230, 25, 25]];
-function velocityColour(v) {
-  const f = Math.min(Math.max(v / STREAMLINE_MAX_SPEED, 0), 1) * (STREAMLINE_COLOURS.length - 1);
-  const i = Math.min(Math.floor(f), STREAMLINE_COLOURS.length - 2), t = f - i;
-  return STREAMLINE_COLOURS[i].map((c, k) => Math.round(c + (STREAMLINE_COLOURS[i + 1][k] - c) * t));
-}
-
 // Line-list vertices for streamlines, in the model's units relative to its origin, with each
-// segment the colour of its start node. ranges: for each streamline, a { first, count } in vertices
+// segment the colour (colourOf, velocity -> [r, g, b]) of its start node. ranges: for each streamline, a { first, count } in vertices
 // for each of its polylines.
-function streamlineVertices(streamlines, metresPerUnit, origin) {
+function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
   const total = streamlines.reduce((s, l) => s + l.segments, 0);
   const pos = new Float32Array(total * 6), col = new Uint8Array(total * 8), ranges = [];
   let at = 0;
@@ -134,7 +258,7 @@ function streamlineVertices(streamlines, metresPerUnit, origin) {
           pos[at * 3 + k] = points[i * 3 + k] / metresPerUnit - origin[k];
           pos[at * 3 + 3 + k] = points[i * 3 + 3 + k] / metresPerUnit - origin[k];
         }
-        const c = velocityColour(velocity[i]);
+        const c = colourOf(velocity[i]);
         col.set(c, at * 4); col[at * 4 + 3] = 255;
         col.set(c, at * 4 + 4); col[at * 4 + 7] = 255;
       }

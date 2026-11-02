@@ -801,6 +801,27 @@ struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
 }
 @fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
 
+// Result maps: each vertex holds a value, looked up in the map's colour table for each pixel, so that
+// the edges of grouped scales stay sharp. A huge value means there is none, and hides the triangle.
+struct MapUniform { z: f32, lo: f32, hi: f32, index: f32 };
+@group(1) @binding(5) var<uniform> MU: MapUniform;
+@group(1) @binding(6) var mapRamp: texture_2d<f32>;
+struct MapOut { @builtin(position) pos: vec4f, @location(0) v: f32, @location(1) wp: vec3f };
+@vertex fn vsMap(@location(0) p: vec3f, @location(2) v: f32) -> MapOut {
+  let q = p + vec3f(0.0, 0.0, MU.z);
+  return MapOut(F.viewProj * vec4f(q, 1.0), v, q);
+}
+@fragment fn fsMap(in: MapOut) -> @location(0) vec4f {
+  if (abs(in.v) > 1e20) { discard; }
+  let n = i32(textureDimensions(mapRamp).x);
+  let i = clamp(i32(floor((in.v - MU.lo) / (MU.hi - MU.lo) * f32(n))), 0, n - 1);
+  return vec4f(textureLoad(mapRamp, vec2i(i, 0), 0).rgb, 1.0);
+}
+@fragment fn fsMapPick(in: MapOut) -> @location(0) vec4f {
+  if (abs(in.v) > 1e20) { discard; }
+  return vec4f(in.wp, -MU.index - 1.0);
+}
+
 // Points (screen-space squares) --------------------------------------------------------------
 @vertex fn vsPoint(@builtin(vertex_index) i: u32, @location(0) p: vec3f, @location(4) oid: u32) -> @builtin(position) vec4f {
   if (objFlag(oid, 1u)) { return CULLED; }
@@ -1113,7 +1134,16 @@ class Renderer {
       multisample: { count: o.samples || MSAA },
     });
 
+    this.mapLayout = device.createBindGroupLayout({ entries: [
+      { binding: 5, visibility: VF, buffer: {} },
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+    ] });
+    const mapPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.mapLayout] });
+    const VAL = { arrayStride: 4, attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }] };
     this.pipes = {
+      map: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes }),
+      mapX: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes, compare: 'always', write: false }),
+      mapPick: mk('vsMap', 'fsMapPick', [POS, VAL], { format: 'rgba32float', samples: 1, layout: mapPipes }),
       bg: mk('vsBg', 'fsBg', [], { write: false, compare: 'always', layout: frameOnly }),
       mesh: mk('vsMesh', 'fsMesh', [POS, NRM, OID], { bias: true }),
       meshVC: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true }),
@@ -1521,6 +1551,10 @@ class Renderer {
         pass.draw(4, b.count);
       }
     }
+    if (s.resultMaps?.length) {
+      pass.setPipeline(s.xray ? P.mapX : P.map);
+      this.drawResultMaps(pass, s);
+    }
     if (this.resultLines && s.resultRanges?.length) {
       pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
       pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
@@ -1529,6 +1563,46 @@ class Renderer {
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     pass.end();
     this.device.queue.submit([enc.finish()]);
+  }
+
+  // Result maps to draw: [{ pos: Float32Array, indices: Uint32Array }]. setMapResult gives one its
+  // values and colour table, and each frame's s.resultMaps says which are shown, s.resultMapZ how
+  // far they are moved up.
+  setResultMaps(list) {
+    for (const m of this.resultMaps || []) { m.pos.destroy(); m.idx.destroy(); m.val.destroy(); m.uni.destroy(); m.ramp?.destroy(); }
+    const dev = this.device, U = GPUBufferUsage;
+    const make = (arr, usage) => {
+      const buf = dev.createBuffer({ size: arr.byteLength, usage: usage | U.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.resultMaps = list.map(({ pos, indices }, index) => ({ index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
+      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) }));
+  }
+
+  // values: Float32Array, one per vertex. ramp: { lo, hi, data } (ColourScales.ramp).
+  setMapResult(i, values, ramp) {
+    const m = this.resultMaps[i], dev = this.device, n = ramp.data.length / 4;
+    dev.queue.writeBuffer(m.val, 0, values);
+    Object.assign(m, { lo: ramp.lo, hi: ramp.hi });
+    if (!m.ramp || m.ramp.width !== n) {
+      m.ramp?.destroy();
+      m.ramp = dev.createTexture({ size: [n, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      m.bg = dev.createBindGroup({ layout: this.mapLayout, entries: [{ binding: 5, resource: { buffer: m.uni } }, { binding: 6, resource: m.ramp.createView() }] });
+    }
+    dev.queue.writeTexture({ texture: m.ramp }, ramp.data, { bytesPerRow: n * 4 }, [n, 1]);
+  }
+
+  drawResultMaps(pass, s) {
+    for (const i of s.resultMaps) {
+      const m = this.resultMaps[i];
+      if (!m?.bg) continue;
+      this.device.queue.writeBuffer(m.uni, 0, new Float32Array([s.resultMapZ || 0, m.lo, m.hi, m.index]));
+      pass.setBindGroup(1, m.bg);
+      pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
+      pass.setIndexBuffer(m.idx, 'uint32');
+      pass.drawIndexed(m.count);
+    }
   }
 
   // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
@@ -1547,7 +1621,8 @@ class Renderer {
   }
 
   // Returns { p: world position (model-relative), id: object index } for the visible surface
-  // under pixel (px, py), or null for empty space. Picks share one readback buffer, so
+  // under pixel (px, py), or null for empty space. With s.pickMaps it can also be
+  // { p, map: index } for a result map from s.resultMaps. Picks share one readback buffer, so
   // overlapping calls are queued and run one after another.
   pick(px, py, viewProj, s) {
     const run = () => this.pickNow(px, py, viewProj, s);
@@ -1579,12 +1654,17 @@ class Renderer {
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
         this.drawCells(pass, b);
       }
+      if (s.pickMaps && s.resultMaps?.length) {
+        pass.setPipeline(this.pipes.mapPick);
+        this.drawResultMaps(pass, s);
+      }
       pass.end();
       enc.copyTextureToBuffer({ texture: this.pickColor }, { buffer: this.pickRead, bytesPerRow: 256 }, [1, 1]);
       this.device.queue.submit([enc.finish()]);
       await this.pickRead.mapAsync(GPUMapMode.READ);
       const v = new Float32Array(this.pickRead.getMappedRange(0, 16)).slice();
       this.pickRead.unmap();
+      if (v[3] < -0.5) return { p: [v[0], v[1], v[2]], map: Math.round(-v[3]) - 1 };
       return v[3] > 0.5 ? { p: [v[0], v[1], v[2]], id: Math.round(v[3]) - 1 } : null;
     } finally {
       this.pickBusy = false;

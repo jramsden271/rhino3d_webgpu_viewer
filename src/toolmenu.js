@@ -78,7 +78,7 @@ class ChoiceList {
     if (label) this.el.setAttribute('aria-label', label);
     this.el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
-      if (b) onPick(b.dataset.id);
+      if (b) onPick(b.dataset.id, e);
     });
     this.el.addEventListener('keydown', (e) => {
       const all = [...this.el.querySelectorAll('button[data-id]')], at = all.indexOf(document.activeElement);
@@ -141,4 +141,5 @@ class ChoiceList {
 
   item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
   setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
+  setOpen(id, on) { this.item(id).classList.toggle('open', on); } // coloured, as a toolbar button whose panel is open
 }

@@ -324,12 +324,39 @@ so does dropping one onto the window; × removes one. Results files are only rea
 file, a copy of each is kept with the model and comes back when you reopen it from Recent files,
 so to update one, remove it and add the new version.
 
-Once a file has been read, **Results** appears on the toolbar. Its **CFD streamlines** item opens a
-panel listing the streamlines in the file, with the polylines of each nested under it, as sub-layers
+Once a file has been read, **Results** appears on the toolbar. In its menu, each item opens or closes
+its panel, and is coloured while the panel is open; the item's checkbox is the same as the switch on
+that panel's title bar, showing or hiding what it draws. **CFD streamlines** opens a panel listing the streamlines in the file, with the polylines of each nested under it, as sub-layers
 are under a layer. Each has a checkbox, and unticking a streamline hides all its polylines; the
 switch on the panel's title bar shows what is ticked or nothing. They're drawn as polylines in the file's coordinates,
-scaled to the model's units, with each segment coloured by the velocity at its start: blue at
-0 m/s, then green, orange, and red at 10 m/s and above.
+scaled to the model's units, with each segment coloured by the velocity at its start, on the Lawson
+comfort criteria.
+
+Its **CFD map** item opens a panel for results on a surface, drawn from the file's nodes and faces,
+which needs no change to the model. Each map has its results nested under it, one chosen at a time,
+and a checkbox to hide it; the switch on the title bar shows what is ticked or nothing. Below the
+list are the colour scale's legend and **Move up or down**, from 10 m down to 100 m up. Hold the mouse over
+a map and a panel follows it with every result at that spot, worked out between the nodes. Faces
+touching a node that lacks the chosen result are left out, rather than shown in a colour that means
+something else.
+
+Colour scales come from `src/colourscales.js`, so a kind of data looks the same wherever it appears.
+They have fixed values and don't stretch to fit a file. Where there are several, the dropdown under
+the legend picks one, which the viewer remembers and uses everywhere, the Thermal comfort panel
+included:
+
+| Data | Scales (default first) |
+|---|---|
+| UTCI | Blue, green, red bands · off-white in place of the green · also a darker off-white in place of the orange (26 to 32 °C) · continuous |
+| Wind speed | Lawson comfort criteria, in bands · continuous |
+| Relative humidity | Continuous, off-white at 0 to blue at 100 |
+| Temperature | Continuous, blue at −20 °C, light grey at 10 °C, red at 40 °C |
+
+A column that is none of these gets a blue to red scale across its own range, leaving out the
+extremes.
+
+A CFD map file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z and any results) and
+`[Faces]` (three or four node numbers) sections.
 
 A CFD streamlines file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z and velocity) and
 `[Lines]` (pairs of node numbers) sections. Parsers live in `src/results.js`: each file goes to

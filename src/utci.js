@@ -132,19 +132,19 @@ function utciInRange(ta, tr, va, rh) {
   return ta >= -50 && ta <= 50 && d >= -30 && d <= 70 && va >= UTCI_WIND_MIN && va <= UTCI_WIND_MAX && pa <= 5;
 }
 
-// The ten assessment bands of thermal stress, each up to (not including) `below` °C, with the
-// colours the LadybugTools Toolkit uses. 9-26 °C is "no thermal stress", the usual comfort band.
+// The ten assessment bands of thermal stress, each up to (not including) `below` °C. 9-26 °C is
+// "no thermal stress", the usual comfort band. colourscales.js has their colours.
 const UTCI_CATEGORIES = [
-  { name: 'Extreme cold stress', below: -40, color: '#0D104B', stress: -4 },
-  { name: 'Very strong cold stress', below: -27, color: '#262972', stress: -3 },
-  { name: 'Strong cold stress', below: -13, color: '#3452A4', stress: -2 },
-  { name: 'Moderate cold stress', below: 0, color: '#3C65AF', stress: -1 },
-  { name: 'Slight cold stress', below: 9, color: '#37BCED', stress: -1 },
-  { name: 'No thermal stress', below: 26, color: '#2EB349', stress: 0 },
-  { name: 'Moderate heat stress', below: 32, color: '#F38322', stress: 1 },
-  { name: 'Strong heat stress', below: 38, color: '#C31F25', stress: 2 },
-  { name: 'Very strong heat stress', below: 46, color: '#7F1416', stress: 3 },
-  { name: 'Extreme heat stress', below: Infinity, color: '#580002', stress: 4 },
+  { name: 'Extreme cold stress', below: -40, stress: -4 },
+  { name: 'Very strong cold stress', below: -27, stress: -3 },
+  { name: 'Strong cold stress', below: -13, stress: -2 },
+  { name: 'Moderate cold stress', below: 0, stress: -1 },
+  { name: 'Slight cold stress', below: 9, stress: -1 },
+  { name: 'No thermal stress', below: 26, stress: 0 },
+  { name: 'Moderate heat stress', below: 32, stress: 1 },
+  { name: 'Strong heat stress', below: 38, stress: 2 },
+  { name: 'Very strong heat stress', below: 46, stress: 3 },
+  { name: 'Extreme heat stress', below: Infinity, stress: 4 },
 ];
 
 function utciCategory(value) {
