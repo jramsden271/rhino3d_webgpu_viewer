@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>3DM Viewer</title>
-<!-- Built 2026-11-01 · rhino3dm 8.35.0 (MIT, Robert McNeel & Associates) -->
+<!-- Built 2026-11-02 · rhino3dm 8.35.0 (MIT, Robert McNeel & Associates) -->
 <style>
 :root {
   --surface: rgba(255, 255, 255, 0.86);
@@ -92,6 +92,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list button[role="menuitemradio"][aria-checked="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .choice-list button[role="menuitemcheckbox"] .label { flex: 1; }
 .choice-list .box { margin-right: -8px; }
+.choice-list .box::before { content: ""; position: absolute; inset: -6px; } /* easier to hit, when it does something of its own */
+.choice-list button.open { background: var(--accent-soft); color: var(--accent); }
 .choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
@@ -386,6 +388,8 @@ body.walking .walk-frame { display: block; }
 .msg-list { display: flex; flex-direction: column; gap: 8px; }
 .msg-list .notice { box-shadow: none; }
 .msg-time { display: block; margin-bottom: 2px; color: var(--muted); font-size: 11px; }
+.res-btn { margin-left: -8px; color: var(--muted); }
+.res-btn.set { color: var(--text); }
 .wx-btn svg { width: 19px; height: 19px; }
 .wx-btn .sun { opacity: 0.55; }
 .wx-btn .cloud { fill: var(--surface-solid); }
@@ -402,6 +406,35 @@ body.walking .walk-frame { display: block; }
 .loc-head .btn.in-use { opacity: 1; cursor: default; }
 .loc-head .btn.in-use:hover { background: var(--accent-soft); }
 .loc-status .fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.res-list { display: flex; flex-direction: column; gap: 6px; }
+.res-row { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+.res-row > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.res-row .fine { font-size: 11.5px; color: var(--muted); }
+#mapList, #streamlineList { flex: 1 0 96px; }
+.res-foot { flex: 0 1 auto; overflow: auto; padding: 8px 12px 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.res-foot:empty { display: none; }
+.res-foot select { font: inherit; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+.res-legends { display: flex; flex-direction: column; gap: 10px; }
+.res-legends:empty { display: none; }
+.res-legend { display: flex; flex-direction: column; gap: 4px; }
+.res-legend-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.res-legend-head span:last-child { font-weight: 400; color: var(--muted); }
+.res-scale { display: flex; height: 10px; border-radius: 2px; overflow: hidden; }
+.res-scale span { flex: 1; }
+.res-ticks { position: relative; height: 14px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.res-ticks span { position: absolute; transform: translateX(-50%); }
+.res-ticks span.first { transform: none; }
+.res-ticks span.last { transform: translateX(-100%); }
+.layer-row input[type="radio"] { flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.map-hover { position: fixed; z-index: 20; pointer-events: none; padding: 8px 10px; font-size: 12px; min-width: 170px; max-width: 280px; display: flex; flex-direction: column; gap: 4px; border-radius: 8px; }
+.map-hover[hidden] { display: none; }
+.map-hover .head { font-weight: 600; }
+.map-hover .band { color: var(--muted); }
+.map-hover .row { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.map-hover .row.on { color: var(--text); font-weight: 600; }
+.map-hover .row i { flex: none; width: 10px; height: 10px; border-radius: 2px; }
+.map-hover .row span { flex: 1; }
+.map-hover .row b { font-weight: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .loc-actions { display: flex; align-items: center; gap: 12px; }
 .loc-actions .link { font-size: 12px; }
 .loc-actions .link[hidden] { display: none; }
@@ -470,6 +503,7 @@ body.walking .walk-frame { display: block; }
     </span>
     <button class="loc-btn" id="btnLocation" title="Set the site location"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-7-6.2-7-11.5a7 7 0 0 1 14 0c0 5.3-7 11.5-7 11.5Z"/><circle cx="12" cy="10" r="2.6"/></svg><span id="locName">Set location</span></button>
     <button class="btn icon wx-btn" id="btnWeather" title="Add a weather file (EPW)" aria-label="Weather file"><svg viewBox="0 0 24 24" aria-hidden="true"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button>
+    <button class="btn icon res-btn" id="btnResultsFiles" title="Add results files" aria-label="Results files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 17v-3M12 17v-6M15 17v-4"/></svg></button>
     <button class="btn icon msg-btn" id="btnMessages" title="No messages" aria-label="Messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 5.5 2.5 7.5 2.5 7.5h-17S6 15 6 9.5Z"/><path d="M10 20.5a2.3 2.3 0 0 0 4 0"/></svg><span class="msg-count" id="msgCount" hidden></span></button>
     <input type="file" id="fileInput" accept=".3dm" hidden>
   </header>
@@ -487,6 +521,7 @@ body.walking .walk-frame { display: block; }
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
+    <button class="btn toggle" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -544,6 +579,29 @@ body.walking .walk-frame { display: block; }
     </div>
     <div class="panel-filter"><input type="search" id="blockFilter" placeholder="Filter blocks" aria-label="Filter blocks"></div>
     <div id="blockList" class="layer-tree"></div>
+  </aside>
+
+  <aside id="streamlinesPanel" class="chrome panel layers-panel" hidden aria-label="CFD streamlines">
+    <div class="panel-head">
+      <span>CFD streamlines</span>
+      <span class="panel-actions"><label class="switch" title="Show the selected streamlines, or none"><input type="checkbox" id="streamlinesOn"><span></span></label><button class="x" id="streamlinesClose" aria-label="Close CFD streamlines" title="Close">×</button></span>
+    </div>
+    <div id="streamlineList" class="layer-tree"></div>
+    <div id="streamlineLegend" class="res-foot"></div>
+  </aside>
+  <aside id="mapPanel" class="chrome panel layers-panel" hidden aria-label="CFD map">
+    <div class="panel-head">
+      <span>CFD map</span>
+      <span class="panel-actions"><label class="switch" title="Show the ticked maps, or none"><input type="checkbox" id="mapOn"><span></span></label><button class="x" id="mapClose" aria-label="Close CFD map" title="Close">×</button></span>
+    </div>
+    <div id="mapList" class="layer-tree"></div>
+    <div class="res-foot">
+      <div id="mapLegends" class="res-legends"></div>
+      <div class="field">
+        <div class="field-label"><span>Move up or down</span><output id="mapZOut"></output></div>
+        <input type="range" id="mapZ" min="-10" max="100" step="0.1" title="Moves the map up or down, without changing the results">
+      </div>
+    </div>
   </aside>
 
   <section id="sunPanel" class="chrome panel sun-panel" hidden aria-label="Sun">
@@ -740,11 +798,14 @@ body.walking .walk-frame { display: block; }
         <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
         <dt>Blocks</dt><dd>The Block definitions panel lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
+        <dt>Results</dt><dd>The file icon at the top left adds results files to the model · once one is read, <b>Results</b> on the toolbar opens what it holds · <b>CFD streamlines</b> lists them, coloured by the Lawson comfort criteria · <b>CFD map</b> lists the maps with a choice of result for each · hold the mouse over a map to read its results</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> sun · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>
+
+  <div id="mapHover" class="chrome map-hover" hidden></div>
 
   <div id="fatal" class="overlay fatal" hidden><div class="drop-card"><h1 id="fatalTitle"></h1><p id="fatalText"></p></div></div>
 </div>
@@ -1959,15 +2020,17 @@ const CITIES = [
 // with a click. Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw }], newest first
+//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw, results }], newest first
 //   await Recent.add(handle, file) remembers a file just opened (up to Recent.MAX)
 //   await Recent.remove(index)
-//   await Recent.link(handle, { custom, epw, use })  a model's custom location, weather file and
-//                                 which location source it uses (any of them)
+//   await Recent.link(handle, { custom, epw, use, results })  a model's custom location, weather file,
+//                                 which location source it uses and results files (any of them)
 //   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset, name } | null, epw: { name, bytes } | null,
-//                                      use: 'custom' | 'epw' | 'file' | null }
+//                                      use: 'custom' | 'epw' | 'file' | null, results: [{ id, name, size }] }
+//   await Recent.putResult(id, bytes), Recent.resultBytes(id), Recent.dropResults(ids)  a results file's copy
 //
 // A model's weather file is kept as a copy, so it comes back without another permission prompt.
+// So are its results files, each under its own key, as they can be large and the list is read often.
 
 const Recent = {
   MAX: 5,
@@ -2015,7 +2078,8 @@ const Recent = {
       const i = await this.find(list, handle), old = i >= 0 ? list[i] : {};
       const rest = list.filter((_, k) => k !== i);
       await this.save([{ name: file.name, size: file.size, modified: file.lastModified, opened: Date.now(), handle,
-        custom: old.custom || null, epw: old.epw || null, use: old.use || null }, ...rest].slice(0, this.MAX));
+        custom: old.custom || null, epw: old.epw || null, use: old.use || null, results: old.results || [] }, ...rest].slice(0, this.MAX));
+      for (const gone of rest.slice(this.MAX - 1)) await this.dropResults((gone.results || []).map((r) => r.id));
     });
   },
 
@@ -2035,15 +2099,22 @@ const Recent = {
 
   async links(handle) {
     const list = await this.list(), i = await this.find(list, handle);
-    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null };
+    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null, results: list[i]?.results || [] };
   },
 
   remove(index) {
     return this.serial(async () => {
       const list = await this.list();
-      list.splice(index, 1);
+      const [gone] = list.splice(index, 1);
       await this.save(list);
+      await this.dropResults((gone?.results || []).map((r) => r.id));
     });
+  },
+
+  putResult(id, bytes) { return this.store('readwrite', (s) => s.put(bytes, `result:${id}`)); },
+  resultBytes(id) { return this.store('readonly', (s) => s.get(`result:${id}`)); },
+  async dropResults(ids) {
+    try { if (ids.length) await this.store('readwrite', (s) => { for (const id of ids) s.delete(`result:${id}`); }); } catch (e) { /* storage unavailable */ }
   },
 };
 
@@ -2482,6 +2553,7 @@ const COUNTRIES = new Map(('AFG Afghanistan|ALA Åland Islands|ALB Albania|DZA A
   + 'ZWE Zimbabwe|XKX Kosovo').split('|').map((s) => [s.slice(0, 3), s.slice(4)]));
 
 </script>
+
 <script>
 // Clouds and daylight from the weather file.
 //
@@ -2746,19 +2818,19 @@ function utciInRange(ta, tr, va, rh) {
   return ta >= -50 && ta <= 50 && d >= -30 && d <= 70 && va >= UTCI_WIND_MIN && va <= UTCI_WIND_MAX && pa <= 5;
 }
 
-// The ten assessment bands of thermal stress, each up to (not including) `below` °C, with the
-// colours the LadybugTools Toolkit uses. 9-26 °C is "no thermal stress", the usual comfort band.
+// The ten assessment bands of thermal stress, each up to (not including) `below` °C. 9-26 °C is
+// "no thermal stress", the usual comfort band. colourscales.js has their colours.
 const UTCI_CATEGORIES = [
-  { name: 'Extreme cold stress', below: -40, color: '#0D104B', stress: -4 },
-  { name: 'Very strong cold stress', below: -27, color: '#262972', stress: -3 },
-  { name: 'Strong cold stress', below: -13, color: '#3452A4', stress: -2 },
-  { name: 'Moderate cold stress', below: 0, color: '#3C65AF', stress: -1 },
-  { name: 'Slight cold stress', below: 9, color: '#37BCED', stress: -1 },
-  { name: 'No thermal stress', below: 26, color: '#2EB349', stress: 0 },
-  { name: 'Moderate heat stress', below: 32, color: '#F38322', stress: 1 },
-  { name: 'Strong heat stress', below: 38, color: '#C31F25', stress: 2 },
-  { name: 'Very strong heat stress', below: 46, color: '#7F1416', stress: 3 },
-  { name: 'Extreme heat stress', below: Infinity, color: '#580002', stress: 4 },
+  { name: 'Extreme cold stress', below: -40, stress: -4 },
+  { name: 'Very strong cold stress', below: -27, stress: -3 },
+  { name: 'Strong cold stress', below: -13, stress: -2 },
+  { name: 'Moderate cold stress', below: 0, stress: -1 },
+  { name: 'Slight cold stress', below: 9, stress: -1 },
+  { name: 'No thermal stress', below: 26, stress: 0 },
+  { name: 'Moderate heat stress', below: 32, stress: 1 },
+  { name: 'Strong heat stress', below: 38, stress: 2 },
+  { name: 'Very strong heat stress', below: 46, stress: 3 },
+  { name: 'Extreme heat stress', below: Infinity, stress: 4 },
 ];
 
 function utciCategory(value) {
@@ -2808,6 +2880,413 @@ function solarProjectionFactor(altitude, sharp = 135) {
 function surroundingsMrtDelta(dnr, altitude) {
   if (!(dnr > 0) || !(altitude > 0)) return 0;
   return (dnr * Math.sin((Math.min(altitude, 90) * Math.PI) / 180)) / 60;
+}
+
+</script>
+<script>
+// Colour scales for data, so the same kind of data looks the same across the app. Each metric
+// (a kind of data) has one or more scales, the first its default; ColourScales.preferred gives the
+// one in use, which the user can change. Scales have fixed values and never stretch to a dataset,
+// except for data of no known metric (ColourScales.fromData).
+//
+// A scale is grouped ({ bands: [{ below, color, label }], start }), each band up to (not including)
+// `below`, or smooth ({ stops: [[value, color], ...] }), clamped at both ends. A smooth scale's
+// labels: bands whose labels still apply to its values.
+
+const scaleRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+const UTCI_COLOURS = ['#0D104B', '#262972', '#3452A4', '#3C65AF', '#37BCED', '#2EB349', '#F38322', '#C31F25', '#7F1416', '#580002'];
+const OFF_WHITE = '#F4F1E8', DARKER_OFF_WHITE = '#DDD8C8';
+// recolour: band name -> colour, for the variants of the banded scheme.
+const utciBands = (recolour = {}) => UTCI_CATEGORIES.map((c, i) => ({ below: c.below, label: c.name, color: recolour[c.name] || UTCI_COLOURS[i] }));
+// The continuous version runs through each band's colour at its middle (the open-ended bands: as
+// far past their limit as the band next to them is wide).
+const utciStops = () => {
+  const b = UTCI_CATEGORIES.map((c) => c.below);
+  const mids = b.map((v, i) => (i === 0 ? v - (b[1] - b[0]) / 2 : i === b.length - 1 ? b[i - 1] + (b[i - 1] - b[i - 2]) / 2 : (b[i - 1] + v) / 2));
+  return mids.map((v, i) => [v, UTCI_COLOURS[i]]);
+};
+
+// As for UTCI, a continuous version runs through each band's colour at its middle.
+const LAWSON_STOPS = [[1, '#0061F9'], [3, '#00ECF9'], [5, '#03F9A1'], [7, '#47F800'], [9, '#D4FC01'], [11, '#FCA902'], [13, '#FD2E03']];
+const LAWSON_BANDS = [
+  { below: 2, color: '#0061F9', label: 'Sitting, entrances' },
+  { below: 4, color: '#00ECF9', label: 'Sitting, entrances' },
+  { below: 6, color: '#03F9A1', label: 'Standing' },
+  { below: 8, color: '#47F800', label: 'Walking' },
+  { below: 10, color: '#D4FC01', label: 'Walking fast' },
+  { below: 12, color: '#FCA902', label: 'Uncomfortable' },
+  { below: Infinity, color: '#FD2E03', label: 'Uncomfortable' },
+];
+
+const ColourScales = {
+  metrics: {
+    utci: { name: 'UTCI', unit: '°C' },
+    windSpeed: { name: 'Wind speed', unit: 'm/s' },
+    relativeHumidity: { name: 'Relative humidity', unit: '%' },
+    temperature: { name: 'Temperature', unit: '°C' },
+  },
+
+  scales: [
+    { id: 'utci', metric: 'utci', name: 'Blue, green, red', bands: utciBands() },
+    { id: 'utciWhite', metric: 'utci', name: 'Off-white comfort band', bands: utciBands({ 'No thermal stress': OFF_WHITE }) },
+    { id: 'utciWhiter', metric: 'utci', name: 'Off-white to 32 °C', bands: utciBands({ 'No thermal stress': OFF_WHITE, 'Moderate heat stress': DARKER_OFF_WHITE }) },
+    { id: 'utciSmooth', metric: 'utci', name: 'Continuous', stops: utciStops(), labels: utciBands() },
+    { id: 'lawson', metric: 'windSpeed', name: 'Lawson comfort criteria', start: 0, bands: LAWSON_BANDS },
+    { id: 'lawsonSmooth', metric: 'windSpeed', name: 'Lawson, continuous', stops: LAWSON_STOPS, labels: LAWSON_BANDS },
+    { id: 'humidity', metric: 'relativeHumidity', name: 'Off-white to blue', stops: [[0, OFF_WHITE], [100, '#3E8FC9']] },
+    { id: 'temperature', metric: 'temperature', name: 'Blue, grey, red', stops: [[-20, '#2A63C8'], [10, '#D4D4D4'], [40, '#D0211C']] },
+  ],
+
+  choices: {}, // metric -> the id of the scale picked for it
+
+  // Which metric a column of data is, from its name and unit, or null if it is none of them.
+  metricOf(name, unit) {
+    const n = name.toLowerCase(), u = unit === null ? null : unit.toLowerCase();
+    const celsius = u === null || u === 'c' || u === '°c';
+    if (n.startsWith('utci') && celsius) return 'utci';
+    if (/temperature/.test(n) && celsius) return 'temperature';
+    if (/humidity/.test(n) && (u === null || u === '%')) return 'relativeHumidity';
+    if (/velocity|wind ?speed/.test(n) && (u === null || u === 'm s^-1' || u === 'm/s')) return 'windSpeed';
+    return null;
+  },
+
+  forMetric(metric) { return this.scales.filter((s) => s.metric === metric); },
+  preferred(metric) {
+    const all = this.forMetric(metric);
+    return all.find((s) => s.id === this.choices[metric]) || all[0];
+  },
+
+  // A blue to red scale for data of no known metric, across all but its extremes.
+  fromData(values) {
+    const v = Array.from(values).filter(Number.isFinite).sort((a, b) => a - b);
+    const lo = v.length ? v[Math.floor(v.length * 0.02)] : 0, hi = v.length ? v[Math.floor(v.length * 0.98)] : 1;
+    const top = hi > lo ? hi : lo + 1;
+    return { id: 'data', metric: null, name: 'Range of the data', stops: [[lo, '#2A63C8'], [(lo + top) / 2, '#D4D4D4'], [top, '#D0211C']] };
+  },
+
+  // The colour of a value, as [r, g, b] 0-255.
+  colour(scale, v) {
+    if (scale.bands) return scaleRgb((scale.bands.find((b) => v < b.below) || scale.bands[scale.bands.length - 1]).color);
+    const S = scale.stops;
+    if (v <= S[0][0]) return scaleRgb(S[0][1]);
+    for (let i = 1; i < S.length; i++) {
+      if (v <= S[i][0]) {
+        const t = (v - S[i - 1][0]) / (S[i][0] - S[i - 1][0]), a = scaleRgb(S[i - 1][1]), b = scaleRgb(S[i][1]);
+        return a.map((c, k) => Math.round(c + (b[k] - c) * t));
+      }
+    }
+    return scaleRgb(S[S.length - 1][1]);
+  },
+  css(scale, v) { return `rgb(${this.colour(scale, v).join(' ')})`; },
+
+  // What a value means on this scale, if the scale says.
+  label(scale, v) {
+    const b = scale.bands || scale.labels;
+    return b ? (b.find((x) => v < x.below) || b[b.length - 1]).label : null;
+  },
+
+  // The scale as a table of RGBA colours for the GPU: value v is at (v - lo) / (hi - lo) of the way along.
+  ramp(scale, size = 2048) {
+    const ends = scale.bands ? scale.bands.map((b) => b.below).filter(Number.isFinite) : scale.stops.map((s) => s[0]);
+    const pad = scale.bands ? (ends[ends.length - 1] - ends[0]) / Math.max(1, ends.length - 1) : 0;
+    const lo = ends[0] - pad, hi = ends[ends.length - 1] + pad, data = new Uint8Array(size * 4);
+    for (let i = 0; i < size; i++) {
+      data.set(this.colour(scale, lo + ((i + 0.5) / size) * (hi - lo)), i * 4);
+      data[i * 4 + 3] = 255;
+    }
+    return { lo, hi, data };
+  },
+
+  // For a legend: cells: [{ color, label }] of equal width with ticks at their edges, or gradient: a
+  // CSS gradient. ticks: [{ at (0-1), text }].
+  legend(scale) {
+    const num = (v) => String(+v.toFixed(1));
+    if (scale.bands) {
+      const n = scale.bands.length, ticks = scale.bands.slice(0, -1).map((b, i) => ({ at: (i + 1) / n, text: num(b.below) }));
+      if (scale.start !== undefined) ticks.unshift({ at: 0, text: num(scale.start) });
+      return { cells: scale.bands.map((b) => ({ color: b.color, label: b.label })), ticks };
+    }
+    const lo = scale.stops[0][0], span = scale.stops[scale.stops.length - 1][0] - lo;
+    const at = (v) => (v - lo) / span;
+    // Where a scale's values have bands, their edges are the numbers to read it by.
+    const marks = scale.labels ? scale.labels.map((b) => b.below).filter((v) => Number.isFinite(v) && at(v) >= 0 && at(v) <= 1) : scale.stops.map(([v]) => v);
+    return { gradient: `linear-gradient(to right, ${scale.stops.map(([v, c]) => `${c} ${(at(v) * 100).toFixed(1)}%`).join(', ')})`,
+      ticks: marks.map((v) => ({ at: at(v), text: num(v) })) };
+  },
+};
+
+</script>
+<script>
+// Results files, bound to a model and read-only. Each kind of file has a parser in RESULT_PARSERS:
+//
+//   { id, name, extensions, parse(text) -> data, or null if the file isn't this kind (throws if it
+//     is but can't be read), describe(data) -> a short summary for the Results files dialog }
+//
+// parseResultsFile tries each parser in turn until one recognises the file. A parser's extensions
+// and an early check in its parse keep that cheap for files meant for another parser.
+
+const LENGTH_IN_METRES = { m: 1, mm: 0.001, cm: 0.01, km: 1000, ft: 0.3048, in: 0.0254 };
+
+// "X [ m ]" -> { name: 'x', unit: 'm' }
+function resultColumn(heading) {
+  const m = heading.trim().match(/^(.*?)\s*(?:\[\s*(.*?)\s*\])?$/);
+  return { name: m[1].toLowerCase(), unit: m[2] ?? null };
+}
+
+// CFX streamlines: one or more [Name], [Data] (nodes) and [Lines] (pairs of node numbers) sections.
+// Gives { streamlines: [{ name, segments, polylines: [{ points, velocity }] }] }: points (metres, x,
+// y, z, ...) with the velocity (m/s) of each, so the node numbers are not kept.
+function parseCfdStreamlines(text) {
+  if (!/^\[Lines\]\s*$/m.test(text)) return null;
+  const streamlines = [];
+  let section = null, cur = null, cols = null, scale = 1;
+  const finish = () => {
+    if (!cur) return true;
+    if (!cur.starts.length) return false;
+    streamlines.push({ name: cur.name, segments: cur.starts.length, polylines: streamlinePolylines(cur) });
+    return true;
+  };
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] === '[') {
+      section = line.toLowerCase();
+      if (section === '[name]' && !finish()) return null;
+      if (section === '[name]') cur = null;
+      if (section === '[data]') cols = null;
+      continue;
+    }
+    if (section === '[name]') cur = { name: line, row: new Map(), xyz: [], velocity: [], starts: [], ends: [] };
+    else if (!cur) return null;
+    else if (section === '[data]' && !cols) {
+      const heads = line.split(',').map(resultColumn), at = (n) => heads.findIndex((h) => h.name === n);
+      cols = { node: at('node number'), x: at('x'), y: at('y'), z: at('z'), v: at('velocity') };
+      if (Object.values(cols).includes(-1)) return null;
+      const units = heads[cols.x].unit;
+      scale = units === null ? 1 : LENGTH_IN_METRES[units.toLowerCase()];
+      const speed = heads[cols.v].unit;
+      if (!scale || heads[cols.y].unit !== units || heads[cols.z].unit !== units || !(speed === null || speed === 'm s^-1' || speed === 'm/s')) return null;
+    } else if (section === '[data]') {
+      const r = line.split(',');
+      cur.row.set(+r[cols.node], cur.velocity.length);
+      cur.xyz.push(+r[cols.x] * scale, +r[cols.y] * scale, +r[cols.z] * scale);
+      cur.velocity.push(+r[cols.v]);
+    } else if (section === '[lines]') {
+      const r = line.split(','), a = cur.row.get(+r[0]), b = cur.row.get(+r[1]);
+      if (a === undefined || b === undefined) throw new Error(`[Lines] of ${cur.name} uses a node that isn't in its [Data]: ${line}`);
+      cur.starts.push(a);
+      cur.ends.push(b);
+    }
+  }
+  return finish() && streamlines.length ? { streamlines } : null;
+}
+
+// Joins segments end to end. Usually each starts where the last ended, but nothing relies on that:
+// a line starts at a node nothing leads into, and anything left over (a closed loop, the second
+// branch of a fork) starts where it can.
+function streamlinePolylines({ xyz, velocity, starts, ends }) {
+  const n = velocity.length, incoming = new Uint32Array(n), first = new Int32Array(n).fill(-1), next = new Int32Array(starts.length).fill(-1);
+  for (let i = starts.length - 1; i >= 0; i--) { incoming[ends[i]]++; next[i] = first[starts[i]]; first[starts[i]] = i; }
+  const used = new Uint8Array(starts.length), polylines = [];
+  const walk = (seg) => {
+    const nodes = [starts[seg]];
+    for (let i = seg; i >= 0;) {
+      used[i] = 1;
+      nodes.push(ends[i]);
+      i = first[ends[i]];
+      while (i >= 0 && used[i]) i = next[i];
+    }
+    const points = new Float64Array(nodes.length * 3), speed = new Float32Array(nodes.length);
+    nodes.forEach((k, j) => { points[j * 3] = xyz[k * 3]; points[j * 3 + 1] = xyz[k * 3 + 1]; points[j * 3 + 2] = xyz[k * 3 + 2]; speed[j] = velocity[k]; });
+    polylines.push({ points, velocity: speed });
+  };
+  for (let i = 0; i < starts.length; i++) if (!used[i] && !incoming[starts[i]]) walk(i);
+  for (let i = 0; i < starts.length; i++) if (!used[i]) walk(i);
+  return polylines;
+}
+
+// A blank, "null" or otherwise unusable value counts as missing.
+const resultNumber = (s) => {
+  const v = s === undefined || s.trim() === '' ? NaN : +s;
+  return Number.isFinite(v) ? v : NaN;
+};
+
+// CFX values on a surface: one or more [Name], [Data] (nodes, each with any number of results) and
+// [Faces] (three or more node numbers) sections. Gives { maps: [{ name, points (metres, x, y, z, ...),
+// indices (triangles, as rows of points), results: [{ name, unit, metric, values }], faces,
+// skippedFaces, missing }] }. A node without a position loses its faces (skippedFaces), and a
+// value it lacks is NaN (missing: how many nodes lack any).
+function parseCfdMap(text) {
+  if (!/^\[Faces\]\s*$/m.test(text)) return null;
+  const maps = [];
+  let section = null, cur = null, cols = null, scale = 1;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line[0] === '[') {
+      section = line.toLowerCase();
+      if (section === '[name]') cur = null;
+      if (section === '[data]') cols = null;
+      continue;
+    }
+    if (section === '[name]') {
+      cur = { name: line, row: new Map(), xyz: [], tris: [], results: [], faces: 0, skippedFaces: 0, missing: 0 };
+      maps.push(cur);
+    } else if (!cur) return null;
+    else if (section === '[data]' && !cols) {
+      const heads = line.split(',').map(resultColumn), at = (n) => heads.findIndex((h) => h.name === n);
+      cols = { node: at('node number'), x: at('x'), y: at('y'), z: at('z'), rest: [] };
+      if ([cols.node, cols.x, cols.y, cols.z].includes(-1)) return null;
+      const units = heads[cols.x].unit;
+      scale = units === null ? 1 : LENGTH_IN_METRES[units.toLowerCase()];
+      if (!scale || heads[cols.y].unit !== units || heads[cols.z].unit !== units) return null;
+      heads.forEach((h, k) => {
+        if (![cols.node, cols.x, cols.y, cols.z].includes(k)) {
+          cols.rest.push(k);
+          const name = line.split(',')[k].trim().replace(/\s*\[.*\]$/, '');
+          cur.results.push({ name, unit: h.unit, metric: ColourScales.metricOf(name, h.unit), values: [] });
+        }
+      });
+      if (!cols.rest.length) return null;
+    } else if (section === '[data]') {
+      const r = line.split(',');
+      cur.row.set(+r[cols.node], cur.xyz.length / 3);
+      cur.xyz.push(resultNumber(r[cols.x]) * scale, resultNumber(r[cols.y]) * scale, resultNumber(r[cols.z]) * scale);
+      let lacks = false;
+      cols.rest.forEach((k, i) => {
+        const v = resultNumber(r[k]);
+        if (Number.isNaN(v)) lacks = true;
+        cur.results[i].values.push(v);
+      });
+      if (lacks) cur.missing++;
+    } else if (section === '[faces]') {
+      cur.faces++;
+      const ids = line.split(',').map((s) => cur.row.get(+s));
+      if (ids.length < 3 || ids.some((k) => k === undefined || Number.isNaN(cur.xyz[k * 3] + cur.xyz[k * 3 + 1] + cur.xyz[k * 3 + 2]))) { cur.skippedFaces++; continue; }
+      for (let i = 1; i + 1 < ids.length; i++) cur.tris.push(ids[0], ids[i], ids[i + 1]);
+    }
+  }
+  const usable = maps.filter((m) => m.tris.length);
+  if (!usable.length) return null;
+  return { maps: usable.map(({ name, xyz, tris, results, faces, skippedFaces, missing }) => ({ name, faces, skippedFaces, missing,
+    points: Float64Array.from(xyz), indices: Uint32Array.from(tris),
+    results: results.map((r) => ({ ...r, values: Float32Array.from(r.values) })) })) };
+}
+
+// A map's positions for the GPU, in the model's units relative to its origin.
+function cfdMapVertices(map, metresPerUnit, origin) {
+  const pos = new Float32Array(map.points.length);
+  for (let i = 0; i < pos.length; i++) pos[i] = map.points[i] / metresPerUnit - origin[i % 3];
+  return pos;
+}
+
+// A result's values for the GPU: missing ones become a huge number, which hides the faces around them.
+const CFD_MAP_MISSING = 1e30;
+function cfdMapValues(result) {
+  return result.values.map((v) => (Number.isNaN(v) ? CFD_MAP_MISSING : v));
+}
+
+// Finds the triangle under a point, using a grid over the map in plan.
+// -> { a, b, c (rows of points), wa, wb, wc (weights) }, the one nearest z where several overlap.
+function cfdMapFind(map, x, y, z) {
+  const P = map.points, T = map.indices, n = T.length / 3;
+  if (!map.grid) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < T.length; i++) {
+      const k = T[i] * 3;
+      x0 = Math.min(x0, P[k]); x1 = Math.max(x1, P[k]); y0 = Math.min(y0, P[k + 1]); y1 = Math.max(y1, P[k + 1]);
+    }
+    const w = Math.max(x1 - x0, 1e-9), h = Math.max(y1 - y0, 1e-9), size = Math.sqrt((w * h) / Math.max(n, 1));
+    const nx = Math.min(4096, Math.max(1, Math.ceil(w / size))), ny = Math.min(4096, Math.max(1, Math.ceil(h / size)));
+    const ix = (v) => Math.min(nx - 1, Math.max(0, Math.floor(((v - x0) / w) * nx))), iy = (v) => Math.min(ny - 1, Math.max(0, Math.floor(((v - y0) / h) * ny)));
+    const start = new Uint32Array(nx * ny + 1);
+    const each = (t, fn) => {
+      const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+      const i0 = ix(Math.min(P[a], P[b], P[c])), i1 = ix(Math.max(P[a], P[b], P[c])), j0 = iy(Math.min(P[a + 1], P[b + 1], P[c + 1])), j1 = iy(Math.max(P[a + 1], P[b + 1], P[c + 1]));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(i + j * nx);
+    };
+    for (let t = 0; t < n; t++) each(t, (c) => { start[c + 1]++; });
+    for (let c = 0; c < nx * ny; c++) start[c + 1] += start[c];
+    const fill = start.slice(), items = new Uint32Array(start[nx * ny]);
+    for (let t = 0; t < n; t++) each(t, (c) => { items[fill[c]++] = t; });
+    map.grid = { x0, y0, x1, y1, nx, ny, ix, iy, start, items };
+  }
+  const G = map.grid;
+  if (x < G.x0 || x > G.x1 || y < G.y0 || y > G.y1) return null;
+  const c = G.ix(x) + G.iy(y) * G.nx, E = 1e-4;
+  let best = null, bestGap = Infinity;
+  for (let i = G.start[c]; i < G.start[c + 1]; i++) {
+    const t = G.items[i], a = T[t * 3], b = T[t * 3 + 1], d = T[t * 3 + 2];
+    const ax = P[a * 3], ay = P[a * 3 + 1], bx = P[b * 3], by = P[b * 3 + 1], dx = P[d * 3], dy = P[d * 3 + 1];
+    const det = (by - dy) * (ax - dx) + (dx - bx) * (ay - dy);
+    if (!det) continue;
+    const wa = ((by - dy) * (x - dx) + (dx - bx) * (y - dy)) / det, wb = ((dy - ay) * (x - dx) + (ax - dx) * (y - dy)) / det, wc = 1 - wa - wb;
+    if (wa < -E || wb < -E || wc < -E) continue;
+    const gap = Math.abs(wa * P[a * 3 + 2] + wb * P[b * 3 + 2] + wc * P[d * 3 + 2] - z);
+    if (gap < bestGap) { bestGap = gap; best = { a, b, c: d, wa, wb, wc }; }
+  }
+  return best;
+}
+
+// A result's value at a place from cfdMapFind; NaN if a corner lacks it.
+const cfdMapValueAt = (result, h) => result.values[h.a] * h.wa + result.values[h.b] * h.wb + result.values[h.c] * h.wc;
+
+const RESULT_PARSERS = [
+  { id: 'cfdStreamlines', name: 'CFD streamlines', extensions: ['.csv'], parse: parseCfdStreamlines,
+    describe({ streamlines }) {
+      const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`;
+      return [count(streamlines.length, 'streamline'), count(streamlines.reduce((s, l) => s + l.polylines.length, 0), 'polyline'),
+        count(streamlines.reduce((s, l) => s + l.segments, 0), 'segment')].join(' · ');
+    } },
+  { id: 'cfdMap', name: 'CFD map', extensions: ['.csv'], parse: parseCfdMap,
+    describe({ maps }) {
+      const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`, sum = (f) => maps.reduce((s, m) => s + f(m), 0);
+      const missing = sum((m) => m.missing), skipped = sum((m) => m.skippedFaces);
+      return [count(maps.length, 'map'), count(sum((m) => m.results.length), 'result'), count(sum((m) => m.faces), 'face'),
+        ...(missing ? [`${count(missing, 'node')} without some results`] : []), ...(skipped ? [`${count(skipped, 'face')} not usable`] : [])].join(' · ');
+    } },
+];
+
+const resultParsersFor = (fileName) => RESULT_PARSERS.filter((p) => p.extensions.some((x) => fileName.toLowerCase().endsWith(x)));
+
+// -> { parser, data }, or null if no parser recognises the file.
+function parseResultsFile(bytes, fileName) {
+  const parsers = resultParsersFor(fileName);
+  if (!parsers.length) return null;
+  const text = new TextDecoder().decode(bytes);
+  for (const parser of parsers) {
+    const data = parser.parse(text);
+    if (data) return { parser, data };
+  }
+  return null;
+}
+
+// Line-list vertices for streamlines, in the model's units relative to its origin, with each
+// segment the colour (colourOf, velocity -> [r, g, b]) of its start node. ranges: for each streamline, a { first, count } in vertices
+// for each of its polylines.
+function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
+  const total = streamlines.reduce((s, l) => s + l.segments, 0);
+  const pos = new Float32Array(total * 6), col = new Uint8Array(total * 8), ranges = [];
+  let at = 0;
+  for (const line of streamlines) {
+    const parts = [];
+    for (const { points, velocity } of line.polylines) {
+      const first = at;
+      for (let i = 0; i + 1 < velocity.length; i++, at += 2) {
+        for (let k = 0; k < 3; k++) {
+          pos[at * 3 + k] = points[i * 3 + k] / metresPerUnit - origin[k];
+          pos[at * 3 + 3 + k] = points[i * 3 + 3 + k] / metresPerUnit - origin[k];
+        }
+        const c = colourOf(velocity[i]);
+        col.set(c, at * 4); col[at * 4 + 3] = 255;
+        col.set(c, at * 4 + 4); col[at * 4 + 7] = 255;
+      }
+      parts.push({ first, count: at - first });
+    }
+    ranges.push(parts);
+  }
+  return { pos, col, ranges };
 }
 
 </script>
@@ -3079,7 +3558,7 @@ class ChoiceList {
     if (label) this.el.setAttribute('aria-label', label);
     this.el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
-      if (b) onPick(b.dataset.id);
+      if (b) onPick(b.dataset.id, e);
     });
     this.el.addEventListener('keydown', (e) => {
       const all = [...this.el.querySelectorAll('button[data-id]')], at = all.indexOf(document.activeElement);
@@ -3142,6 +3621,7 @@ class ChoiceList {
 
   item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
   setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
+  setOpen(id, on) { this.item(id).classList.toggle('open', on); } // coloured, as a toolbar button whose panel is open
 }
 
 </script>
@@ -4390,6 +4870,35 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
   return vec4f(mix(F.bgBot.rgb, B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
+// Result lines, each vertex with its own colour; not picked, and not faded by the haze.
+struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
+@vertex fn vsResultLine(@location(0) p: vec3f, @location(2) col: vec4f) -> ResultOut {
+  let c = F.viewProj * vec4f(p, 1.0);
+  return ResultOut(vec4f(c.xy, min(c.z * LINE_PULL, c.w), c.w), col.rgb);
+}
+@fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
+
+// Result maps: each vertex holds a value, looked up in the map's colour table for each pixel, so that
+// the edges of grouped scales stay sharp. A huge value means there is none, and hides the triangle.
+struct MapUniform { z: f32, lo: f32, hi: f32, index: f32 };
+@group(1) @binding(5) var<uniform> MU: MapUniform;
+@group(1) @binding(6) var mapRamp: texture_2d<f32>;
+struct MapOut { @builtin(position) pos: vec4f, @location(0) v: f32, @location(1) wp: vec3f };
+@vertex fn vsMap(@location(0) p: vec3f, @location(2) v: f32) -> MapOut {
+  let q = p + vec3f(0.0, 0.0, MU.z);
+  return MapOut(F.viewProj * vec4f(q, 1.0), v, q);
+}
+@fragment fn fsMap(in: MapOut) -> @location(0) vec4f {
+  if (abs(in.v) > 1e20) { discard; }
+  let n = i32(textureDimensions(mapRamp).x);
+  let i = clamp(i32(floor((in.v - MU.lo) / (MU.hi - MU.lo) * f32(n))), 0, n - 1);
+  return vec4f(textureLoad(mapRamp, vec2i(i, 0), 0).rgb, 1.0);
+}
+@fragment fn fsMapPick(in: MapOut) -> @location(0) vec4f {
+  if (abs(in.v) > 1e20) { discard; }
+  return vec4f(in.wp, -MU.index - 1.0);
+}
+
 // Points (screen-space squares) --------------------------------------------------------------
 @vertex fn vsPoint(@builtin(vertex_index) i: u32, @location(0) p: vec3f, @location(4) oid: u32) -> @builtin(position) vec4f {
   if (objFlag(oid, 1u)) { return CULLED; }
@@ -4702,7 +5211,16 @@ class Renderer {
       multisample: { count: o.samples || MSAA },
     });
 
+    this.mapLayout = device.createBindGroupLayout({ entries: [
+      { binding: 5, visibility: VF, buffer: {} },
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+    ] });
+    const mapPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.mapLayout] });
+    const VAL = { arrayStride: 4, attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }] };
     this.pipes = {
+      map: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes }),
+      mapX: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes, compare: 'always', write: false }),
+      mapPick: mk('vsMap', 'fsMapPick', [POS, VAL], { format: 'rgba32float', samples: 1, layout: mapPipes }),
       bg: mk('vsBg', 'fsBg', [], { write: false, compare: 'always', layout: frameOnly }),
       mesh: mk('vsMesh', 'fsMesh', [POS, NRM, OID], { bias: true }),
       meshVC: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true }),
@@ -4710,6 +5228,8 @@ class Renderer {
       meshVCT: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true, blend, write: false }),
       line: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'greater-equal', blend }),
       lineX: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'always', blend, write: false }),
+      resultLine: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'greater-equal', layout: frameOnly }),
+      resultLineX: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'always', write: false, layout: frameOnly }),
       point: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'greater-equal' }),
       pointX: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'always', write: false }),
       pick: mk('vsPick', 'fsPick', [POS, OID], { format: 'rgba32float', samples: 1, layout: frameOnly }),
@@ -5108,13 +5628,78 @@ class Renderer {
         pass.draw(4, b.count);
       }
     }
+    if (s.resultMaps?.length) {
+      pass.setPipeline(s.xray ? P.mapX : P.map);
+      this.drawResultMaps(pass, s);
+    }
+    if (this.resultLines && s.resultRanges?.length) {
+      pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
+      pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
+      for (const r of s.resultRanges) pass.draw(r.count, 1, r.first);
+    }
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     pass.end();
     this.device.queue.submit([enc.finish()]);
   }
 
+  // Result maps to draw: [{ pos: Float32Array, indices: Uint32Array }]. setMapResult gives one its
+  // values and colour table, and each frame's s.resultMaps says which are shown, s.resultMapZ how
+  // far they are moved up.
+  setResultMaps(list) {
+    for (const m of this.resultMaps || []) { m.pos.destroy(); m.idx.destroy(); m.val.destroy(); m.uni.destroy(); m.ramp?.destroy(); }
+    const dev = this.device, U = GPUBufferUsage;
+    const make = (arr, usage) => {
+      const buf = dev.createBuffer({ size: arr.byteLength, usage: usage | U.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.resultMaps = list.map(({ pos, indices }, index) => ({ index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
+      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) }));
+  }
+
+  // values: Float32Array, one per vertex. ramp: { lo, hi, data } (ColourScales.ramp).
+  setMapResult(i, values, ramp) {
+    const m = this.resultMaps[i], dev = this.device, n = ramp.data.length / 4;
+    dev.queue.writeBuffer(m.val, 0, values);
+    Object.assign(m, { lo: ramp.lo, hi: ramp.hi });
+    if (!m.ramp || m.ramp.width !== n) {
+      m.ramp?.destroy();
+      m.ramp = dev.createTexture({ size: [n, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      m.bg = dev.createBindGroup({ layout: this.mapLayout, entries: [{ binding: 5, resource: { buffer: m.uni } }, { binding: 6, resource: m.ramp.createView() }] });
+    }
+    dev.queue.writeTexture({ texture: m.ramp }, ramp.data, { bytesPerRow: n * 4 }, [n, 1]);
+  }
+
+  drawResultMaps(pass, s) {
+    for (const i of s.resultMaps) {
+      const m = this.resultMaps[i];
+      if (!m?.bg) continue;
+      this.device.queue.writeBuffer(m.uni, 0, new Float32Array([s.resultMapZ || 0, m.lo, m.hi, m.index]));
+      pass.setBindGroup(1, m.bg);
+      pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
+      pass.setIndexBuffer(m.idx, 'uint32');
+      pass.drawIndexed(m.count);
+    }
+  }
+
+  // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
+  // none. Each frame's s.resultRanges says which { first, count } of them are shown.
+  setResultLines(lines) {
+    this.resultLines?.pos.destroy();
+    this.resultLines?.col.destroy();
+    this.resultLines = null;
+    if (!lines?.pos.length) return;
+    const make = (arr) => {
+      const buf = this.device.createBuffer({ size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+      this.device.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.resultLines = { pos: make(lines.pos), col: make(lines.col) };
+  }
+
   // Returns { p: world position (model-relative), id: object index } for the visible surface
-  // under pixel (px, py), or null for empty space. Picks share one readback buffer, so
+  // under pixel (px, py), or null for empty space. With s.pickMaps it can also be
+  // { p, map: index } for a result map from s.resultMaps. Picks share one readback buffer, so
   // overlapping calls are queued and run one after another.
   pick(px, py, viewProj, s) {
     const run = () => this.pickNow(px, py, viewProj, s);
@@ -5146,12 +5731,17 @@ class Renderer {
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
         this.drawCells(pass, b);
       }
+      if (s.pickMaps && s.resultMaps?.length) {
+        pass.setPipeline(this.pipes.mapPick);
+        this.drawResultMaps(pass, s);
+      }
       pass.end();
       enc.copyTextureToBuffer({ texture: this.pickColor }, { buffer: this.pickRead, bytesPerRow: 256 }, [1, 1]);
       this.device.queue.submit([enc.finish()]);
       await this.pickRead.mapAsync(GPUMapMode.READ);
       const v = new Float32Array(this.pickRead.getMappedRange(0, 16)).slice();
       this.pickRead.unmap();
+      if (v[3] < -0.5) return { p: [v[0], v[1], v[2]], map: Math.round(-v[3]) - 1 };
       return v[3] > 0.5 ? { p: [v[0], v[1], v[2]], id: Math.round(v[3]) - 1 } : null;
     } finally {
       this.pickBusy = false;
@@ -5310,7 +5900,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
@@ -5341,6 +5931,18 @@ state.sun = {
 // The site location of the open model: a custom location, the weather file (epw, an EPW object)
 // and which source to use (use: 'custom', 'epw', 'file' or null for the first that is set).
 const site = { custom: null, epw: null, use: null };
+// The open model's results files: { id, name, size, parser, data }, parser and data null if nothing
+// recognises a bound file any more. They are only ever read.
+let results = [];
+ColourScales.choices = prefs.colourScales || {};
+// The CFD streamlines panel. on: its master switch. off: keys (streamlineKey) of what is unticked,
+// streamlines and polylines alike. collapsed: keys of the streamlines folded up. lines: what was
+// given to the renderer, a { key, parts: [{ key, range }] } for each streamline and its polylines.
+state.streamlines = { panel: false, on: true, off: new Set(), collapsed: new Set(), lines: [] };
+// The CFD map panel. on: its master switch. off: keys of the unticked maps. collapsed: of those
+// folded up. picked: map key -> the name of the result shown. z: metres moved up. list: what was
+// given to the renderer, a { key, map, label } for each map.
+state.maps = { panel: false, on: true, off: new Set(), collapsed: new Set(), picked: {}, z: 0, list: [] };
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
@@ -5433,6 +6035,10 @@ function frameState() {
     ortho: camera.ortho, dpr: Math.min(window.devicePixelRatio || 1, 2), showPoints: state.showCurves, sun: null, cam,
   };
   if (!model) return s;
+  const SL = state.streamlines;
+  s.resultMaps = state.maps.on ? state.maps.list.flatMap((m, i) => (state.maps.off.has(m.key) ? [] : [i])) : [];
+  s.resultMapZ = state.maps.z / model.metresPerUnit;
+  s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
   // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
@@ -5561,7 +6167,8 @@ function loop() {
 // handle: the file's FileSystemFileHandle, when there is one, for the recent files list.
 async function openFile(file, handle = null) {
   if (/\.epw$/i.test(file.name)) { loadEpw(file); return; }
-  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm or .epw file.`, true); return; }
+  if (resultParsersFor(file.name).length) { addResultsFile(file); return; }
+  if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
   await Recent.add(handle, file);
   renderRecent();
@@ -5571,7 +6178,7 @@ async function openFile(file, handle = null) {
 // The custom location, weather file and choice of location linked to a model come back with it.
 // Returns what came back, for a notice.
 async function restoreLinks(handle) {
-  const { custom, epw: d, use } = await Recent.links(handle), back = [];
+  const { custom, epw: d, use, results: bound } = await Recent.links(handle), back = [];
   const c = custom && Math.abs(custom.lat) <= 90 && Math.abs(custom.lon) <= 180 && Math.abs(custom.utcOffset) <= 14 ? custom : null;
   if (c) { site.custom = { lat: +c.lat, lon: +c.lon, utcOffset: +c.utcOffset, name: typeof c.name === 'string' ? c.name : null }; back.push(`custom location ${site.custom.name || fmtCoords(c.lat, c.lon)}`); }
   if (d) {
@@ -5579,6 +6186,13 @@ async function restoreLinks(handle) {
     catch (e) { notice(`Could not read ${d.name}, the weather file linked to this model: ${e.message}`, true); }
   }
   if (['custom', 'epw', 'file'].includes(use)) site.use = use;
+  for (const r of bound) {
+    try {
+      const bytes = await Recent.resultBytes(r.id);
+      if (bytes) results.push({ ...r, parser: null, data: null, ...parseResultsFile(bytes, r.name) });
+    } catch (e) { results.push({ ...r, parser: null, data: null }); notice(`Could not read ${r.name}, a results file linked to this model: ${e.message}`, true); }
+  }
+  if (results.length) back.push(results.length === 1 ? `results file ${results[0].name}` : `${results.length} results files`);
   return back;
 }
 
@@ -5656,7 +6270,9 @@ async function openBytes(name, bytes, handle = null) {
     applyLayerMaterials(false);
     await settleMagicGround();
     Object.assign(site, { custom: null, epw: null, use: null }); // never carried over to another model
+    results = [];
     const back = handle ? await restoreLinks(handle) : [];
+    syncResults();
     applyFileLocation(m.location);
     if (model.savedNorth != null) setSun({ north: model.savedNorth });
     restoreSun(savedView);
@@ -6434,7 +7050,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -6445,6 +7061,9 @@ function restoreLayersAndHidden(saved) {
     if (i != null) state.hidden.add(i);
   }
   for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
+  state.streamlines.on = saved.streamlines?.on !== false;
+  state.streamlines.off = new Set(saved.streamlines?.off || []);
+  Object.assign(state.maps, { on: saved.maps?.on !== false, off: new Set(saved.maps?.off || []), picked: saved.maps?.picked || {}, z: Number.isFinite(saved.maps?.z) ? saved.maps.z : 0 });
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
@@ -7434,6 +8053,368 @@ function openWeatherDialog() {
     .then(() => { weatherDialog = null; });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Results files (results.js)
+
+const resultLinks = () => results.map(({ id, name, size }) => ({ id, name, size }));
+
+async function addResultsFile(file) {
+  if (!model) { notice(`Open a model first, then add ${file.name} to it.`, true); return; }
+  if (results.some((r) => r.name === file.name && r.size === file.size)) { notice(`${file.name} is already added.`, false, 3000); return; }
+  const m = model, bytes = new Uint8Array(await file.arrayBuffer());
+  let parsed;
+  try { parsed = parseResultsFile(bytes, file.name); }
+  catch (e) { notice(`Could not read ${file.name}: ${e.message}`, true); return; }
+  if (!parsed) { notice(`${file.name} isn't a kind of results file the viewer can read.`, true); return; }
+  if (m !== model) return;
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  results.push({ id, name: file.name, size: file.size, ...parsed });
+  syncResults();
+  notice(`${file.name}: ${parsed.parser.name}.`, false, 3000);
+  if (m.handle) {
+    try { await Recent.putResult(id, bytes); }
+    catch (e) { notice(`${file.name} could not be stored with this model, so it won't come back when you reopen it.`, true); return; }
+    if (m === model) linkToModel({ results: resultLinks() });
+  }
+}
+
+function removeResultsFile(id) {
+  results = results.filter((r) => r.id !== id);
+  linkToModel({ results: resultLinks() });
+  Recent.dropResults([id]);
+  syncResults();
+}
+
+// Everything that shows the results files follows the list.
+function syncResults() {
+  const n = results.length;
+  $('btnResultsFiles').classList.toggle('set', n > 0);
+  $('btnResultsFiles').title = n ? `Results files: ${results.map((r) => r.name).join(', ')}` : 'Add results files';
+  $('btnResults').hidden = !results.some((r) => r.data);
+  fillStreamlines();
+  fillMaps();
+  fillResultsMenu();
+  resultsDialog?.refresh();
+  redraw();
+}
+
+// Results files dialog: what is bound to the open model, and which parser read each.
+let resultsDialog = null;
+function openResultsDialog() {
+  if (resultsDialog) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'loc-dlg';
+  wrap.innerHTML = `
+    <div class="res-list" data-el="list"></div>
+    <div class="loc-actions"><button class="btn small" data-el="pick">Add results file…</button></div>
+    <div class="fine" data-el="note"></div>
+    <input type="file" multiple data-el="input" hidden>`;
+  const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
+  el('input').accept = [...new Set(RESULT_PARSERS.flatMap((p) => p.extensions))].join(',');
+  el('pick').addEventListener('click', () => el('input').click());
+  el('input').addEventListener('change', () => { const files = [...el('input').files]; el('input').value = ''; files.forEach(addResultsFile); });
+  const refresh = () => {
+    el('list').replaceChildren(...results.map((r) => {
+      const row = document.createElement('div');
+      row.className = 'res-row';
+      row.innerHTML = `<div><div>${escapeHtml(r.name)}</div><div class="fine">${r.parser ? `${escapeHtml(r.parser.name)} · ${escapeHtml(r.parser.describe(r.data))}` : 'Not recognised by any parser'}</div></div><button class="x" aria-label="Remove ${escapeHtml(r.name)}" title="Remove">×</button>`;
+      row.querySelector('.x').addEventListener('click', () => removeResultsFile(r.id));
+      return row;
+    }));
+    el('pick').disabled = !model;
+    el('note').textContent = `Results files are only read, never changed. ${!model
+      ? 'They belong to a model: open one first.'
+      : model.handle ? `These belong to ${model.name}, and a copy of each comes back when you reopen it from Recent files. To update one, remove it and add the new version.`
+        : `These belong to ${model.name} while it is open. You can also drop a results file onto the window.`}`;
+  };
+  refresh();
+  resultsDialog = { refresh };
+  Dialog.open({ title: 'Results files', body: wrap, buttons: [{ label: 'Done', value: true, primary: true }], width: 460 })
+    .then(() => { resultsDialog = null; });
+}
+
+// The toolbar's Results menu: one item for each kind of result there is.
+let resultsList = null, resultsMenu = null;
+function bindResultsMenu() {
+  // An item's checkbox shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
+  resultsList = new ChoiceList({ label: 'Results', onPick: (id, e) => {
+    if (e.target.closest('.box')) { if (id === 'streamlines') setStreamlinesOn(!state.streamlines.on); else setMapsOn(!state.maps.on); }
+    else if (id === 'streamlines') toggleStreamlinesPanel();
+    else toggleMapPanel();
+  } });
+  resultsMenu = new ToolbarMenu($('btnResults'), { label: 'Results' });
+  resultsMenu.body.append(resultsList.el);
+}
+function fillResultsMenu() {
+  const items = [];
+  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: true });
+  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: true });
+  resultsList.setGroups(items.length ? [{ items }] : []);
+  syncResultsMenu();
+}
+function syncResultsMenu() {
+  const sync = (id, { on, panel }) => {
+    if (!resultsList.item(id)) return;
+    resultsList.setChecked(id, on);
+    resultsList.setOpen(id, panel);
+  };
+  sync('streamlines', state.streamlines);
+  sync('map', state.maps);
+}
+
+// A colour scale's legend, as HTML, with a dropdown when its metric has other scales to pick from.
+function colourLegendHtml(scale, title, unit) {
+  const L = ColourScales.legend(scale), all = scale.metric ? ColourScales.forMetric(scale.metric) : [];
+  const bar = L.cells ? L.cells.map((c) => `<span style="background:${c.color}" title="${escapeHtml(c.label)}"></span>`).join('') : `<span style="background:${L.gradient}"></span>`;
+  const ticks = L.ticks.map((t) => `<span class="${t.at <= 0 ? 'first' : t.at >= 1 ? 'last' : ''}" style="left:${(t.at * 100).toFixed(1)}%">${t.text}</span>`).join('');
+  return `<div class="res-legend"><div class="res-legend-head"><span>${escapeHtml(title)}</span><span>${escapeHtml(unit || '')}</span></div>
+    ${all.length > 1 ? `<select data-metric="${scale.metric}" aria-label="Colour scale for ${escapeHtml(title)}" title="Colour scale, used for this kind of data across the viewer">${all.map((s) => `<option value="${s.id}"${s === scale ? ' selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}</select>` : ''}
+    <div class="res-scale">${bar}</div><div class="res-ticks">${ticks}</div></div>`;
+}
+
+// The CFD streamlines panel, and the lines it shows.
+const streamlineKey = (file, line) => `${file.name}|${line.name}`;
+
+function toggleStreamlinesPanel() {
+  state.streamlines.panel = !state.streamlines.panel;
+  $('streamlinesPanel').hidden = !state.streamlines.panel;
+  syncResultsMenu();
+}
+
+function setStreamlinesOn(on) {
+  state.streamlines.on = on;
+  syncStreamlines();
+  saveViewState();
+  redraw();
+}
+
+function fillStreamlines() {
+  const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines') : [];
+  const all = files.flatMap((file) => file.data.streamlines.map((line) => ({ file, line })));
+  const wind = ColourScales.preferred('windSpeed');
+  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed)) : null;
+  setHtml($('streamlineLegend'), all.length ? colourLegendHtml(wind, 'Velocity', ColourScales.metrics.windSpeed.unit) : '');
+  renderer.setResultLines(v);
+  SL.lines = all.map(({ file, line }, i) => {
+    const key = streamlineKey(file, line);
+    return { key, parts: v.ranges[i].map((range, k) => ({ key: `${key}|${k}`, range })) };
+  });
+  if (SL.panel && !all.length) toggleStreamlinesPanel();
+  // A row for each streamline, with one under it for each polyline when it has several.
+  const makeRow = (key, parent, label, title, count) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    row.title = title;
+    row.dataset.key = key;
+    if (parent) row.dataset.parent = parent;
+    row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
+    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
+    row.querySelector('.layer-name').textContent = label;
+    row.querySelector('.caret').addEventListener('click', () => {
+      if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
+      syncStreamlines();
+    });
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) SL.off.delete(key); else SL.off.add(key);
+      syncStreamlines();
+      saveViewState();
+      redraw();
+    });
+    return row;
+  };
+  $('streamlineList').replaceChildren(...all.flatMap(({ file, line }, i) => {
+    const { key, parts } = SL.lines[i], several = parts.length > 1;
+    const top = makeRow(key, null, files.length > 1 ? `${line.name} · ${file.name}` : line.name, `${line.name} in ${file.name}`, several ? parts.length : 0);
+    return several ? [top, ...parts.map((p, k) => makeRow(p.key, key, `Polyline ${k + 1}`, `Polyline ${k + 1} of ${line.name}`, 0))] : [top];
+  }));
+  syncStreamlines();
+}
+
+function syncStreamlines() {
+  const SL = state.streamlines;
+  $('streamlinesOn').checked = SL.on;
+  syncResultsMenu();
+  for (const row of $('streamlineList').children) {
+    const on = !SL.off.has(row.dataset.key), parent = row.dataset.parent;
+    row.querySelector('input').checked = on;
+    row.classList.toggle('off', !on);
+    row.classList.toggle('inherited-off', on && (!SL.on || SL.off.has(parent)));
+    row.hidden = SL.collapsed.has(parent);
+    row.querySelector('.caret').classList.toggle('collapsed', SL.collapsed.has(row.dataset.key));
+  }
+}
+
+// The CFD map panel, and the maps it shows.
+const resultScale = (r) => (r.metric ? ColourScales.preferred(r.metric) : (r.dataScale ||= ColourScales.fromData(r.values)));
+const resultUnit = (r) => (r.metric ? ColourScales.metrics[r.metric].unit : r.unit);
+const pickedResult = (m) => m.map.results.find((r) => r.name === state.maps.picked[m.key]) || m.map.results[0];
+
+function toggleMapPanel() {
+  state.maps.panel = !state.maps.panel;
+  $('mapPanel').hidden = !state.maps.panel;
+  syncResultsMenu();
+}
+
+function setMapsOn(on) {
+  state.maps.on = on;
+  syncMaps();
+  hideMapHover();
+  saveViewState();
+  redraw();
+}
+
+function showMapResult(i) {
+  const m = state.maps.list[i], r = pickedResult(m);
+  renderer.setMapResult(i, cfdMapValues(r), ColourScales.ramp(resultScale(r)));
+}
+
+function fillMaps() {
+  const M = state.maps, files = model ? results.filter((r) => r.parser?.id === 'cfdMap') : [];
+  M.list = files.flatMap((file) => file.data.maps.map((map) => ({ key: `${file.name}|${map.name}`, map, file,
+    label: files.length > 1 ? `${map.name} · ${file.name}` : map.name })));
+  renderer.setResultMaps(M.list.map(({ map }) => ({ pos: cfdMapVertices(map, model.metresPerUnit, model.origin), indices: map.indices })));
+  M.list.forEach((_, i) => showMapResult(i));
+  if (M.panel && !M.list.length) toggleMapPanel();
+  const changed = () => { syncMaps(); hideMapHover(); saveViewState(); redraw(); };
+  const caret = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
+  $('mapList').replaceChildren(...M.list.flatMap((m, i) => {
+    const top = document.createElement('div');
+    top.className = 'layer-row';
+    top.title = `${m.map.name} in ${m.file.name}`;
+    top.dataset.key = m.key;
+    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox"><span class="layer-name"></span>`;
+    top.querySelector('.layer-name').textContent = m.label;
+    top.querySelector('.caret').addEventListener('click', () => {
+      if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
+      syncMaps();
+    });
+    top.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) M.off.delete(m.key); else M.off.add(m.key);
+      changed();
+    });
+    const kids = m.map.results.map((r) => {
+      const row = document.createElement('label'), unit = resultUnit(r);
+      row.className = 'layer-row';
+      row.style.paddingLeft = '26px';
+      row.dataset.parent = m.key;
+      row.dataset.result = r.name;
+      row.innerHTML = `<span class="caret empty"></span><input type="radio" name="map-${i}"><span class="layer-name"></span>`;
+      row.querySelector('.layer-name').textContent = unit ? `${r.name} [${unit}]` : r.name;
+      row.querySelector('input').addEventListener('change', () => {
+        M.picked[m.key] = r.name;
+        showMapResult(i);
+        changed();
+      });
+      return row;
+    });
+    return [top, ...kids];
+  }));
+  syncMaps();
+}
+
+function syncMaps() {
+  const M = state.maps;
+  $('mapOn').checked = M.on;
+  syncResultsMenu();
+  $('mapZ').value = M.z;
+  $('mapZOut').value = `${M.z > 0 ? '+' : ''}${M.z.toFixed(1)} m`;
+  for (const row of $('mapList').children) {
+    const parent = row.dataset.parent, input = row.querySelector('input');
+    if (parent) {
+      const m = M.list.find((x) => x.key === parent);
+      input.checked = pickedResult(m).name === row.dataset.result;
+      row.hidden = M.collapsed.has(parent);
+      row.classList.toggle('inherited-off', !M.on || M.off.has(parent));
+    } else {
+      const on = !M.off.has(row.dataset.key);
+      input.checked = on;
+      row.classList.toggle('off', !on);
+      row.classList.toggle('inherited-off', on && !M.on);
+      row.querySelector('.caret').classList.toggle('collapsed', M.collapsed.has(row.dataset.key));
+    }
+  }
+  setHtml($('mapLegends'), M.list.filter((m) => !M.off.has(m.key)).map((m) => {
+    const r = pickedResult(m);
+    return colourLegendHtml(resultScale(r), M.list.length > 1 ? `${m.label}: ${r.name}` : r.name, resultUnit(r));
+  }).join(''));
+}
+
+// A colour scale picked for a kind of data applies wherever that data is shown.
+function setColourScale(metric, id) {
+  ColourScales.choices[metric] = id;
+  savePrefs();
+  state.maps.list.forEach((m, i) => { if (pickedResult(m).metric === metric) showMapResult(i); });
+  syncMaps();
+  if (metric === 'windSpeed') fillStreamlines();
+  syncComfortPanel();
+  redraw();
+}
+
+// The panel that follows the mouse over a map, with what the map holds there.
+let mapHoverAt = null, mapHoverRead = null, mapHoverBusy = false;
+function hideMapHover() { mapHoverAt = null; $('mapHover').hidden = true; }
+
+function mapHoverMove(e) {
+  const shown = model && state.maps.on && state.maps.list.some((m) => !state.maps.off.has(m.key));
+  if (!shown || walker.active || drag || pointers.size) { hideMapHover(); return; }
+  mapHoverAt = { clientX: e.clientX, clientY: e.clientY };
+  placeMapHover();
+  if (!mapHoverBusy) readMapHover();
+}
+
+function placeMapHover() {
+  const el = $('mapHover'), gap = 16, { clientX: x, clientY: y } = mapHoverAt;
+  el.style.left = `${x + gap + el.offsetWidth > innerWidth ? x - gap - el.offsetWidth : x + gap}px`;
+  el.style.top = `${y + gap + el.offsetHeight > innerHeight ? y - gap - el.offsetHeight : y + gap}px`;
+}
+
+async function readMapHover() {
+  mapHoverBusy = true;
+  try {
+    // One read at a time, then the latest place the mouse has moved to, if it has.
+    while (mapHoverAt && mapHoverAt !== mapHoverRead) {
+      mapHoverRead = mapHoverAt;
+      const s = frameState();
+      s.pickMaps = true;
+      const h = await renderer.pick(...toDevice(mapHoverRead), camera.viewProj(), s);
+      if (!mapHoverAt) break;
+      showMapHover(h);
+      placeMapHover();
+    }
+  } finally { mapHoverBusy = false; }
+}
+
+function showMapHover(h) {
+  const el = $('mapHover'), m = h && h.map !== undefined ? state.maps.list[h.map] : null;
+  const f = m && cfdMapFind(m.map, (h.p[0] + model.origin[0]) * model.metresPerUnit, (h.p[1] + model.origin[1]) * model.metresPerUnit, (h.p[2] + model.origin[2]) * model.metresPerUnit - state.maps.z);
+  if (!f) { el.hidden = true; return; }
+  const picked = pickedResult(m), num = (v) => v.toFixed(Math.abs(v) < 10 ? 2 : 1);
+  const rows = m.map.results.map((r) => {
+    const v = cfdMapValueAt(r, f), scale = resultScale(r), unit = resultUnit(r);
+    return { on: r === picked, label: r === picked && !Number.isNaN(v) ? ColourScales.label(scale, v) : null,
+      html: `<div class="row${r === picked ? ' on' : ''}"><i style="background:${Number.isNaN(v) ? 'transparent' : ColourScales.css(scale, v)}"></i><span>${escapeHtml(r.name)}</span><b>${Number.isNaN(v) ? 'no data' : `${num(v)}${unit ? ` ${escapeHtml(unit)}` : ''}`}</b></div>` };
+  });
+  const band = rows.find((r) => r.label)?.label;
+  setHtml(el, `<div class="head">${escapeHtml(m.map.name)}</div>${rows.map((r) => r.html).join('')}${band ? `<div class="band">${escapeHtml(picked.name)}: ${escapeHtml(band)}</div>` : ''}`);
+  el.hidden = false;
+}
+
+function bindMapPanel() {
+  $('mapOn').addEventListener('change', (e) => setMapsOn(e.target.checked));
+  $('mapClose').addEventListener('click', () => state.maps.panel && toggleMapPanel());
+  $('mapZ').addEventListener('input', (e) => { state.maps.z = +e.target.value; syncMaps(); saveViewState(); redraw(); });
+  for (const id of ['mapLegends', 'streamlineLegend']) {
+    $(id).addEventListener('change', (e) => { if (e.target.dataset.metric) setColourScale(e.target.dataset.metric, e.target.value); });
+  }
+  canvas.addEventListener('pointermove', mapHoverMove);
+  canvas.addEventListener('pointerleave', hideMapHover);
+}
+
+function bindStreamlinesPanel() {
+  $('streamlinesOn').addEventListener('change', (e) => setStreamlinesOn(e.target.checked));
+  $('streamlinesClose').addEventListener('click', () => state.streamlines.panel && toggleStreamlinesPanel());
+}
+
 // Set location dialog: the three sources, each marked "In use" or offering "Use this location".
 // Changes apply as they are made.
 let locationDialog = null;
@@ -8236,10 +9217,15 @@ function syncComfortPanel() {
     setHtml($('comfortInputs'), '');
     return;
   }
-  const cat = utciCategory(r.value);
-  $('comfortRead').style.setProperty('--cat', cat.color);
+  const cat = utciCategory(r.value), scale = ColourScales.preferred('utci');
+  // Each band's cell shows the colour in its middle (the same as all of it, on a grouped scale).
+  const cellColour = (c, i) => {
+    const before = UTCI_CATEGORIES[i - 1]?.below, mid = Number.isFinite(before) && Number.isFinite(c.below) ? (before + c.below) / 2 : Number.isFinite(before) ? before + 1 : c.below - 1;
+    return ColourScales.css(scale, mid);
+  };
+  $('comfortRead').style.setProperty('--cat', ColourScales.css(scale, r.value));
   setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
-    <div class="utci-scale">${UTCI_CATEGORIES.map((c) => `<span style="background:${c.color}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
+    <div class="utci-scale">${UTCI_CATEGORIES.map((c, i) => `<span style="background:${cellColour(c, i)}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
     ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}
     ${comfortCloudNote(r)}`);
   const s = sunlight, pos = r.pos;
@@ -8417,6 +9403,7 @@ function bindUi() {
   $('btnHome').addEventListener('click', goHome);
   $('btnLocation').addEventListener('click', openLocationDialog);
   $('btnWeather').addEventListener('click', openWeatherDialog);
+  $('btnResultsFiles').addEventListener('click', openResultsDialog);
   $('btnMessages').addEventListener('click', openMessages);
   $('btnBack').addEventListener('click', leaveHome);
   $('dropBrowse').addEventListener('click', browse);
@@ -8431,6 +9418,7 @@ function bindUi() {
     e.preventDefault(); depth = 0; drop.classList.remove('over');
     if (model && !atHome) drop.hidden = true;
     const f = e.dataTransfer.files[0];
+    if (f && resultParsersFor(f.name).length) { [...e.dataTransfer.files].forEach((x) => openFile(x)); return; }
     // The handle has to be requested before anything else is awaited.
     const h = Recent.supported ? e.dataTransfer.items[0]?.getAsFileSystemHandle?.() : null;
     if (f) Promise.resolve(h).then((handle) => openFile(f, handle?.kind === 'file' ? handle : null), () => openFile(f));
@@ -8438,6 +9426,9 @@ function bindUi() {
 
   bindCameraMenu();
   bindModeMenu();
+  bindResultsMenu();
+  bindStreamlinesPanel();
+  bindMapPanel();
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
@@ -8462,7 +9453,7 @@ function bindUi() {
   bindSunPanel();
   // Each tool panel's title carries its toolbar button's icon.
   for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
-    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel']]) {
+    ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
     title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
