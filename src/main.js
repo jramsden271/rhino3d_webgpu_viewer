@@ -29,6 +29,7 @@ const state = {
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
   on: false, panel: false, details: false, // details: the Details section is open
+  path: false, // the sun path diagram is shown on the sky
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -153,6 +154,12 @@ function frameState() {
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
   s.lamps = shownLamps();
+  s.sunPath = state.sun.path && !camera.ortho && !!activeLocation();
+  if (s.sunPath) {
+    const pos = sunPosition();
+    fillSunPath();
+    s.sunPathMark = pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : null;
+  }
   if (state.sun.on) {
     const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
     const wx = currentSky(pos.altitude);
@@ -237,6 +244,17 @@ function sunOpts() {
   return { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, doy: S.doy, hour: S.hour };
 }
 function sunPosition() { return solarPosition(sunOpts()); }
+
+// Gives the renderer the sun path diagram for the location, north and date, when any have changed.
+let sunPathKey = null;
+function fillSunPath() {
+  const S = state.sun, scale = Math.min(window.devicePixelRatio || 1, 2);
+  const key = [S.lat, S.lon, S.utcOffset, S.north, S.doy, scale].join();
+  if (key === sunPathKey) return;
+  sunPathKey = key;
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, S.doy);
+  renderer.setSunPath(sunPathDiagram({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north, doy: S.doy, dayName: `${day} ${MONTHS[month - 1]}` }), scale);
+}
 
 // The water's clock, stopped while Animations is off, and when the last frame was drawn.
 const anim = { time: 0, last: performance.now(), drawn: 0 };
@@ -1154,7 +1172,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour, path: state.sun.path } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1194,9 +1212,9 @@ function restoreCameras(saved) {
 // The sun as it was left with this model. Without a location now (a weather file or custom location
 // that did not come back, say), it stays off.
 function restoreSun(saved) {
-  const { on, doy, hour } = saved.sun || {};
+  const { on, doy, hour, path } = saved.sun || {};
   if (typeof on !== 'boolean' || !(doy >= 1 && doy <= 366) || !(hour >= 0 && hour <= 24)) return;
-  setSun({ on: on && !!activeLocation(), doy, hour });
+  setSun({ on: on && !!activeLocation(), doy, hour, path: path === true });
 }
 
 function reportRestored() {
@@ -1886,6 +1904,8 @@ function syncSunPanel() {
   const located = !!activeLocation();
   $('sunRead').hidden = located;
   $('sunDetailsField').hidden = !located;
+  $('sunPathField').hidden = !located;
+  $('sunPath').checked = S.path;
   if (!located) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
@@ -1941,6 +1961,7 @@ function toggleSunPlay() {
 
 function bindSunPanel() {
   $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
+  $('sunPath').addEventListener('change', (e) => { setSun({ path: e.target.checked }); saveViewState(); });
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));

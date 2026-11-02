@@ -801,6 +801,42 @@ struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
 }
 @fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
 
+// The sun path diagram, on the sky: directions, so it stays with the sky however the camera moves.
+// Drawn straight after the background, so everything in the model is in front of it.
+struct SkyLineOut { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1) e: f32, @location(2) w: vec2f };
+@vertex fn vsSkyLine(@builtin(vertex_index) i: u32, @location(0) a: vec3f, @location(1) b: vec3f, @location(2) col: vec4f, @location(3) w: vec2f) -> SkyLineOut {
+  var ca = F.viewProj * vec4f(a, 0.0);
+  var cb = F.viewProj * vec4f(b, 0.0);
+  const FRONT = 0.02;
+  if (ca.w < FRONT && cb.w < FRONT) { return SkyLineOut(vec4f(0.0), col, 0.0, w); }
+  if (ca.w < FRONT) { ca = mix(ca, cb, (FRONT - ca.w) / (cb.w - ca.w)); }
+  if (cb.w < FRONT) { cb = mix(cb, ca, (FRONT - cb.w) / (ca.w - cb.w)); }
+  let along = (cb.xy / cb.w - ca.xy / ca.w) * F.viewport.xy;
+  let d = along / max(length(along), 1e-6);
+  let side = f32(i & 2u) - 1.0;
+  let c = select(ca, cb, (i & 1u) == 1u);
+  return SkyLineOut(vec4f(c.xy + vec2f(-d.y, d.x) * side * w.y * 2.0 / F.viewport.xy * c.w, 0.0, c.w), col, side * w.y, w);
+}
+// A dark edge keeps it readable on any sky. w: half widths of the line and of it with its edge (px).
+@fragment fn fsSkyLine(in: SkyLineOut) -> @location(0) vec4f {
+  let d = abs(in.e);
+  let core = 1.0 - smoothstep(in.w.x - 0.5, in.w.x + 0.5, d);
+  let edge = (1.0 - smoothstep(in.w.y - 1.0, in.w.y, d)) * 0.35;
+  return vec4f(mix(vec3f(0.04, 0.06, 0.1), in.col.rgb, core), max(core, edge) * in.col.a);
+}
+@group(1) @binding(7) var skyAtlas: texture_2d<f32>;
+@group(1) @binding(8) var skySampler: sampler;
+struct SkySpriteOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vsSkySprite(@builtin(vertex_index) i: u32, @location(0) dir: vec3f, @location(1) box: vec4f, @location(2) uv: vec4f) -> SkySpriteOut {
+  let c = F.viewProj * vec4f(dir, 0.0);
+  let at = vec2f(f32(i & 1u), f32((i >> 1u) & 1u));
+  let t = mix(uv.xy, uv.zw, at);
+  if (c.w < 0.02) { return SkySpriteOut(vec4f(0.0), t); }
+  let px = box.xy + (vec2f(at.x, 1.0 - at.y) - 0.5) * box.zw;   // box: centre (from the point, y up) and size, in pixels
+  return SkySpriteOut(vec4f(c.xy / c.w + px * 2.0 / F.viewport.xy, 0.0, 1.0), t);
+}
+@fragment fn fsSkySprite(in: SkySpriteOut) -> @location(0) vec4f { return textureSample(skyAtlas, skySampler, in.uv); }
+
 // Result maps: each vertex holds a value, looked up in the map's colour table for each pixel, so that
 // the edges of grouped scales stay sharp. A huge value means there is none, and hides the triangle.
 struct MapUniform { z: f32, lo: f32, hi: f32, index: f32 };
@@ -1011,6 +1047,14 @@ function shadowCascades(cam, sunDir, scene) {
   return { mats, splits, texel, invRange: 1 / range };
 }
 
+// The parts of the sun path diagram: colour, half width of a line, and label size and lift, in CSS pixels.
+const SUN_PATH_STYLE = {
+  month: { rgba: [1, 1, 1, 0.85], width: 0.7, font: 11, lift: 0 },
+  hour: { rgba: [1, 1, 1, 0.5], width: 0.5, font: 11, lift: 9 },
+  horizon: { rgba: [1, 1, 1, 0.85], width: 0.7, font: 14, lift: 18 },
+  day: { rgba: [1, 0.784, 0.2, 1], width: 1.4, font: 13, lift: 14 },
+};
+
 class Renderer {
   static async create(canvas) {
     if (!navigator.gpu) throw new Error('NO_WEBGPU');
@@ -1140,7 +1184,20 @@ class Renderer {
     ] });
     const mapPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.mapLayout] });
     const VAL = { arrayStride: 4, attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }] };
+    this.skyLayout = device.createBindGroupLayout({ entries: [
+      { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+    ] });
+    this.skySampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    const skyPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.skyLayout] });
+    const SKY_LINE = { arrayStride: 48, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+      { shaderLocation: 2, offset: 24, format: 'float32x4' }, { shaderLocation: 3, offset: 40, format: 'float32x2' }] };
+    const SKY_SPRITE = { arrayStride: 44, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x4' },
+      { shaderLocation: 2, offset: 28, format: 'float32x4' }] };
+    const premultiplied = { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
     this.pipes = {
+      skyLine: mk('vsSkyLine', 'fsSkyLine', [SKY_LINE], { topology: 'triangle-strip', compare: 'always', write: false, blend, layout: frameOnly }),
+      skySprite: mk('vsSkySprite', 'fsSkySprite', [SKY_SPRITE], { topology: 'triangle-strip', compare: 'always', write: false, blend: premultiplied, layout: skyPipes }),
       map: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes }),
       mapX: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes, compare: 'always', write: false }),
       mapPick: mk('vsMap', 'fsMapPick', [POS, VAL], { format: 'rgba32float', samples: 1, layout: mapPipes }),
@@ -1519,6 +1576,7 @@ class Renderer {
     pass.setBindGroup(0, this.frameBG);
     pass.setPipeline(P.bg);
     pass.draw(3);
+    if (s.sunPath && this.sunPath) this.drawSunPath(pass, s);
     this.cull(s.viewProj);
 
     const vis = this.batches.filter((b) => b.visible);
@@ -1563,6 +1621,64 @@ class Renderer {
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     pass.end();
     this.device.queue.submit([enc.finish()]);
+  }
+
+  // The sun path diagram to draw (sunPathDiagram), or null. scale: device pixels per CSS pixel. Each
+  // frame's s.sunPath says whether it is shown, and s.sunPathMark where the sun is, if it is up.
+  setSunPath(d, scale) {
+    const old = this.sunPath;
+    old?.lines.destroy(); old?.sprites.destroy(); old?.atlas.destroy();
+    this.sunPath = null;
+    if (!d) return;
+    const dev = this.device, make = (arr) => {
+      const buf = dev.createBuffer({ size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    const lines = new Float32Array(d.segments.length * 12);
+    d.segments.forEach(({ a, b, kind }, i) => {
+      const { rgba, width } = SUN_PATH_STYLE[kind], w = width * scale;
+      lines.set([...a, ...b, ...rgba, w, w + 1.5 * scale], i * 12);
+    });
+    // The labels go on one texture, after the ring that marks the sun.
+    const canvas = new OffscreenCanvas(512 * scale, 256 * scale), g = canvas.getContext('2d');
+    const pad = 3 * scale, rowH = Math.ceil(20 * scale), mark = rowH;
+    const sprites = new Float32Array((d.labels.length + 1) * 11);
+    sprites.set([0, 0, 1, 0, 0, mark, mark, 0, 0, mark / canvas.width, mark / canvas.height], 0);
+    g.beginPath(); g.arc(mark / 2, mark / 2, 6 * scale, 0, 2 * Math.PI);
+    g.fillStyle = 'rgba(255, 200, 51, 0.25)'; g.fill();
+    g.lineWidth = 3.5 * scale; g.strokeStyle = 'rgba(10, 14, 20, 0.6)'; g.stroke();
+    g.lineWidth = 2 * scale; g.strokeStyle = '#FFC833'; g.stroke();
+    let x = mark, y = 0;
+    g.textBaseline = 'middle'; g.lineJoin = 'round';
+    d.labels.forEach(({ dir, text, kind }, i) => {
+      const st = SUN_PATH_STYLE[kind];
+      g.font = `${kind === 'hour' ? 500 : 700} ${st.font * scale}px system-ui, sans-serif`;
+      const w = Math.ceil(g.measureText(text).width) + 2 * pad;
+      if (x + w > canvas.width) { x = 0; y += rowH; }
+      g.lineWidth = 3 * scale; g.strokeStyle = 'rgba(10, 14, 20, 0.7)';
+      g.strokeText(text, x + pad, y + rowH / 2);
+      g.fillStyle = `rgb(${st.rgba.slice(0, 3).map((v) => Math.round(v * 255)).join(' ')})`;
+      g.fillText(text, x + pad, y + rowH / 2);
+      sprites.set([...dir, 0, st.lift * scale, w, rowH, x / canvas.width, y / canvas.height, (x + w) / canvas.width, (y + rowH) / canvas.height], (i + 1) * 11);
+      x += w;
+    });
+    const atlas = dev.createTexture({ size: [canvas.width, canvas.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+    dev.queue.copyExternalImageToTexture({ source: canvas }, { texture: atlas, premultipliedAlpha: true }, [canvas.width, canvas.height]);
+    this.sunPath = { lines: make(lines), lineCount: d.segments.length, sprites: make(sprites), spriteCount: d.labels.length + 1, atlas,
+      bg: dev.createBindGroup({ layout: this.skyLayout, entries: [{ binding: 7, resource: atlas.createView() }, { binding: 8, resource: this.skySampler }] }) };
+  }
+
+  drawSunPath(pass, s) {
+    const d = this.sunPath, P = this.pipes;
+    pass.setPipeline(P.skyLine);
+    pass.setVertexBuffer(0, d.lines);
+    pass.draw(4, d.lineCount);
+    if (s.sunPathMark) this.device.queue.writeBuffer(d.sprites, 0, new Float32Array(s.sunPathMark));
+    pass.setPipeline(P.skySprite);
+    pass.setBindGroup(1, d.bg);
+    pass.setVertexBuffer(0, d.sprites);
+    pass.draw(4, s.sunPathMark ? d.spriteCount : d.spriteCount - 1, 0, s.sunPathMark ? 0 : 1);
   }
 
   // Result maps to draw: [{ pos: Float32Array, indices: Uint32Array }]. setMapResult gives one its

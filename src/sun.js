@@ -61,6 +61,71 @@ function sunVector(azimuth, altitude, northAngle) {
   ];
 }
 
+// The months' arcs of a sun path diagram. The 21st of each pair of months has nearly the same path.
+const SUN_PATH_MONTHS = [[12, 'Dec'], [1, 'Jan, Nov'], [2, 'Feb, Oct'], [3, 'Mar, Sep'], [4, 'Apr, Aug'], [5, 'May, Jul'], [6, 'Jun']];
+const SUN_PATH_LOW = Math.sin(4 * DEG); // labels stay this high, clear of the horizon
+
+// A sun path diagram, as directions in model coordinates. opts: { lat, lon, utcOffset, year, north,
+// doy, dayName }: doy is a day to pick out, called dayName. Returns segments: [{ a, b, kind }], cut off
+// at the horizon, and labels: [{ dir, text, kind }]. kind: 'month', 'hour', 'horizon' or 'day'.
+function sunPathDiagram({ lat, lon, utcOffset, year, north, doy, dayName }) {
+  const at = (d, hour) => {
+    const p = solarPosition({ lat, lon, utcOffset, year, doy: d, hour });
+    return sunVector(p.azimuth, p.altitude, north);
+  };
+  const segments = [], labels = [];
+  const add = (points, kind) => {
+    for (let i = 0; i + 1 < points.length; i++) {
+      let a = points[i], b = points[i + 1];
+      if (a[2] <= 0 && b[2] <= 0) continue;
+      if (a[2] < 0 || b[2] < 0) {
+        const t = a[2] / (a[2] - b[2]), q = a.map((v, k) => v + (b[k] - v) * t), n = Math.hypot(q[0], q[1]);
+        const edge = [q[0] / n, q[1] / n, 0];
+        if (a[2] < 0) a = edge; else b = edge;
+      }
+      segments.push({ a, b, kind });
+    }
+  };
+  const arc = (d) => Array.from({ length: 97 }, (_, i) => at(d, i / 4));
+
+  for (const [month, text] of SUN_PATH_MONTHS) {
+    const points = arc(dayOfYear(year, month, 21)), ends = [];
+    // Named where it comes up and where it goes down, or, if it does neither, at its lowest.
+    for (let i = 0; i < 96; i++) {
+      const a = points[i], b = points[i + 1];
+      if ((a[2] >= SUN_PATH_LOW) !== (b[2] >= SUN_PATH_LOW)) ends.push(a[2] >= SUN_PATH_LOW ? a : b);
+    }
+    add(points, 'month');
+    const lowest = points.reduce((m, p) => (p[2] < m[2] ? p : m));
+    for (const dir of ends.length ? ends : lowest[2] > 0 ? [lowest] : []) labels.push({ dir, text, kind: 'month' });
+  }
+
+  // Each clock hour through the year, named at its lowest point clear of the horizon.
+  for (let hour = 0; hour < 24; hour++) {
+    const points = [];
+    for (let d = 1; d <= 365; d += 7) points.push(at(d, hour));
+    points.push(points[0]);
+    add(points, 'hour');
+    const clear = points.filter((p) => p[2] >= SUN_PATH_LOW);
+    const dir = clear.length ? clear.reduce((m, p) => (p[2] < m[2] ? p : m)) : points.reduce((m, p) => (p[2] > m[2] ? p : m));
+    if (dir[2] > 0) labels.push({ dir, text: `${String(hour).padStart(2, '0')}:00`, kind: 'hour' });
+  }
+
+  const ring = [];
+  for (let az = 0; az <= 360; az += 3) ring.push(sunVector(az, 0, north));
+  for (let i = 0; i + 1 < ring.length; i++) segments.push({ a: ring[i], b: ring[i + 1], kind: 'horizon' });
+  ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].forEach((text, i) => {
+    const dir = sunVector(i * 45, 0, north);
+    labels.push({ dir, text, kind: 'horizon' });
+    segments.push({ a: dir, b: sunVector(i * 45, i % 2 ? 1 : 2, north), kind: 'horizon' });
+  });
+
+  const day = arc(doy), top = day.reduce((m, p) => (p[2] > m[2] ? p : m));
+  add(day, 'day');
+  if (top[2] > 0) labels.push({ dir: top, text: dayName, kind: 'day' });
+  return { segments, labels };
+}
+
 // Sky colours (sRGB) by sun altitude in degrees: overhead, at the horizon, and the extra glow
 // added along the horizon towards the sun around sunset and through twilight.
 const SKY_KEYS = [

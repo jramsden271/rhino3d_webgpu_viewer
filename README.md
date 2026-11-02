@@ -73,7 +73,7 @@ whatever the window's shape. There is no roll, and a shifted frame (a two-point 
 example) is framed by turning towards its centre, so its verticals may converge. A named view
 sets only the camera, not the layers.
 
-The cameras, layer visibility, hidden objects and the sun (on or off, date and time) are
+The cameras, layer visibility, hidden objects and the sun (on or off, date and time, sun path diagram) are
 **remembered in this browser** for each model (by file name and size) and come back when you
 open it again. If the model has no location by then, the sun stays off. They are not changes to the
 model, so they are not undoable and are not written to a saved copy.
@@ -443,6 +443,11 @@ starting date and time.
 - **Date and time** also set the Weather and Thermal comfort panels, and work with the sun
   off too.
 - **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
+- **Sun path diagram** draws the sun's path on the sky, in perspective views and with the sun on or
+  off: the 21st of each month (pairs of months with nearly the same path share an arc), a line for
+  each clock hour through the year, and the horizon with its compass points. The date on the
+  sliders is picked out in yellow, with a ring where the sun is at the time on the sliders. The
+  model hides it, as it would the sky. Orthographic views have no sky, so it does not show there.
 
 Sun positions use the NOAA solar position equations (with refraction), which match
 published sunrise/sunset times to within about a minute. This is a visual study tool, not a
@@ -642,6 +647,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort |
 | `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
 | `node tools/test-magic.js` | Checks where a magic block is placed |
+| `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
