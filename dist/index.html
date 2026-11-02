@@ -619,6 +619,9 @@ body.walking .walk-frame { display: block; }
         <div class="field-label"><span>Time</span><span><output id="sunTimeOut"></output><button id="sunPlay" class="play" title="Animate through the day">▶</button></span></div>
         <input type="range" id="sunHour" min="0" max="24" step="0.0833" title="Right-click for 10:00, 12:00, solar noon and 15:00">
       </div>
+      <div class="field" id="sunPathField">
+        <label class="check" title="Draws the sun's path on the sky in perspective views: the 21st of each month, each clock hour through the year, and in yellow the date above"><input type="checkbox" id="sunPath"> Sun path diagram</label>
+      </div>
       <div class="field" id="sunDetailsField">
         <div class="field-label"><button class="field-toggle" id="sunToggle" aria-controls="sunDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button></div>
         <div id="sunDetails" class="sun-weather" hidden></div>
@@ -2181,6 +2184,71 @@ function sunVector(azimuth, altitude, northAngle) {
     c * (Math.cos(a) * north[1] + Math.sin(a) * east[1]),
     Math.sin(h),
   ];
+}
+
+// The months' arcs of a sun path diagram. The 21st of each pair of months has nearly the same path.
+const SUN_PATH_MONTHS = [[12, 'Dec'], [1, 'Jan, Nov'], [2, 'Feb, Oct'], [3, 'Mar, Sep'], [4, 'Apr, Aug'], [5, 'May, Jul'], [6, 'Jun']];
+const SUN_PATH_LOW = Math.sin(4 * DEG); // labels stay this high, clear of the horizon
+
+// A sun path diagram, as directions in model coordinates. opts: { lat, lon, utcOffset, year, north,
+// doy, dayName }: doy is a day to pick out, called dayName. Returns segments: [{ a, b, kind }], cut off
+// at the horizon, and labels: [{ dir, text, kind }]. kind: 'month', 'hour', 'horizon' or 'day'.
+function sunPathDiagram({ lat, lon, utcOffset, year, north, doy, dayName }) {
+  const at = (d, hour) => {
+    const p = solarPosition({ lat, lon, utcOffset, year, doy: d, hour });
+    return sunVector(p.azimuth, p.altitude, north);
+  };
+  const segments = [], labels = [];
+  const add = (points, kind) => {
+    for (let i = 0; i + 1 < points.length; i++) {
+      let a = points[i], b = points[i + 1];
+      if (a[2] <= 0 && b[2] <= 0) continue;
+      if (a[2] < 0 || b[2] < 0) {
+        const t = a[2] / (a[2] - b[2]), q = a.map((v, k) => v + (b[k] - v) * t), n = Math.hypot(q[0], q[1]);
+        const edge = [q[0] / n, q[1] / n, 0];
+        if (a[2] < 0) a = edge; else b = edge;
+      }
+      segments.push({ a, b, kind });
+    }
+  };
+  const arc = (d) => Array.from({ length: 97 }, (_, i) => at(d, i / 4));
+
+  for (const [month, text] of SUN_PATH_MONTHS) {
+    const points = arc(dayOfYear(year, month, 21)), ends = [];
+    // Named where it comes up and where it goes down, or, if it does neither, at its lowest.
+    for (let i = 0; i < 96; i++) {
+      const a = points[i], b = points[i + 1];
+      if ((a[2] >= SUN_PATH_LOW) !== (b[2] >= SUN_PATH_LOW)) ends.push(a[2] >= SUN_PATH_LOW ? a : b);
+    }
+    add(points, 'month');
+    const lowest = points.reduce((m, p) => (p[2] < m[2] ? p : m));
+    for (const dir of ends.length ? ends : lowest[2] > 0 ? [lowest] : []) labels.push({ dir, text, kind: 'month' });
+  }
+
+  // Each clock hour through the year, named at its lowest point clear of the horizon.
+  for (let hour = 0; hour < 24; hour++) {
+    const points = [];
+    for (let d = 1; d <= 365; d += 7) points.push(at(d, hour));
+    points.push(points[0]);
+    add(points, 'hour');
+    const clear = points.filter((p) => p[2] >= SUN_PATH_LOW);
+    const dir = clear.length ? clear.reduce((m, p) => (p[2] < m[2] ? p : m)) : points.reduce((m, p) => (p[2] > m[2] ? p : m));
+    if (dir[2] > 0) labels.push({ dir, text: `${String(hour).padStart(2, '0')}:00`, kind: 'hour' });
+  }
+
+  const ring = [];
+  for (let az = 0; az <= 360; az += 3) ring.push(sunVector(az, 0, north));
+  for (let i = 0; i + 1 < ring.length; i++) segments.push({ a: ring[i], b: ring[i + 1], kind: 'horizon' });
+  ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].forEach((text, i) => {
+    const dir = sunVector(i * 45, 0, north);
+    labels.push({ dir, text, kind: 'horizon' });
+    segments.push({ a: dir, b: sunVector(i * 45, i % 2 ? 1 : 2, north), kind: 'horizon' });
+  });
+
+  const day = arc(doy), top = day.reduce((m, p) => (p[2] > m[2] ? p : m));
+  add(day, 'day');
+  if (top[2] > 0) labels.push({ dir: top, text: dayName, kind: 'day' });
+  return { segments, labels };
 }
 
 // Sky colours (sRGB) by sun altitude in degrees: overhead, at the horizon, and the extra glow
@@ -4878,6 +4946,42 @@ struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
 }
 @fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
 
+// The sun path diagram, on the sky: directions, so it stays with the sky however the camera moves.
+// Drawn straight after the background, so everything in the model is in front of it.
+struct SkyLineOut { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1) e: f32, @location(2) w: vec2f };
+@vertex fn vsSkyLine(@builtin(vertex_index) i: u32, @location(0) a: vec3f, @location(1) b: vec3f, @location(2) col: vec4f, @location(3) w: vec2f) -> SkyLineOut {
+  var ca = F.viewProj * vec4f(a, 0.0);
+  var cb = F.viewProj * vec4f(b, 0.0);
+  const FRONT = 0.02;
+  if (ca.w < FRONT && cb.w < FRONT) { return SkyLineOut(vec4f(0.0), col, 0.0, w); }
+  if (ca.w < FRONT) { ca = mix(ca, cb, (FRONT - ca.w) / (cb.w - ca.w)); }
+  if (cb.w < FRONT) { cb = mix(cb, ca, (FRONT - cb.w) / (ca.w - cb.w)); }
+  let along = (cb.xy / cb.w - ca.xy / ca.w) * F.viewport.xy;
+  let d = along / max(length(along), 1e-6);
+  let side = f32(i & 2u) - 1.0;
+  let c = select(ca, cb, (i & 1u) == 1u);
+  return SkyLineOut(vec4f(c.xy + vec2f(-d.y, d.x) * side * w.y * 2.0 / F.viewport.xy * c.w, 0.0, c.w), col, side * w.y, w);
+}
+// A dark edge keeps it readable on any sky. w: half widths of the line and of it with its edge (px).
+@fragment fn fsSkyLine(in: SkyLineOut) -> @location(0) vec4f {
+  let d = abs(in.e);
+  let core = 1.0 - smoothstep(in.w.x - 0.5, in.w.x + 0.5, d);
+  let edge = (1.0 - smoothstep(in.w.y - 1.0, in.w.y, d)) * 0.35;
+  return vec4f(mix(vec3f(0.04, 0.06, 0.1), in.col.rgb, core), max(core, edge) * in.col.a);
+}
+@group(1) @binding(7) var skyAtlas: texture_2d<f32>;
+@group(1) @binding(8) var skySampler: sampler;
+struct SkySpriteOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vsSkySprite(@builtin(vertex_index) i: u32, @location(0) dir: vec3f, @location(1) box: vec4f, @location(2) uv: vec4f) -> SkySpriteOut {
+  let c = F.viewProj * vec4f(dir, 0.0);
+  let at = vec2f(f32(i & 1u), f32((i >> 1u) & 1u));
+  let t = mix(uv.xy, uv.zw, at);
+  if (c.w < 0.02) { return SkySpriteOut(vec4f(0.0), t); }
+  let px = box.xy + (vec2f(at.x, 1.0 - at.y) - 0.5) * box.zw;   // box: centre (from the point, y up) and size, in pixels
+  return SkySpriteOut(vec4f(c.xy / c.w + px * 2.0 / F.viewport.xy, 0.0, 1.0), t);
+}
+@fragment fn fsSkySprite(in: SkySpriteOut) -> @location(0) vec4f { return textureSample(skyAtlas, skySampler, in.uv); }
+
 // Result maps: each vertex holds a value, looked up in the map's colour table for each pixel, so that
 // the edges of grouped scales stay sharp. A huge value means there is none, and hides the triangle.
 struct MapUniform { z: f32, lo: f32, hi: f32, index: f32 };
@@ -5088,6 +5192,14 @@ function shadowCascades(cam, sunDir, scene) {
   return { mats, splits, texel, invRange: 1 / range };
 }
 
+// The parts of the sun path diagram: colour, half width of a line, and label size and lift, in CSS pixels.
+const SUN_PATH_STYLE = {
+  month: { rgba: [1, 1, 1, 0.85], width: 0.7, font: 11, lift: 0 },
+  hour: { rgba: [1, 1, 1, 0.5], width: 0.5, font: 11, lift: 9 },
+  horizon: { rgba: [1, 1, 1, 0.85], width: 0.7, font: 14, lift: 18 },
+  day: { rgba: [1, 0.784, 0.2, 1], width: 1.4, font: 13, lift: 14 },
+};
+
 class Renderer {
   static async create(canvas) {
     if (!navigator.gpu) throw new Error('NO_WEBGPU');
@@ -5217,7 +5329,20 @@ class Renderer {
     ] });
     const mapPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.mapLayout] });
     const VAL = { arrayStride: 4, attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }] };
+    this.skyLayout = device.createBindGroupLayout({ entries: [
+      { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+    ] });
+    this.skySampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    const skyPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.skyLayout] });
+    const SKY_LINE = { arrayStride: 48, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+      { shaderLocation: 2, offset: 24, format: 'float32x4' }, { shaderLocation: 3, offset: 40, format: 'float32x2' }] };
+    const SKY_SPRITE = { arrayStride: 44, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x4' },
+      { shaderLocation: 2, offset: 28, format: 'float32x4' }] };
+    const premultiplied = { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
     this.pipes = {
+      skyLine: mk('vsSkyLine', 'fsSkyLine', [SKY_LINE], { topology: 'triangle-strip', compare: 'always', write: false, blend, layout: frameOnly }),
+      skySprite: mk('vsSkySprite', 'fsSkySprite', [SKY_SPRITE], { topology: 'triangle-strip', compare: 'always', write: false, blend: premultiplied, layout: skyPipes }),
       map: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes }),
       mapX: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes, compare: 'always', write: false }),
       mapPick: mk('vsMap', 'fsMapPick', [POS, VAL], { format: 'rgba32float', samples: 1, layout: mapPipes }),
@@ -5596,6 +5721,7 @@ class Renderer {
     pass.setBindGroup(0, this.frameBG);
     pass.setPipeline(P.bg);
     pass.draw(3);
+    if (s.sunPath && this.sunPath) this.drawSunPath(pass, s);
     this.cull(s.viewProj);
 
     const vis = this.batches.filter((b) => b.visible);
@@ -5640,6 +5766,64 @@ class Renderer {
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     pass.end();
     this.device.queue.submit([enc.finish()]);
+  }
+
+  // The sun path diagram to draw (sunPathDiagram), or null. scale: device pixels per CSS pixel. Each
+  // frame's s.sunPath says whether it is shown, and s.sunPathMark where the sun is, if it is up.
+  setSunPath(d, scale) {
+    const old = this.sunPath;
+    old?.lines.destroy(); old?.sprites.destroy(); old?.atlas.destroy();
+    this.sunPath = null;
+    if (!d) return;
+    const dev = this.device, make = (arr) => {
+      const buf = dev.createBuffer({ size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    const lines = new Float32Array(d.segments.length * 12);
+    d.segments.forEach(({ a, b, kind }, i) => {
+      const { rgba, width } = SUN_PATH_STYLE[kind], w = width * scale;
+      lines.set([...a, ...b, ...rgba, w, w + 1.5 * scale], i * 12);
+    });
+    // The labels go on one texture, after the ring that marks the sun.
+    const canvas = new OffscreenCanvas(512 * scale, 256 * scale), g = canvas.getContext('2d');
+    const pad = 3 * scale, rowH = Math.ceil(20 * scale), mark = rowH;
+    const sprites = new Float32Array((d.labels.length + 1) * 11);
+    sprites.set([0, 0, 1, 0, 0, mark, mark, 0, 0, mark / canvas.width, mark / canvas.height], 0);
+    g.beginPath(); g.arc(mark / 2, mark / 2, 6 * scale, 0, 2 * Math.PI);
+    g.fillStyle = 'rgba(255, 200, 51, 0.25)'; g.fill();
+    g.lineWidth = 3.5 * scale; g.strokeStyle = 'rgba(10, 14, 20, 0.6)'; g.stroke();
+    g.lineWidth = 2 * scale; g.strokeStyle = '#FFC833'; g.stroke();
+    let x = mark, y = 0;
+    g.textBaseline = 'middle'; g.lineJoin = 'round';
+    d.labels.forEach(({ dir, text, kind }, i) => {
+      const st = SUN_PATH_STYLE[kind];
+      g.font = `${kind === 'hour' ? 500 : 700} ${st.font * scale}px system-ui, sans-serif`;
+      const w = Math.ceil(g.measureText(text).width) + 2 * pad;
+      if (x + w > canvas.width) { x = 0; y += rowH; }
+      g.lineWidth = 3 * scale; g.strokeStyle = 'rgba(10, 14, 20, 0.7)';
+      g.strokeText(text, x + pad, y + rowH / 2);
+      g.fillStyle = `rgb(${st.rgba.slice(0, 3).map((v) => Math.round(v * 255)).join(' ')})`;
+      g.fillText(text, x + pad, y + rowH / 2);
+      sprites.set([...dir, 0, st.lift * scale, w, rowH, x / canvas.width, y / canvas.height, (x + w) / canvas.width, (y + rowH) / canvas.height], (i + 1) * 11);
+      x += w;
+    });
+    const atlas = dev.createTexture({ size: [canvas.width, canvas.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+    dev.queue.copyExternalImageToTexture({ source: canvas }, { texture: atlas, premultipliedAlpha: true }, [canvas.width, canvas.height]);
+    this.sunPath = { lines: make(lines), lineCount: d.segments.length, sprites: make(sprites), spriteCount: d.labels.length + 1, atlas,
+      bg: dev.createBindGroup({ layout: this.skyLayout, entries: [{ binding: 7, resource: atlas.createView() }, { binding: 8, resource: this.skySampler }] }) };
+  }
+
+  drawSunPath(pass, s) {
+    const d = this.sunPath, P = this.pipes;
+    pass.setPipeline(P.skyLine);
+    pass.setVertexBuffer(0, d.lines);
+    pass.draw(4, d.lineCount);
+    if (s.sunPathMark) this.device.queue.writeBuffer(d.sprites, 0, new Float32Array(s.sunPathMark));
+    pass.setPipeline(P.skySprite);
+    pass.setBindGroup(1, d.bg);
+    pass.setVertexBuffer(0, d.sprites);
+    pass.draw(4, s.sunPathMark ? d.spriteCount : d.spriteCount - 1, 0, s.sunPathMark ? 0 : 1);
   }
 
   // Result maps to draw: [{ pos: Float32Array, indices: Uint32Array }]. setMapResult gives one its
@@ -5925,6 +6109,7 @@ const state = {
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
   on: false, panel: false, details: false, // details: the Details section is open
+  path: false, // the sun path diagram is shown on the sky
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -6049,6 +6234,12 @@ function frameState() {
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
   s.lamps = shownLamps();
+  s.sunPath = state.sun.path && !camera.ortho && !!activeLocation();
+  if (s.sunPath) {
+    const pos = sunPosition();
+    fillSunPath();
+    s.sunPathMark = pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : null;
+  }
   if (state.sun.on) {
     const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
     const wx = currentSky(pos.altitude);
@@ -6133,6 +6324,17 @@ function sunOpts() {
   return { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, doy: S.doy, hour: S.hour };
 }
 function sunPosition() { return solarPosition(sunOpts()); }
+
+// Gives the renderer the sun path diagram for the location, north and date, when any have changed.
+let sunPathKey = null;
+function fillSunPath() {
+  const S = state.sun, scale = Math.min(window.devicePixelRatio || 1, 2);
+  const key = [S.lat, S.lon, S.utcOffset, S.north, S.doy, scale].join();
+  if (key === sunPathKey) return;
+  sunPathKey = key;
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, S.doy);
+  renderer.setSunPath(sunPathDiagram({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north, doy: S.doy, dayName: `${day} ${MONTHS[month - 1]}` }), scale);
+}
 
 // The water's clock, stopped while Animations is off, and when the last frame was drawn.
 const anim = { time: 0, last: performance.now(), drawn: 0 };
@@ -7050,7 +7252,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour, path: state.sun.path } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -7090,9 +7292,9 @@ function restoreCameras(saved) {
 // The sun as it was left with this model. Without a location now (a weather file or custom location
 // that did not come back, say), it stays off.
 function restoreSun(saved) {
-  const { on, doy, hour } = saved.sun || {};
+  const { on, doy, hour, path } = saved.sun || {};
   if (typeof on !== 'boolean' || !(doy >= 1 && doy <= 366) || !(hour >= 0 && hour <= 24)) return;
-  setSun({ on: on && !!activeLocation(), doy, hour });
+  setSun({ on: on && !!activeLocation(), doy, hour, path: path === true });
 }
 
 function reportRestored() {
@@ -7782,6 +7984,8 @@ function syncSunPanel() {
   const located = !!activeLocation();
   $('sunRead').hidden = located;
   $('sunDetailsField').hidden = !located;
+  $('sunPathField').hidden = !located;
+  $('sunPath').checked = S.path;
   if (!located) {
     $('sunTimeOut').textContent = fmtHour(S.hour);
     $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
@@ -7837,6 +8041,7 @@ function toggleSunPlay() {
 
 function bindSunPanel() {
   $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
+  $('sunPath').addEventListener('change', (e) => { setSun({ path: e.target.checked }); saveViewState(); });
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
