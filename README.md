@@ -73,7 +73,7 @@ whatever the window's shape. There is no roll, and a shifted frame (a two-point 
 example) is framed by turning towards its centre, so its verticals may converge. A named view
 sets only the camera, not the layers.
 
-The cameras, layer visibility, hidden objects and the sun (on or off, date and time, sun path diagram) are
+The cameras, layer visibility, hidden objects and the sun (on or off, date and time, sky, sun path diagram) are
 **remembered in this browser** for each model (by file name and size) and come back when you
 open it again. If the model has no location by then, the sun stays off. They are not changes to the
 model, so they are not undoable and are not written to a saved copy.
@@ -444,6 +444,9 @@ starting date and time.
 - **Date and time** also set the Weather and Thermal comfort panels, and work with the sun
   off too.
 - **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
+- **Sky** off draws a plain white background instead of the sky, with or without the sun. The
+  light on the model is unchanged: the sun, its shadows, and the weather's clouds, cloud shadows
+  and light.
 - **Sun path diagram** draws the sun's path on the sky, in perspective views and with the sun on or
   off: the 21st of each month (pairs of months with nearly the same path share an arc), a line for
   each clock hour through the year, and the horizon with its compass points. The date on the

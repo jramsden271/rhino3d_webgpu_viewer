@@ -62,7 +62,7 @@ struct Frame {
   camRight: vec4f,  // xyz camera right, w = tan(fov / 2)
   camUp: vec4f,     // xyz camera up, w = aspect ratio
   skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
-  stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians)
+  stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians), w = 1 for a plain white background (Sky off)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene), w = draw the sky
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
@@ -102,13 +102,16 @@ fn tonemap(c: vec3f) -> vec3f {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));
 }
 
+// The colour along the horizon behind the model: the sky's, or white with the Sky off.
+fn horizon() -> vec3f { return select(F.bgBot.rgb, vec3f(1.0), F.stars.w > 0.5); }
+
 // Aerial perspective: geometry beyond the orbit target fades towards the horizon colour.
 fn hazeAmount(wp: vec3f) -> f32 {
   let d = length(wp - F.eye.xyz);
   return clamp(1.0 - exp(-max(d - F.misc.z, 0.0) * F.misc.w), 0.0, 0.6);
 }
 fn finish(lin: vec3f, wp: vec3f) -> vec3f {
-  return mix(toSrgb(tonemap(lin)), F.bgBot.rgb, hazeAmount(wp));
+  return mix(toSrgb(tonemap(lin)), horizon(), hazeAmount(wp));
 }
 
 // Value noise for the sky's features.
@@ -242,6 +245,7 @@ struct BgOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
   return BgOut(vec4f(p, 0.0, 1.0), p);
 }
 @fragment fn fsBg(in: BgOut) -> @location(0) vec4f {
+  if (F.stars.w > 0.5) { return vec4f(1.0); }
   let screen = mix(F.bgBot.rgb, F.bgTop.rgb, in.ndc.y * 0.5 + 0.5);
   if (F.skySun.w < 0.5 || F.eye.w > 0.5) { return vec4f(screen, 1.0); }
   // A real sky in perspective, for the sun or the weather. Gradient by elevation of the view ray, plus the sun.
@@ -790,7 +794,7 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
     }
     return vec4f(F.edge.rgb, F.edge.a * fade * far);
   }
-  return vec4f(mix(F.bgBot.rgb, B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
+  return vec4f(mix(horizon(), B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
 // Result lines, each vertex with its own colour; not picked, and not faded by the haze.
@@ -1489,7 +1493,7 @@ class Renderer {
     f.set(cam ? [...cam.up, cam.aspect] : [0, 0, 1, 1], 80);
     const sun = s.sun, rad = Math.PI / 180;
     f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
-    f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, 0] : [0, 0, 0, 0], 88);
+    f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, s.plainBg ? 1 : 0] : [0, 0, 0, s.plainBg ? 1 : 0], 88);
     f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
     f.set(sun ? [...sun.sunDir, 1] : [0, 0, 1, s.skyOnly ? 1 : 0], 96);
     // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:

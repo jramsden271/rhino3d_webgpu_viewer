@@ -30,6 +30,7 @@ const state = {
 state.sun = {
   on: false, panel: false, details: false, // details: the Details section is open
   path: false, // the sun path diagram is shown on the sky
+  sky: true, // the sky is drawn behind the model; off, a plain white background
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -195,6 +196,7 @@ function frameState() {
       s.clouds = { cover: wx.cover, drift: clouds.drift, haze: 1 };
     }
   }
+  s.plainBg = !state.sun.sky;
   return s;
 }
 
@@ -1174,7 +1176,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour, path: state.sun.path } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour, path: state.sun.path, sky: state.sun.sky } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1214,9 +1216,9 @@ function restoreCameras(saved) {
 // The sun as it was left with this model. Without a location now (a weather file or custom location
 // that did not come back, say), it stays off.
 function restoreSun(saved) {
-  const { on, doy, hour, path } = saved.sun || {};
+  const { on, doy, hour, path, sky } = saved.sun || {};
   if (typeof on !== 'boolean' || !(doy >= 1 && doy <= 366) || !(hour >= 0 && hour <= 24)) return;
-  setSun({ on: on && !!activeLocation(), doy, hour, path: path === true });
+  setSun({ on: on && !!activeLocation(), doy, hour, path: path === true, sky: sky !== false });
 }
 
 function reportRestored() {
@@ -1905,6 +1907,7 @@ function syncSunPanel() {
   syncComfortPanel();
   syncExposurePanel();
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
+  $('sunSky').checked = S.sky;
   const located = !!activeLocation();
   $('sunRead').hidden = located;
   $('sunDetailsField').hidden = !located;
@@ -1966,6 +1969,7 @@ function toggleSunPlay() {
 function bindSunPanel() {
   $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
   $('sunPath').addEventListener('change', (e) => { setSun({ path: e.target.checked }); saveViewState(); });
+  $('sunSky').addEventListener('change', (e) => { setSun({ sky: e.target.checked }); saveViewState(); });
   // Date and time work with the sun off too, for the weather.
   $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
