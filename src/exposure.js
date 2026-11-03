@@ -5,6 +5,10 @@
 
 const EXPOSURE_STEPS = [5, 10, 15, 20, 30, 60]; // minutes between times
 const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between points, at most
+// The most points a surface may have. Not a GPU limit (that is about 4.2 million, the most one
+// compute pass can take): preparing the surface freezes the page, for a few seconds at this size,
+// and splitting normals at sharp edges can add points after this check and briefly needs a lot of
+// memory, so this leaves room.
 const EXPOSURE_MAX_POINTS = 2e6;
 const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front of the surface
 const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
