@@ -484,7 +484,8 @@ always in sun (magma), and are not kept: they last until the settings change or 
   **Update**, for long periods. A run can be stopped.
 
 Each sun position draws the shown model's depth as seen from the sun into a 4096² map (or up to
-4 × 4 of them for a large area, so that a texel is at most half the grid spacing), and a compute
+4 × 4 of them for a large area, so that a texel is at most 0.25 m, or half the grid spacing if
+less, until 4 × 4 maps cannot cover the area at that), and a compute
 pass tests every point against it, blending the four texels round it.
 
 ## Thermal comfort

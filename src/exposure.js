@@ -11,6 +11,10 @@ const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between 
 // memory, so this leaves room.
 const EXPOSURE_MAX_POINTS = 2e6;
 const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front of the surface
+// Metres, at most, across a texel of the depth maps from the sun. Not tied to the grid spacing:
+// each point is tested a texel or two off its surface, and at a coarse spacing that would lift
+// points under a canopy out into the sun.
+const EXPOSURE_TEXEL = 0.25;
 const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
 
 // The times in a period, as [{ doy, hour }]: each day from the first to the last of days, at

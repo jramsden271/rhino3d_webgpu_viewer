@@ -2743,7 +2743,7 @@ async function runExposure() {
   }
   Object.assign(expo, { status: 'Calculating…', progress: 0 });
   syncExposurePanel();
-  const lit = await renderer.exposureRun({ dirs, texel: (expo.spacing * u) / 2, stop: () => token !== expo.token,
+  const lit = await renderer.exposureRun({ dirs, texel: Math.min(expo.spacing / 2, EXPOSURE_TEXEL) * u, stop: () => token !== expo.token,
     progress: (f) => { expo.progress = f; syncExposureProgress(); } });
   if (!lit) return;
   const values = new Float32Array(lit.length), all = EXPOSURE_FULL * dirs.length;
