@@ -3649,8 +3649,16 @@ const Meshes = {
 
 const EXPOSURE_STEPS = [5, 10, 15, 20, 30, 60]; // minutes between times
 const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between points, at most
+// The most points a surface may have. Not a GPU limit (that is about 4.2 million, the most one
+// compute pass can take): preparing the surface freezes the page, for a few seconds at this size,
+// and splitting normals at sharp edges can add points after this check and briefly needs a lot of
+// memory, so this leaves room.
 const EXPOSURE_MAX_POINTS = 2e6;
 const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front of the surface
+// Metres, at most, across a texel of the depth maps from the sun. Not tied to the grid spacing:
+// each point is tested a texel or two off its surface, and at a coarse spacing that would lift
+// points under a canopy out into the sun.
+const EXPOSURE_TEXEL = 0.25;
 const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
 
 // The times in a period, as [{ doy, hour }]: each day from the first to the last of days, at
@@ -9420,7 +9428,7 @@ async function runExposure() {
   }
   Object.assign(expo, { status: 'Calculating…', progress: 0 });
   syncExposurePanel();
-  const lit = await renderer.exposureRun({ dirs, texel: (expo.spacing * u) / 2, stop: () => token !== expo.token,
+  const lit = await renderer.exposureRun({ dirs, texel: Math.min(expo.spacing / 2, EXPOSURE_TEXEL) * u, stop: () => token !== expo.token,
     progress: (f) => { expo.progress = f; syncExposureProgress(); } });
   if (!lit) return;
   const values = new Float32Array(lit.length), all = EXPOSURE_FULL * dirs.length;
