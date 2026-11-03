@@ -982,6 +982,35 @@ const SHADOW_SHADER = /* wgsl */ `
 }
 `;
 
+// Sun exposure (exposure.js): for one view from the sun (a depth map drawn with SHADOW_SHADER),
+// adds to each point how much it sees the sun, in sixteenths: the share of the four texels round it
+// that see the sun, blended by where it falls between them. A point facing away from the sun, or
+// outside the part of the map that is its tile, gets nothing.
+const EXPOSURE_SIZE = 4096, EXPOSURE_MARGIN = 4; // texels round a tile, so the four stay on the map
+const EXPOSURE_FULL = 16; // what one view adds to a point in full sun
+const EXPOSURE_SHADER = /* wgsl */ `
+struct ExposureUniform { m: mat4x4f, sun: vec4f, p: vec4f };  // p: texel size (model units), depth bias, points, margin (uv)
+@group(0) @binding(0) var<uniform> E: ExposureUniform;
+@group(0) @binding(1) var<storage, read> pts: array<vec4f>;
+@group(0) @binding(2) var<storage, read> nrm: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> lit: array<u32>;
+@group(0) @binding(4) var depthMap: texture_depth_2d;
+@group(0) @binding(5) var cmp: sampler_comparison;
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) g: vec3u) {
+  let i = g.x;
+  if (i >= u32(E.p.z)) { return; }
+  let n = nrm[i].xyz;
+  let c = dot(n, E.sun.xyz);
+  if (c <= 0.0) { return; }
+  // Off the surface by a texel or two (more at a grazing angle), clear of its own depth.
+  let p = pts[i].xyz + n * E.p.x * (0.6 + 1.5 * sqrt(max(1.0 - c * c, 0.0)));
+  let s = E.m * vec4f(p, 1.0);
+  let uv = vec2f(s.x * 0.5 + 0.5, 0.5 - s.y * 0.5);
+  if (any(uv < vec2f(E.p.w)) || any(uv >= vec2f(1.0 - E.p.w))) { return; }
+  lit[i] += u32(round(textureSampleCompareLevel(depthMap, cmp, uv, s.z + E.p.y) * ${EXPOSURE_FULL}.0));
+}
+`;
+
 const FRAME_SIZE = 1280;
 // How far each surface type yields to others where surfaces nearly coincide (see meshClip).
 const SURFACE_PRIORITY = { 1: 0.5, 4: 1, 5: 0.5, 6: 0, 7: 2 }; // water, grass, road, paving, ground
@@ -1613,6 +1642,10 @@ class Renderer {
       pass.setPipeline(s.xray ? P.mapX : P.map);
       this.drawResultMaps(pass, s);
     }
+    if (s.exposureMap && this.exposureMap) {
+      pass.setPipeline(s.xray ? P.mapX : P.map);
+      this.drawMap(pass, this.exposureMap, 0);
+    }
     if (this.resultLines && s.resultRanges?.length) {
       pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
       pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
@@ -1686,19 +1719,25 @@ class Renderer {
   // far they are moved up.
   setResultMaps(list) {
     for (const m of this.resultMaps || []) { m.pos.destroy(); m.idx.destroy(); m.val.destroy(); m.uni.destroy(); m.ramp?.destroy(); }
+    this.resultMaps = list.map(({ pos, indices }, index) => this.makeMap(pos, indices, index));
+  }
+
+  makeMap(pos, indices, index) {
     const dev = this.device, U = GPUBufferUsage;
     const make = (arr, usage) => {
       const buf = dev.createBuffer({ size: arr.byteLength, usage: usage | U.COPY_DST });
       dev.queue.writeBuffer(buf, 0, arr);
       return buf;
     };
-    this.resultMaps = list.map(({ pos, indices }, index) => ({ index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
-      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) }));
+    return { index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
+      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) };
   }
 
   // values: Float32Array, one per vertex. ramp: { lo, hi, data } (ColourScales.ramp).
-  setMapResult(i, values, ramp) {
-    const m = this.resultMaps[i], dev = this.device, n = ramp.data.length / 4;
+  setMapResult(i, values, ramp) { this.fillMap(this.resultMaps[i], values, ramp); }
+
+  fillMap(m, values, ramp) {
+    const dev = this.device, n = ramp.data.length / 4;
     dev.queue.writeBuffer(m.val, 0, values);
     Object.assign(m, { lo: ramp.lo, hi: ramp.hi });
     if (!m.ramp || m.ramp.width !== n) {
@@ -1710,15 +1749,145 @@ class Renderer {
   }
 
   drawResultMaps(pass, s) {
-    for (const i of s.resultMaps) {
-      const m = this.resultMaps[i];
-      if (!m?.bg) continue;
-      this.device.queue.writeBuffer(m.uni, 0, new Float32Array([s.resultMapZ || 0, m.lo, m.hi, m.index]));
-      pass.setBindGroup(1, m.bg);
-      pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
-      pass.setIndexBuffer(m.idx, 'uint32');
-      pass.drawIndexed(m.count);
+    for (const i of s.resultMaps) this.drawMap(pass, this.resultMaps[i], s.resultMapZ || 0);
+  }
+
+  drawMap(pass, m, z) {
+    if (!m?.bg) return;
+    this.device.queue.writeBuffer(m.uni, 0, new Float32Array([z, m.lo, m.hi, m.index]));
+    pass.setBindGroup(1, m.bg);
+    pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
+    pass.setIndexBuffer(m.idx, 'uint32');
+    pass.drawIndexed(m.count);
+  }
+
+  // The sun exposure results drawn while each frame's s.exposureMap is set: a surface
+  // ({ shown, idx } from exposureSurface) with a value at each point, or null for none.
+  setExposureMap(surface, values, ramp) {
+    const old = this.exposureMap;
+    if (old) for (const k of ['pos', 'idx', 'val', 'uni']) old[k].destroy();
+    old?.ramp?.destroy();
+    this.exposureMap = surface ? this.makeMap(surface.shown, surface.idx, -1) : null;
+    if (surface) this.fillMap(this.exposureMap, values, ramp);
+  }
+
+  // Sun exposure: the points to test (exposureSurface's pos and nrm), kept on the GPU for
+  // exposureRun. Null frees them.
+  setExposurePoints(surface) {
+    const X = this.exposure;
+    if (X) for (const k of ['pts', 'nrm', 'lit', 'read']) X[k].destroy();
+    this.exposure = null;
+    if (!surface) return;
+    const dev = this.device, U = GPUBufferUsage, n = surface.pos.length / 3;
+    const vec4s = (a) => {
+      const out = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) out.set(a.subarray(i * 3, i * 3 + 3), i * 4);
+      const buf = dev.createBuffer({ size: out.byteLength, usage: U.STORAGE | U.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, out);
+      return buf;
+    };
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < surface.pos.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], surface.pos[i]); hi[k] = Math.max(hi[k], surface.pos[i]); }
+    if (!this.exposurePipe) {
+      this.exposurePipe = dev.createComputePipeline({ layout: 'auto', compute: { module: dev.createShaderModule({ code: EXPOSURE_SHADER }), entryPoint: 'main' } });
+      const size = Math.min(EXPOSURE_SIZE, dev.limits.maxTextureDimension2D);
+      this.exposureDepth = dev.createTexture({ size: [size, size], format: DEPTH, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      this.exposureUni = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.exposureShadowBuf = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.exposureCmp = dev.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
     }
+    this.exposure = { n, lo, hi, pts: vec4s(surface.pos), nrm: vec4s(surface.nrm),
+      lit: dev.createBuffer({ size: n * 4, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST }),
+      read: dev.createBuffer({ size: n * 4, usage: U.MAP_READ | U.COPY_DST }) };
+    this.exposure.bg = dev.createBindGroup({ layout: this.exposurePipe.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: this.exposureUni } }, { binding: 1, resource: { buffer: this.exposure.pts } },
+      { binding: 2, resource: { buffer: this.exposure.nrm } }, { binding: 3, resource: { buffer: this.exposure.lit } },
+      { binding: 4, resource: this.exposureDepth.createView() }, { binding: 5, resource: this.exposureCmp }] });
+  }
+
+  // Tests the points from setExposurePoints against the shown model, from each of the sun
+  // directions dirs (model space, towards the sun). texel: the size of a depth map texel to aim for
+  // (model units): an area too big for 4 x 4 maps of it gets coarser ones. Resolves to how much
+  // each point saw the sun, summed over dirs (Uint32Array; EXPOSURE_FULL for each view in full
+  // sun), or null if stop() turned true. progress(f) is told how far it has got.
+  async exposureRun({ dirs, texel, stop, progress }) {
+    const X = this.exposure, dev = this.device;
+    if (!X) return null;
+    const size = this.exposureDepth.width, inner = size - 2 * EXPOSURE_MARGIN;
+    // Everything that can cast a shadow, along each direction.
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const b of this.batches) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
+    for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], X.lo[k]); mx[k] = Math.max(mx[k], X.hi[k]); }
+    const centre = V3.scale(V3.add(mn, mx), 0.5), radius = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6) * 1.02;
+    const corners = [];
+    for (let c = 0; c < 8; c++) corners.push([c & 1 ? X.hi[0] : X.lo[0], c & 2 ? X.hi[1] : X.lo[1], c & 4 ? X.hi[2] : X.lo[2]]);
+    const clear = dev.createCommandEncoder();
+    clear.clearBuffer(X.lit);
+    dev.queue.submit([clear.finish()]);
+    let last = performance.now();
+    for (let di = 0; di < dirs.length; di++) {
+      const L = dirs[di];
+      let lx = V3.cross([0, 0, 1], L);
+      if (V3.len(lx) < 1e-4) lx = [1, 0, 0];
+      lx = V3.norm(lx);
+      const ly = V3.cross(L, lx);
+      // The points' extent across the sun's view, in tiles of inner texels.
+      const xs = corners.map((p) => V3.dot(p, lx)), ys = corners.map((p) => V3.dot(p, ly));
+      const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+      const t = Math.max(texel, w / (inner * 4), h / (inner * 4), 1e-9);
+      const nx = Math.max(1, Math.ceil(w / (t * inner))), ny = Math.max(1, Math.ceil(h / (t * inner)));
+      const sc = V3.dot(centre, L), sMin = sc - radius, range = 2 * radius, r = (t * size) / 2;
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const cx = x0 + (i + 0.5) * t * inner, cy = y0 + (j + 0.5) * t * inner, m = new Float32Array(16);
+        m[0] = lx[0] / r; m[4] = lx[1] / r; m[8] = lx[2] / r; m[12] = -cx / r;
+        m[1] = ly[0] / r; m[5] = ly[1] / r; m[9] = ly[2] / r; m[13] = -cy / r;
+        m[2] = L[0] / range; m[6] = L[1] / range; m[10] = L[2] / range; m[14] = -sMin / range;
+        m[15] = 1;
+        const uni = new Float32Array(24);
+        uni.set(m); uni.set([L[0], L[1], L[2], 0], 16); uni.set([t, (1.5 * t) / range, X.n, EXPOSURE_MARGIN / size], 20);
+        dev.queue.writeBuffer(this.exposureShadowBuf, 0, m);
+        dev.queue.writeBuffer(this.exposureUni, 0, uni);
+        if (this.exposureShadowBG?.flags !== this.objFlagsBuf) {
+          this.exposureShadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
+            { binding: 0, resource: { buffer: this.exposureShadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
+          this.exposureShadowBG.flags = this.objFlagsBuf;
+        }
+        const enc = dev.createCommandEncoder();
+        const pass = enc.beginRenderPass({ colorAttachments: [],
+          depthStencilAttachment: { view: this.exposureDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+        pass.setPipeline(this.shadowPipe);
+        pass.setBindGroup(0, this.exposureShadowBG, [0]);
+        this.cull(m);
+        for (const b of this.batches) {
+          if (!b.visible || b.kind !== 'mesh' || !b.castsShadow || !this.seen(b)) continue;
+          pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+          pass.setIndexBuffer(b.gpu.idx, 'uint32');
+          this.drawCells(pass, b);
+        }
+        pass.end();
+        const cp = enc.beginComputePass();
+        cp.setPipeline(this.exposurePipe);
+        cp.setBindGroup(0, X.bg);
+        cp.dispatchWorkgroups(Math.ceil(X.n / 64));
+        cp.end();
+        dev.queue.submit([enc.finish()]);
+      }
+      // Let the GPU catch up, and the page draw, now and then.
+      if (performance.now() - last > 30 || di === dirs.length - 1) {
+        await dev.queue.onSubmittedWorkDone();
+        await new Promise((res) => setTimeout(res, 0));
+        if (stop() || this.exposure !== X) return null;
+        progress?.((di + 1) / dirs.length);
+        last = performance.now();
+      }
+    }
+    const enc = dev.createCommandEncoder();
+    enc.copyBufferToBuffer(X.lit, 0, X.read, 0, X.n * 4);
+    dev.queue.submit([enc.finish()]);
+    await X.read.mapAsync(GPUMapMode.READ);
+    const out = new Uint32Array(X.read.getMappedRange()).slice();
+    X.read.unmap();
+    return stop() || this.exposure !== X ? null : out;
   }
 
   // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for

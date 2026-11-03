@@ -5,7 +5,7 @@
 //
 // A scale is grouped ({ bands: [{ below, color, label }], start }), each band up to (not including)
 // `below`, or smooth ({ stops: [[value, color], ...] }), clamped at both ends. A smooth scale's
-// labels: bands whose labels still apply to its values.
+// labels: bands whose labels still apply to its values; its ticks: the values its legend marks, if not its stops.
 
 const scaleRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 
@@ -33,12 +33,17 @@ const LAWSON_BANDS = [
   { below: Infinity, color: '#FD2E03', label: 'Uncomfortable' },
 ];
 
+// matplotlib's magma (3.11.1), at 17 evenly spaced points from 0 to 100.
+const MAGMA = ['#000004', '#0A0822', '#1D1147', '#36106B', '#51127C', '#6A1C81', '#832681', '#9C2E7F', '#B73779', '#D0416F',
+  '#E75263', '#F56B5C', '#FC8961', '#FEA772', '#FEC488', '#FDE2A3', '#FCFDBF'];
+
 const ColourScales = {
   metrics: {
     utci: { name: 'UTCI', unit: '°C' },
     windSpeed: { name: 'Wind speed', unit: 'm/s' },
     relativeHumidity: { name: 'Relative humidity', unit: '%' },
     temperature: { name: 'Temperature', unit: '°C' },
+    sunExposure: { name: 'Time in sun', unit: '%' },
   },
 
   scales: [
@@ -50,6 +55,7 @@ const ColourScales = {
     { id: 'lawsonSmooth', metric: 'windSpeed', name: 'Lawson, continuous', stops: LAWSON_STOPS, labels: LAWSON_BANDS },
     { id: 'humidity', metric: 'relativeHumidity', name: 'Off-white to blue', stops: [[0, OFF_WHITE], [100, '#3E8FC9']] },
     { id: 'temperature', metric: 'temperature', name: 'Blue, grey, red', stops: [[-20, '#2A63C8'], [10, '#D4D4D4'], [40, '#D0211C']] },
+    { id: 'magma', metric: 'sunExposure', name: 'Magma', stops: MAGMA.map((c, i) => [(i * 100) / 16, c]), ticks: [0, 25, 50, 75, 100] },
   ],
 
   choices: {}, // metric -> the id of the scale picked for it
@@ -124,7 +130,7 @@ const ColourScales = {
     const lo = scale.stops[0][0], span = scale.stops[scale.stops.length - 1][0] - lo;
     const at = (v) => (v - lo) / span;
     // Where a scale's values have bands, their edges are the numbers to read it by.
-    const marks = scale.labels ? scale.labels.map((b) => b.below).filter((v) => Number.isFinite(v) && at(v) >= 0 && at(v) <= 1) : scale.stops.map(([v]) => v);
+    const marks = scale.labels ? scale.labels.map((b) => b.below).filter((v) => Number.isFinite(v) && at(v) >= 0 && at(v) <= 1) : scale.ticks || scale.stops.map(([v]) => v);
     return { gradient: `linear-gradient(to right, ${scale.stops.map(([v, c]) => `${c} ${(at(v) * 100).toFixed(1)}%`).join(', ')})`,
       ticks: marks.map((v) => ({ at: at(v), text: num(v) })) };
   },

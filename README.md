@@ -351,6 +351,7 @@ included:
 | Wind speed | Lawson comfort criteria, in bands · continuous |
 | Relative humidity | Continuous, off-white at 0 to blue at 100 |
 | Temperature | Continuous, blue at −20 °C, light grey at 10 °C, red at 40 °C |
+| Time in sun (sun exposure) | Magma (matplotlib's), continuous from 0 to 100% |
 
 A column that is none of these gets a blue to red scale across its own range, leaving out the
 extremes.
@@ -455,6 +456,36 @@ validated daylight or solar analysis. Shadows fall only on the model's own geome
 there is no ground modelled, there is nothing to receive them. They are cast by surfaces and
 meshes only (not curves); materials more than 40% transparent do not cast shadows, whether that comes from the file or the viewer (the Water and Glass magic materials go by the file's value alone). Shadows use four
 cascaded 2048² shadow maps, so they stay sharp from site scale down to street level.
+
+## Sun exposure
+
+**Tools → Sun exposure** shows how often each part of some surfaces can see the sun over a period,
+ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches each
+point. It needs a location. The results are drawn on the model, coloured from always shaded to
+always in sun (magma), and are not kept: they last until the settings change or the model closes.
+
+- **Surfaces** are a layer's objects: choose the layer, or press the picker and click an object
+  on it. Each object is tested on the side facing most nearly up (an object facing as much down as
+  up, such as a closed solid or a wall, keeps its own sides); **Flip sides** tests the other side.
+  **Ground/roof only** keeps just the faces within 45° of straight up (turned up, before any flip),
+  leaving out walls and the like. While picking, a marker follows the surface under the cursor.
+- **Dates** and **Times** each have two grips, in either order: every day from the earlier date to
+  the later is tested at the times from the earlier to the later, both ends included, every
+  **Interval** (5 to 60 minutes). Right-click either for the usual choices.
+- **Grid spacing** (0.1 to 10 m) is the most distance between the points tested. The objects'
+  render meshes are joined and their long edges split until none is longer, so no meshing is
+  needed in Rhino. Edges sharper than 40° keep a normal for each side. A new layer starts at the
+  finest spacing that gives about 200,000 points.
+- What casts shadows is what is shown: hide a layer or an object and the results update without
+  it. Materials more than 40% transparent do not cast shadows, as for the sun.
+- Under the results: the area analysed, and how much of it is in sun and shaded on average over
+  the period (in m² and %, weighted by area).
+- **Update automatically** recalculates soon after any change; off, nothing runs until
+  **Update**, for long periods. A run can be stopped.
+
+Each sun position draws the shown model's depth as seen from the sun into a 4096² map (or up to
+4 × 4 of them for a large area, so that a texel is at most half the grid spacing), and a compute
+pass tests every point against it, blending the four texels round it.
 
 ## Thermal comfort
 
@@ -648,6 +679,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
 | `node tools/test-magic.js` | Checks where a magic block is placed |
 | `node tools/test-sun.js` | Checks the sun path diagram |
+| `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
@@ -664,6 +696,8 @@ src/magicblocks.js       magic block library and how an instance is placed
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see
 src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking, cascaded shadows)
 src/sun.js               solar position, sun direction and colour
+src/mesh.js              meshes made for analysis: join, weld, split long edges, normals
+src/exposure.js          sun exposure: the times in a period, and the surface to test from a layer
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
 src/clouds.js            cloud cover, sun and sky strength from the weather file; clear-sky models
 src/utci.js              UTCI (Universal Thermal Climate Index), its stress categories, SolarCal sun on a person
@@ -673,6 +707,7 @@ src/recent.js            recent files list (file handles in IndexedDB)
 src/materials.js         magic materials: keyword rules and default colours
 src/camera.js            Z-up orbit / pan / zoom camera, matching Rhino's named views
 src/toolmenu.js          toolbar menus: a button with a popup that takes any content (ToolbarMenu), a list of choices (ChoiceList)
+src/rangepair.js         a slider with two grips, for a range
 src/walk.js              pedestrian mode: walking, ground following, steps, falls
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)

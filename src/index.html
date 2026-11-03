@@ -38,6 +38,7 @@
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
     <button class="btn toggle" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
+    <button class="btn toggle" id="btnTools" title="Tools for analysing the model"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -184,6 +185,46 @@
       </div>
     </div>
   </section>
+  <section id="exposurePanel" class="chrome panel sun-panel" hidden aria-label="Sun exposure">
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="15" cy="6.5" r="3"/><path d="M15 1.5v1M20 6.5h1M18.5 3l.7-.7M2.5 20l5-7h14l-5 7z"/></svg>Sun exposure</span>
+      <span class="panel-actions"><label class="switch" title="Show the results on the model"><input type="checkbox" id="exposureOn"><span></span></label><button class="x q" id="exposureHelp" aria-label="About sun exposure" title="About sun exposure">?</button><button class="x" id="exposureClose" aria-label="Close sun exposure panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div class="sun-read" id="exposureRead" hidden></div>
+      <div class="field">
+        <div class="field-label"><span>Surfaces</span></div>
+        <div class="exposure-layer"><select id="exposureLayer" aria-label="Layer to analyse" title="The layer whose objects are analysed"></select><button class="btn icon" id="exposurePick" aria-pressed="false" title="Pick the layer from the model: click this, then an object (Esc to cancel)" aria-label="Pick from the model"><svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7"/></svg></button></div>
+        <div class="check-row">
+          <label class="check" title="Only the parts of the surfaces facing within 45° of straight up, such as the ground and roofs: leaves out walls and the like"><input type="checkbox" id="exposureUp"> Ground/roof only</label>
+          <label class="check" title="Analyse the other side of each object. Without this, the side facing most nearly up."><input type="checkbox" id="exposureFlip"> Flip sides</label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Dates</span><output id="exposureDaysOut"></output></div>
+        <div id="exposureDays" title="Drag either grip; both on one day for a single day. Right-click for the solstices, equinoxes and the whole year"></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Times</span><output id="exposureHoursOut"></output></div>
+        <div id="exposureHours" title="Drag either grip; both together for a single time. Both ends are included. Right-click for the usual periods"></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Interval</span><output id="exposureStepOut"></output></div>
+        <input type="range" id="exposureStep" min="0" max="5" step="1" title="Time between the times tested">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Grid spacing</span><output id="exposureSpacingOut"></output></div>
+        <input type="range" id="exposureSpacing" min="0" max="7" step="1" title="Most distance between the points tested on the surfaces. Closer is finer, and slower">
+      </div>
+      <div class="field">
+        <label class="check" title="Recalculate as soon as anything changes. Off: only when you press Update"><input type="checkbox" id="exposureAuto"> Update automatically</label>
+        <div class="exposure-run"><button class="btn" id="exposureUpdate">Update</button><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>
+        <div id="exposureStatus" class="sun-read"></div>
+      </div>
+      <div id="exposureStats" class="sun-weather" hidden></div>
+      <div id="exposureLegend"></div>
+    </div>
+  </section>
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
     <div class="panel-head">
       <span>Lights</span>
@@ -309,6 +350,7 @@
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
         <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>4</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
+        <dt>Tools</dt><dd><b>Sun exposure</b> shows how often a layer’s surfaces see the sun over a period · <b>?</b> in its panel explains how</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
@@ -344,8 +386,11 @@
 <script src="utci.js"></script>
 <script src="colourscales.js"></script>
 <script src="results.js"></script>
+<script src="mesh.js"></script>
+<script src="exposure.js"></script>
 <script src="camera.js"></script>
 <script src="toolmenu.js"></script>
+<script src="rangepair.js"></script>
 <script src="listselect.js"></script>
 <script src="walk.js"></script>
 <script src="renderer.js"></script>

@@ -143,6 +143,8 @@ function frameState() {
   const SL = state.streamlines;
   s.resultMaps = state.maps.on ? state.maps.list.flatMap((m, i) => (state.maps.off.has(m.key) ? [] : [i])) : [];
   s.resultMapZ = state.maps.z / model.metresPerUnit;
+  s.exposureMap = expo.on && expo.shown;
+  checkExposure();
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
@@ -1526,6 +1528,7 @@ function resetObjectState() {
   $('inspect').hidden = true; inspectPin = null;
   closeLayerMenu();
   syncHiddenButton();
+  resetExposure();
 }
 
 let flagsHidden = '';
@@ -1900,6 +1903,7 @@ function syncSunPanel() {
   $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
   syncWeather(month, day);
   syncComfortPanel();
+  syncExposurePanel();
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
   const located = !!activeLocation();
   $('sunRead').hidden = located;
@@ -2666,6 +2670,271 @@ const pickPoint = (e) => pickAt(e).then((h) => h && h.p);
 // unset over empty space, where the camera's distance is all there is to go on.
 const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.depth = V3.dot(V3.sub(p, camera.eye), camera.forward); });
 
+// ---------------------------------------------------------------------------------------------
+// Sun exposure (Tools): how often each part of a layer's objects sees the sun over a period. The
+// results are drawn on the model until the settings change; nothing is kept.
+
+const expo = {
+  panel: false, on: true, layer: -1, flip: false, upOnly: false, summary: null, days: [80, 80], hours: [10, 12], step: 10, spacing: 1, auto: true, picking: false,
+  // Working state: the surface tested (for surfaceKey), the run going on (runKey, token), the
+  // settings of the results shown (doneKey), and of a run stopped or waiting for Update.
+  surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', token: 0, timer: 0,
+  progress: null, status: '', shown: false, stale: false,
+};
+let toolsMenu = null, toolsList = null, exposureDays = null, exposureHours = null;
+
+const fmtDay = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
+const fmtMetres = (m) => `${m} m`;
+const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
+
+// The settings a surface and a run depend on, or null when there is nothing to work out.
+function exposureKeys() {
+  if (!model || expo.layer < 0 || !activeLocation()) return null;
+  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.');
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden].join('|');
+  return { surface, run: [surface, expo.days, expo.hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
+}
+
+// Each frame, and on a change in the panel: whether the results still match the settings, and if not, a new run (after a
+// pause, so that dragging a slider runs once) or, without Update automatically, a note to update.
+function checkExposure() {
+  const k = expo.on ? exposureKeys() : null;
+  if (!k || k.run === expo.doneKey || k.run === expo.runKey || k.run === expo.pendingKey) return;
+  if (!expo.auto || k.run === expo.stoppedKey) {
+    if (!expo.stale) { expo.stale = true; syncExposurePanel(); }
+    return;
+  }
+  expo.pendingKey = k.run;
+  clearTimeout(expo.timer);
+  expo.timer = setTimeout(runExposure, 150);
+}
+
+async function runExposure() {
+  const k = exposureKeys();
+  expo.pendingKey = '';
+  if (!k) return;
+  const token = ++expo.token, t0 = performance.now(), u = 1 / model.metresPerUnit;
+  Object.assign(expo, { runKey: k.run, stoppedKey: '', stale: false });
+  if (k.surface !== expo.surfaceKey) {
+    Object.assign(expo, { status: 'Preparing the surfaces…', progress: 0 });
+    syncExposurePanel();
+    await new Promise((r) => setTimeout(r, 30));
+    if (token !== expo.token) return;
+    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: expo.spacing * u, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u });
+    Object.assign(expo, { surface, surfaceKey: k.surface });
+    renderer.setExposurePoints(surface.error ? null : surface);
+  }
+  const surface = expo.surface, S = state.sun;
+  const times = exposureTimes(expo), dirs = surface.error ? [] : exposureSunDirs(times, { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north });
+  const done = (status) => {
+    Object.assign(expo, { status, progress: null, runKey: '', doneKey: k.run });
+    syncExposurePanel();
+    redraw();
+  };
+  if (surface.error || !dirs.length) {
+    renderer.setExposureMap(null);
+    expo.shown = false;
+    expo.summary = null;
+    done(surface.error === 'tooMany' ? 'Too many points to test at this spacing: try a wider one.'
+      : surface.error === 'noneUp' ? 'None of the layer’s surfaces face within 45° of straight up.'
+      : surface.error ? 'The layer has no surfaces to analyse that are shown.' : `The sun is down at all ${times.length.toLocaleString()} times.`);
+    return;
+  }
+  Object.assign(expo, { status: 'Calculating…', progress: 0 });
+  syncExposurePanel();
+  const lit = await renderer.exposureRun({ dirs, texel: (expo.spacing * u) / 2, stop: () => token !== expo.token,
+    progress: (f) => { expo.progress = f; syncExposureProgress(); } });
+  if (!lit) return;
+  const values = new Float32Array(lit.length), all = EXPOSURE_FULL * dirs.length;
+  for (let i = 0; i < lit.length; i++) values[i] = (lit[i] * 100) / all;
+  renderer.setExposureMap(surface, values, ColourScales.ramp(ColourScales.preferred('sunExposure')));
+  expo.shown = true;
+  const sum = exposureSummary(surface, values), u2 = model.metresPerUnit ** 2;
+  expo.summary = { area: sum.area * u2, exposed: sum.exposed * u2 };
+  const n = surface.pos.length / 3, secs = (performance.now() - t0) / 1000;
+  done(`${times.length.toLocaleString()} ${times.length === 1 ? 'time' : 'times'}, the sun up at ${dirs.length.toLocaleString()} · ${n.toLocaleString()} points · ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
+}
+
+function stopExposure() {
+  if (!expo.runKey && !expo.pendingKey) return;
+  clearTimeout(expo.timer);
+  expo.token++;
+  Object.assign(expo, { stoppedKey: expo.runKey || expo.pendingKey, runKey: '', pendingKey: '', progress: null, status: 'Stopped.', stale: true });
+  syncExposurePanel();
+}
+
+// A new model: nothing chosen, nothing shown.
+function resetExposure() {
+  clearTimeout(expo.timer);
+  expo.token++;
+  Object.assign(expo, { layer: -1, summary: null, surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', progress: null, status: '', shown: false, stale: false });
+  setExposurePicking(false);
+  renderer.setExposurePoints(null);
+  renderer.setExposureMap(null);
+  syncExposurePanel();
+}
+
+// The layers that hold surfaces (meshes, polysurfaces and the like, or block instances), with how
+// many objects each.
+function exposureLayerCounts() {
+  const n = new Map();
+  for (const o of model ? model.objects : []) if (o.k === 'mesh' || o.k === 'inst') n.set(o.ai.layer, (n.get(o.ai.layer) || 0) + 1);
+  return n;
+}
+
+function setExposureLayer(layer) {
+  expo.layer = layer;
+  if (layer >= 0) {
+    // The finest spacing that keeps the points to a quick run, to start with.
+    const u = model.metresPerUnit, area = exposureLayerMeshes(model, layer, objectOff).reduce((s, list) => s + Meshes.area(Meshes.join(list)), 0) * u * u;
+    expo.spacing = EXPOSURE_SPACINGS.find((s) => exposurePointEstimate(area, s) <= 200000) || EXPOSURE_SPACINGS[EXPOSURE_SPACINGS.length - 1];
+  } else {
+    renderer.setExposureMap(null);
+    expo.shown = false;
+    expo.summary = null;
+  }
+  expo.status = '';
+  syncExposurePanel();
+  checkExposure();
+  redraw();
+}
+
+function setExposurePicking(on) {
+  expo.picking = on && !!model;
+  canvas.classList.toggle('picking', expo.picking);
+  $('exposurePick').setAttribute('aria-pressed', String(expo.picking));
+  if (expo.picking && hoverAt) showWalkMarker(hoverAt);
+  if (!expo.picking && !walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
+}
+
+// The picker's click on the model: the layer of the object under it.
+function pickExposureLayer(e) {
+  setExposurePicking(false);
+  pickAt(e).then((h) => { if (h?.id != null && model.objects[h.id]) setExposureLayer(model.objects[h.id].ai.layer); });
+}
+
+function setExposure(changes) {
+  Object.assign(expo, changes);
+  syncExposurePanel();
+  checkExposure();
+  redraw();
+}
+
+function toggleExposurePanel() {
+  expo.panel = !expo.panel;
+  $('exposurePanel').hidden = !expo.panel;
+  if (!expo.panel) setExposurePicking(false);
+  toolsList?.setOpen('exposure', expo.panel);
+  syncExposurePanel();
+}
+
+function syncExposureProgress() {
+  const going = expo.progress != null;
+  $('exposureBarBox').hidden = !going;
+  $('exposureStop').hidden = !going;
+  if (going) $('exposureBar').style.width = `${(expo.progress * 100).toFixed(1)}%`;
+}
+
+function syncExposurePanel() {
+  if (!exposureDays) return;
+  $('btnTools').setAttribute('aria-pressed', String(expo.panel));
+  if (!expo.panel) return;
+  const located = !!activeLocation();
+  $('exposureRead').hidden = located;
+  if (!located) $('exposureRead').innerHTML = 'No location is set, so the sun’s position is not known. <button class="link">Set location…</button>';
+  $('exposureOn').checked = expo.on;
+  const counts = exposureLayerCounts(), sel = $('exposureLayer');
+  const options = [['-1', counts.size ? 'Choose a layer…' : 'No layers with surfaces']].concat([...counts.keys()]
+    .sort((a, b) => model.layers[a].fullPath.localeCompare(model.layers[b].fullPath))
+    .map((l) => [String(l), `${model.layers[l].fullPath} (${counts.get(l).toLocaleString()})`]));
+  const html = options.map(([v, t]) => `<option value="${v}">${escapeHtml(t)}</option>`).join('');
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.value = String(expo.layer);
+  $('exposureFlip').checked = expo.flip;
+  $('exposureUp').checked = expo.upOnly;
+  exposureDays.max = daysInYear(EPW_YEAR);
+  for (const r of exposureDays.inputs) r.max = exposureDays.max;
+  exposureDays.value = expo.days;
+  exposureHours.value = expo.hours;
+  $('exposureDaysOut').textContent = fmtRange(expo.days, fmtDay);
+  $('exposureHoursOut').textContent = fmtRange(expo.hours, fmtClock);
+  $('exposureStep').value = EXPOSURE_STEPS.indexOf(expo.step);
+  $('exposureStepOut').textContent = `every ${expo.step} min`;
+  $('exposureSpacing').value = EXPOSURE_SPACINGS.indexOf(expo.spacing);
+  $('exposureSpacingOut').textContent = fmtMetres(expo.spacing);
+  $('exposureAuto').checked = expo.auto;
+  const going = expo.progress != null, ready = located && expo.layer >= 0 && expo.on;
+  $('exposureUpdate').hidden = expo.auto && !expo.stale;
+  $('exposureUpdate').disabled = !ready || going || (!expo.stale && !!expo.doneKey);
+  syncExposureProgress();
+  const status = !ready ? (expo.layer < 0 ? 'Choose the layer to analyse, or pick it from the model.' : located && !expo.on ? 'Results are hidden.' : '')
+    : expo.stale && !going ? `${expo.status && expo.status !== 'Stopped.' && expo.shown ? 'Settings changed since these results. ' : expo.status === 'Stopped.' ? 'Stopped. ' : ''}Press Update to calculate.` : expo.status;
+  $('exposureStatus').textContent = status;
+  const m2 = (a) => `${Math.round(a).toLocaleString()} m²`, pc = (a) => `${Math.round((a / sum.area) * 100)}%`, sum = expo.summary;
+  const stats = expo.shown && expo.on && sum && sum.area > 0;
+  $('exposureStats').hidden = !stats;
+  if (stats) setHtml($('exposureStats'), `<dl class="wx exposure-stats"><dt>Area analysed</dt><dd><b>${m2(sum.area)}</b></dd>
+    <dt>In sun, on average</dt><dd><b>${m2(sum.exposed)}</b> (${pc(sum.exposed)})</dd>
+    <dt>Shaded, on average</dt><dd><b>${m2(sum.area - sum.exposed)}</b> (${pc(sum.area - sum.exposed)})</dd></dl>`);
+  const scale = ColourScales.preferred('sunExposure');
+  setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
+}
+
+function showExposureHelp() {
+  Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
+    <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
+    <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
+    <p><b>Dates</b> and <b>Times:</b> drag either grip. The period runs from the earlier grip to the later, both included, and both grips together give a single day or time. Every day in the dates is tested at the times, every <b>Interval</b>. Right-click either slider for the usual choices.</p>
+    <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
+    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Sun panel.</p>
+    <p>With <b>Update automatically</b> off, nothing is calculated until you press <b>Update</b>: for long periods, so that changing the settings stays quick.</p>
+    <p>The results are not kept: they go when the model is closed.</p>` });
+}
+
+function bindExposurePanel() {
+  const equinox = dayOfYear(EPW_YEAR, 3, 21);
+  expo.days = [equinox, equinox];
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
+  toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
+  toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
+  toolsMenu.body.append(toolsList.el);
+  $('exposureClose').addEventListener('click', () => expo.panel && toggleExposurePanel());
+  $('exposureHelp').addEventListener('click', showExposureHelp);
+  $('exposureRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
+  $('exposureOn').addEventListener('change', (e) => {
+    if (!e.target.checked) stopExposure();
+    setExposure({ on: e.target.checked });
+  });
+  $('exposureLayer').addEventListener('change', (e) => setExposureLayer(+e.target.value));
+  $('exposurePick').addEventListener('click', () => setExposurePicking(!expo.picking));
+  $('exposureFlip').addEventListener('change', (e) => setExposure({ flip: e.target.checked }));
+  $('exposureUp').addEventListener('change', (e) => setExposure({ upOnly: e.target.checked }));
+  exposureDays = new RangePair($('exposureDays'), { min: 1, max: 365, step: 1, label: 'Dates', onInput: (days) => setExposure({ days }) });
+  exposureHours = new RangePair($('exposureHours'), { min: 0, max: 24, step: 1 / 12, label: 'Times', onInput: (hours) => setExposure({ hours: hours.map((h) => Math.round(h * 12) / 12) }) });
+  $('exposureDays').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (label, m, d) => { const doy = dayOfYear(EPW_YEAR, m, d); return { label, run: () => setExposure({ days: [doy, doy] }) }; };
+    showMenu('Dates', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23), at('21 December · solstice', 12, 21), '-',
+      { label: 'Whole year', run: () => setExposure({ days: [1, daysInYear(EPW_YEAR)] }) }], [e.clientX, e.clientY]);
+  });
+  $('exposureHours').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (a, b) => ({ label: `${fmtClock(a)} – ${fmtClock(b)}`, run: () => setExposure({ hours: [a, b] }) });
+    showMenu('Times', [at(10, 12), at(9, 15), at(12, 16), at(8, 18), '-', { label: 'All day', run: () => setExposure({ hours: [0, 24] }) }], [e.clientX, e.clientY]);
+  });
+  $('exposureStep').addEventListener('input', (e) => setExposure({ step: EXPOSURE_STEPS[+e.target.value] }));
+  $('exposureSpacing').addEventListener('input', (e) => setExposure({ spacing: EXPOSURE_SPACINGS[+e.target.value] }));
+  $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked }));
+  $('exposureUpdate').addEventListener('click', () => { clearTimeout(expo.timer); runExposure(); });
+  $('exposureStop').addEventListener('click', stopExposure);
+  // Esc puts the picker down.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && expo.picking) { e.preventDefault(); e.stopPropagation(); setExposurePicking(false); }
+  }, true);
+  syncExposurePanel();
+}
+
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -2699,7 +2968,7 @@ function bindPointer() {
 
   canvas.addEventListener('pointermove', (e) => {
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
-    if (walker.placing && !drag) showWalkMarker(hoverAt);
+    if ((walker.placing || expo.picking) && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -2731,6 +3000,7 @@ function bindPointer() {
     // While choosing where to start walking, it starts there instead.
     if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
       if (walker.placing) startWalkAt(e);
+      else if (expo.picking) pickExposureLayer(e);
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
@@ -2742,7 +3012,7 @@ function bindPointer() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('pointerleave', () => { if (walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
+  canvas.addEventListener('pointerleave', () => { if ((walker.placing || expo.picking) && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -3164,12 +3434,13 @@ function endPlacing() {
   placing.next = null;
   if (state.walkMarker) { state.walkMarker = null; redraw(); }
 }
-// Moves the marker to the surface under the cursor (one pick at a time, the latest position next).
+// Moves the marker to the surface under the cursor (one pick at a time, the latest position next),
+// while choosing where to walk or picking a layer for sun exposure.
 function showWalkMarker(at) {
   if (placing.busy) { placing.next = at; return; }
   placing.busy = true;
   pickAt(at).then((h) => {
-    if (walker.placing) {
+    if (walker.placing || expo.picking) {
       // At least about 12 pixels across, so it shows from far off too.
       const px = h && (2 * V3.len(V3.sub(h.p, camera.eye)) * Math.tan(camera.fov / 2)) / canvas.clientHeight;
       state.walkMarker = h ? { p: h.p, r: Math.max(WALK_MARKER / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
@@ -3179,7 +3450,7 @@ function showWalkMarker(at) {
     placing.busy = false;
     const next = placing.next;
     placing.next = null;
-    if (next && walker.placing) showWalkMarker(next);
+    if (next && (walker.placing || expo.picking)) showWalkMarker(next);
   });
 }
 // A click while choosing: start walking there.
@@ -3585,6 +3856,7 @@ function bindUi() {
   }
   bindLightsPanel();
   bindComfortPanel();
+  bindExposurePanel();
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;
     layerOn = model.layers.map(() => b.dataset.layers === 'all');
