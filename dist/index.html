@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>3DM Viewer</title>
-<!-- Built 2026-11-02 · rhino3dm 8.35.0 (MIT, Robert McNeel & Associates) -->
+<!-- Built 2026-11-03 · rhino3dm 8.35.0 (MIT, Robert McNeel & Associates) -->
 <style>
 :root {
   --surface: rgba(255, 255, 255, 0.86);
@@ -488,6 +488,30 @@ body.walking .walk-frame { display: block; }
 .panel-title { display: inline-flex; align-items: center; gap: 7px; }
 .panel-title svg { width: 15px; height: 15px; flex: none; }
 .utci-read .link { align-self: flex-start; }
+
+/* Sun exposure panel */
+.exposure-layer { display: flex; gap: 6px; align-items: center; }
+.exposure-layer select { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.exposure-layer .btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.exposure-run { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.exposure-run .btn[hidden], .exposure-run .link[hidden] { display: none; }
+.exposure-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.exposure-bar[hidden] { display: none; }
+.exposure-bar span { display: block; height: 100%; width: 0; background: var(--accent); }
+.exposure-ends { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+#gfx.picking, #gfx.picking.dragging { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7' stroke='%23222' stroke-width='4.2'/%3E%3Cpath d='m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7' stroke='%23f2b100' stroke-width='2.2'/%3E%3C/g%3E%3C/svg%3E") 4 28, crosshair; }
+.exposure-stats { margin: 0; }
+
+/* Two-grip slider (rangepair.js) */
+.range-pair { position: relative; height: 20px; margin: 2px 0; }
+.range-pair::before { content: ''; position: absolute; left: 7px; right: 7px; top: 8px; height: 4px; border-radius: 2px; background: var(--border); }
+.range-fill { position: absolute; top: 8px; height: 4px; min-width: 2px; border-radius: 2px; background: var(--accent); }
+.range-pair input { position: absolute; inset: 0; width: 100%; height: 20px; margin: 0; background: none; appearance: none; -webkit-appearance: none; pointer-events: none; }
+.range-pair input::-webkit-slider-runnable-track { height: 20px; background: none; }
+.range-pair input::-moz-range-track { background: none; }
+.range-pair input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 14px; height: 14px; margin-top: 3px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface-solid); box-sizing: border-box; cursor: pointer; }
+.range-pair input::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface-solid); box-sizing: border-box; cursor: pointer; }
+.range-pair input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>
 </head>
 <body>
@@ -522,6 +546,7 @@ body.walking .walk-frame { display: block; }
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
     <button class="btn toggle" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
+    <button class="btn toggle" id="btnTools" title="Tools for analysing the model"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -668,6 +693,46 @@ body.walking .walk-frame { display: block; }
       </div>
     </div>
   </section>
+  <section id="exposurePanel" class="chrome panel sun-panel" hidden aria-label="Sun exposure">
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="15" cy="6.5" r="3"/><path d="M15 1.5v1M20 6.5h1M18.5 3l.7-.7M2.5 20l5-7h14l-5 7z"/></svg>Sun exposure</span>
+      <span class="panel-actions"><label class="switch" title="Show the results on the model"><input type="checkbox" id="exposureOn"><span></span></label><button class="x q" id="exposureHelp" aria-label="About sun exposure" title="About sun exposure">?</button><button class="x" id="exposureClose" aria-label="Close sun exposure panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div class="sun-read" id="exposureRead" hidden></div>
+      <div class="field">
+        <div class="field-label"><span>Surfaces</span></div>
+        <div class="exposure-layer"><select id="exposureLayer" aria-label="Layer to analyse" title="The layer whose objects are analysed"></select><button class="btn icon" id="exposurePick" aria-pressed="false" title="Pick the layer from the model: click this, then an object (Esc to cancel)" aria-label="Pick from the model"><svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7"/></svg></button></div>
+        <div class="check-row">
+          <label class="check" title="Only the parts of the surfaces facing within 45° of straight up, such as the ground and roofs: leaves out walls and the like"><input type="checkbox" id="exposureUp"> Ground/roof only</label>
+          <label class="check" title="Analyse the other side of each object. Without this, the side facing most nearly up."><input type="checkbox" id="exposureFlip"> Flip sides</label>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Dates</span><output id="exposureDaysOut"></output></div>
+        <div id="exposureDays" title="Drag either grip; both on one day for a single day. Right-click for the solstices, equinoxes and the whole year"></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Times</span><output id="exposureHoursOut"></output></div>
+        <div id="exposureHours" title="Drag either grip; both together for a single time. Both ends are included. Right-click for the usual periods"></div>
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Interval</span><output id="exposureStepOut"></output></div>
+        <input type="range" id="exposureStep" min="0" max="5" step="1" title="Time between the times tested">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Grid spacing</span><output id="exposureSpacingOut"></output></div>
+        <input type="range" id="exposureSpacing" min="0" max="7" step="1" title="Most distance between the points tested on the surfaces. Closer is finer, and slower">
+      </div>
+      <div class="field">
+        <label class="check" title="Recalculate as soon as anything changes. Off: only when you press Update"><input type="checkbox" id="exposureAuto"> Update automatically</label>
+        <div class="exposure-run"><button class="btn" id="exposureUpdate">Update</button><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>
+        <div id="exposureStatus" class="sun-read"></div>
+      </div>
+      <div id="exposureStats" class="sun-weather" hidden></div>
+      <div id="exposureLegend"></div>
+    </div>
+  </section>
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights">
     <div class="panel-head">
       <span>Lights</span>
@@ -793,6 +858,7 @@ body.walking .walk-frame { display: block; }
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
         <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>4</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
+        <dt>Tools</dt><dd><b>Sun exposure</b> shows how often a layer’s surfaces see the sun over a period · <b>?</b> in its panel explains how</dd>
         <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
@@ -2959,7 +3025,7 @@ function surroundingsMrtDelta(dnr, altitude) {
 //
 // A scale is grouped ({ bands: [{ below, color, label }], start }), each band up to (not including)
 // `below`, or smooth ({ stops: [[value, color], ...] }), clamped at both ends. A smooth scale's
-// labels: bands whose labels still apply to its values.
+// labels: bands whose labels still apply to its values; its ticks: the values its legend marks, if not its stops.
 
 const scaleRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 
@@ -2987,12 +3053,17 @@ const LAWSON_BANDS = [
   { below: Infinity, color: '#FD2E03', label: 'Uncomfortable' },
 ];
 
+// matplotlib's magma (3.11.1), at 17 evenly spaced points from 0 to 100.
+const MAGMA = ['#000004', '#0A0822', '#1D1147', '#36106B', '#51127C', '#6A1C81', '#832681', '#9C2E7F', '#B73779', '#D0416F',
+  '#E75263', '#F56B5C', '#FC8961', '#FEA772', '#FEC488', '#FDE2A3', '#FCFDBF'];
+
 const ColourScales = {
   metrics: {
     utci: { name: 'UTCI', unit: '°C' },
     windSpeed: { name: 'Wind speed', unit: 'm/s' },
     relativeHumidity: { name: 'Relative humidity', unit: '%' },
     temperature: { name: 'Temperature', unit: '°C' },
+    sunExposure: { name: 'Time in sun', unit: '%' },
   },
 
   scales: [
@@ -3004,6 +3075,7 @@ const ColourScales = {
     { id: 'lawsonSmooth', metric: 'windSpeed', name: 'Lawson, continuous', stops: LAWSON_STOPS, labels: LAWSON_BANDS },
     { id: 'humidity', metric: 'relativeHumidity', name: 'Off-white to blue', stops: [[0, OFF_WHITE], [100, '#3E8FC9']] },
     { id: 'temperature', metric: 'temperature', name: 'Blue, grey, red', stops: [[-20, '#2A63C8'], [10, '#D4D4D4'], [40, '#D0211C']] },
+    { id: 'magma', metric: 'sunExposure', name: 'Magma', stops: MAGMA.map((c, i) => [(i * 100) / 16, c]), ticks: [0, 25, 50, 75, 100] },
   ],
 
   choices: {}, // metric -> the id of the scale picked for it
@@ -3078,7 +3150,7 @@ const ColourScales = {
     const lo = scale.stops[0][0], span = scale.stops[scale.stops.length - 1][0] - lo;
     const at = (v) => (v - lo) / span;
     // Where a scale's values have bands, their edges are the numbers to read it by.
-    const marks = scale.labels ? scale.labels.map((b) => b.below).filter((v) => Number.isFinite(v) && at(v) >= 0 && at(v) <= 1) : scale.stops.map(([v]) => v);
+    const marks = scale.labels ? scale.labels.map((b) => b.below).filter((v) => Number.isFinite(v) && at(v) >= 0 && at(v) <= 1) : scale.ticks || scale.stops.map(([v]) => v);
     return { gradient: `linear-gradient(to right, ${scale.stops.map(([v, c]) => `${c} ${(at(v) * 100).toFixed(1)}%`).join(', ')})`,
       ticks: marks.map((v) => ({ at: at(v), text: num(v) })) };
   },
@@ -3355,6 +3427,319 @@ function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
     ranges.push(parts);
   }
   return { pos, col, ranges };
+}
+
+</script>
+<script>
+// Triangle meshes made in the viewer, for analysis: joining pieces, merging their shared vertices,
+// splitting long edges and finding normals. A mesh is { pos (x, y, z, ...), idx (three vertices
+// per triangle, anticlockwise seen from its front) }.
+
+const Meshes = {
+  // One mesh from several: [{ pos, idx, xf (optional: a row-major 4x4 transform) }].
+  join(list) {
+    let nv = 0, ni = 0;
+    for (const m of list) { nv += m.pos.length; ni += m.idx.length; }
+    const pos = new Float64Array(nv), idx = new Uint32Array(ni);
+    let v = 0, i = 0;
+    for (const { pos: p, idx: t, xf } of list) {
+      const base = v / 3;
+      for (let k = 0; k < p.length; k += 3) {
+        const x = p[k], y = p[k + 1], z = p[k + 2];
+        if (xf) {
+          pos[v++] = xf[0] * x + xf[1] * y + xf[2] * z + xf[3];
+          pos[v++] = xf[4] * x + xf[5] * y + xf[6] * z + xf[7];
+          pos[v++] = xf[8] * x + xf[9] * y + xf[10] * z + xf[11];
+        } else { pos[v++] = x; pos[v++] = y; pos[v++] = z; }
+      }
+      for (let k = 0; k < t.length; k++) idx[i++] = t[k] + base;
+    }
+    return { pos, idx };
+  },
+
+  // Vertices closer than about tol become one, and triangles left with two corners the same go.
+  weld({ pos, idx }, tol) {
+    const at = new Map(), map = new Uint32Array(pos.length / 3), out = [];
+    for (let v = 0; v < map.length; v++) {
+      const key = `${Math.round(pos[v * 3] / tol)},${Math.round(pos[v * 3 + 1] / tol)},${Math.round(pos[v * 3 + 2] / tol)}`;
+      let k = at.get(key);
+      if (k === undefined) { k = out.length / 3; at.set(key, k); out.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]); }
+      map[v] = k;
+    }
+    const tris = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = map[idx[t]], b = map[idx[t + 1]], c = map[idx[t + 2]];
+      if (a !== b && b !== c && c !== a) tris.push(a, b, c);
+    }
+    return { pos: Float64Array.from(out), idx: Uint32Array.from(tris) };
+  },
+
+  // The sum of the triangles' normals, each as long as its triangle's area (about every
+  // step-th triangle, for a quick answer on a big mesh).
+  areaNormal({ pos, idx }, step = 1) {
+    const n = [0, 0, 0];
+    for (let t = 0; t < idx.length; t += 3 * step) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      n[0] += (uy * vz - uz * vy) / 2; n[1] += (uz * vx - ux * vz) / 2; n[2] += (ux * vy - uy * vx) / 2;
+    }
+    return n;
+  },
+
+  area(m, step = 1) {
+    let s = 0;
+    const { pos, idx } = m;
+    for (let t = 0; t < idx.length; t += 3 * step) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      s += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+    }
+    return s;
+  },
+
+  // The triangles facing within angle degrees of the unit direction dir.
+  keepFacing({ pos, idx }, dir, angle) {
+    const cos = Math.cos((angle * Math.PI) / 180), out = [];
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z);
+      if (l && (x * dir[0] + y * dir[1] + z * dir[2]) / l >= cos) out.push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    return { pos, idx: Uint32Array.from(out) };
+  },
+
+  // The same mesh seen from its other side.
+  flip({ pos, idx }) {
+    const out = idx.slice();
+    for (let t = 0; t < out.length; t += 3) { out[t + 1] = idx[t + 2]; out[t + 2] = idx[t + 1]; }
+    return { pos, idx: out };
+  },
+
+  // Splits edges longer than maxEdge at their middles until none is, keeping neighbouring
+  // triangles joined. A triangle with one long edge becomes two, with two becomes three (its four-
+  // sided part cut along the shorter diagonal), with three becomes four. Long thin triangles get
+  // cut across, so they end up about maxEdge / 2 to maxEdge on a side. Null if it would need more
+  // than maxVerts vertices.
+  refine({ pos, idx }, maxEdge, maxVerts = 2e6) {
+    const P = Array.from(pos);
+    let T = idx;
+    const L2 = maxEdge * maxEdge, K = maxVerts + 1;
+    const len2 = (a, b) => (P[a * 3] - P[b * 3]) ** 2 + (P[a * 3 + 1] - P[b * 3 + 1]) ** 2 + (P[a * 3 + 2] - P[b * 3 + 2]) ** 2;
+    for (;;) {
+      const mid = new Map();
+      // The vertex in the middle of edge a-b if it is too long, otherwise -1.
+      const split = (a, b) => {
+        if (len2(a, b) <= L2) return -1;
+        const key = a < b ? a * K + b : b * K + a;
+        let m = mid.get(key);
+        if (m === undefined) {
+          m = P.length / 3;
+          mid.set(key, m);
+          P.push((P[a * 3] + P[b * 3]) / 2, (P[a * 3 + 1] + P[b * 3 + 1]) / 2, (P[a * 3 + 2] + P[b * 3 + 2]) / 2);
+        }
+        return m;
+      };
+      const out = [];
+      for (let t = 0; t < T.length; t += 3) {
+        let a = T[t], b = T[t + 1], c = T[t + 2];
+        let ab = split(a, b), bc = split(b, c), ca = split(c, a);
+        if (P.length / 3 > maxVerts) return null;
+        const n = (ab >= 0) + (bc >= 0) + (ca >= 0);
+        if (n === 0) { out.push(a, b, c); continue; }
+        if (n === 3) { out.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca); continue; }
+        // Turn the triangle round so that a-b is split, and for two splits b-c too.
+        for (let r = 0; r < 3 && !(ab >= 0 && (n === 1 || bc >= 0)); r++) {
+          [a, b, c] = [b, c, a];
+          [ab, bc, ca] = [bc, ca, ab];
+        }
+        if (n === 1) { out.push(a, ab, c, ab, b, c); continue; }
+        out.push(ab, b, bc);
+        // The four-sided part a, ab, bc, c.
+        if (len2(a, bc) < len2(ab, c)) out.push(a, ab, bc, a, bc, c);
+        else out.push(a, ab, c, ab, bc, c);
+      }
+      if (!mid.size) return { pos: Float64Array.from(P), idx: Uint32Array.from(T) };
+      T = out;
+    }
+  },
+
+  // The same mesh with its vertices in order along a curve that keeps near ones together (a Z-order
+  // curve), for faster work on the GPU, where neighbouring vertices are worked on together.
+  sortVertices({ pos, idx, nrm }) {
+    if (pos.length / 3 >= 2 ** 22) return { pos, idx, nrm }; // too many to number in the sort keys
+    const n = pos.length / 3, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < pos.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], pos[i]); hi[k] = Math.max(hi[k], pos[i]); }
+    const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+    // 10 bits per axis, interleaved.
+    const spread = (v) => {
+      v = (v | (v << 16)) & 0x030000ff; v = (v | (v << 8)) & 0x0300f00f; v = (v | (v << 4)) & 0x030c30c3;
+      return (v | (v << 2)) & 0x09249249;
+    };
+    // Each key with its vertex number below it, so a plain numeric sort puts them in order.
+    const key = new Float64Array(n), q = (v, k) => Math.min(1023, Math.floor(((v - lo[k]) / span) * 1024));
+    for (let i = 0; i < n; i++) key[i] = ((spread(q(pos[i * 3], 0)) | (spread(q(pos[i * 3 + 1], 1)) << 1) | (spread(q(pos[i * 3 + 2], 2)) << 2)) >>> 0) * 2 ** 22 + i;
+    key.sort();
+    const order = Uint32Array.from(key, (k) => k % 2 ** 22), at = new Uint32Array(n);
+    const P = new pos.constructor(pos.length), N = nrm && new nrm.constructor(nrm.length);
+    order.forEach((v, i) => {
+      at[v] = i;
+      for (let k = 0; k < 3; k++) { P[i * 3 + k] = pos[v * 3 + k]; if (N) N[i * 3 + k] = nrm[v * 3 + k]; }
+    });
+    return { pos: P, idx: idx.map((v) => at[v]), nrm: N };
+  },
+
+  // Unit normals at the vertices: at each corner of a triangle, the average of the triangles round
+  // it that face within crease degrees of it, weighted by area. A vertex on a sharper edge becomes
+  // one for each side, so that each keeps its own normal. Gives { pos, idx, nrm }.
+  splitNormals({ pos, idx }, crease = 40) {
+    const nt = idx.length / 3, fn = new Float64Array(nt * 3), fu = new Float64Array(nt * 3);
+    for (let t = 0; t < nt; t++) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z) || 1;
+      fn[t * 3] = x; fn[t * 3 + 1] = y; fn[t * 3 + 2] = z;
+      fu[t * 3] = x / l; fu[t * 3 + 1] = y / l; fu[t * 3 + 2] = z / l;
+    }
+    // The triangles round each vertex.
+    const nv = pos.length / 3, start = new Uint32Array(nv + 1);
+    for (let i = 0; i < idx.length; i++) start[idx[i] + 1]++;
+    for (let v = 0; v < nv; v++) start[v + 1] += start[v];
+    const fill = start.slice(0, nv), round = new Uint32Array(idx.length);
+    for (let i = 0; i < idx.length; i++) round[fill[idx[i]]++] = (i / 3) | 0;
+    // The vertices made for each vertex so far: first[v], then next[] (-1 ends).
+    const cos = Math.cos((crease * Math.PI) / 180), out = new Uint32Array(idx.length), first = new Int32Array(nv).fill(-1);
+    const P = new Float64Array(idx.length * 3), N = new Float32Array(idx.length * 3), next = new Int32Array(idx.length);
+    let made = 0;
+    for (let i = 0; i < idx.length; i++) {
+      const v = idx[i], t = (i / 3) | 0;
+      let x = 0, y = 0, z = 0;
+      for (let k = start[v]; k < start[v + 1]; k++) {
+        const u = round[k];
+        if (fu[u * 3] * fu[t * 3] + fu[u * 3 + 1] * fu[t * 3 + 1] + fu[u * 3 + 2] * fu[t * 3 + 2] < cos) continue;
+        x += fn[u * 3]; y += fn[u * 3 + 1]; z += fn[u * 3 + 2];
+      }
+      const l = Math.hypot(x, y, z) || 1;
+      x /= l; y /= l; z /= l;
+      // Corners of a vertex with nearly the same normal share one.
+      let k = first[v];
+      while (k >= 0 && N[k * 3] * x + N[k * 3 + 1] * y + N[k * 3 + 2] * z < 0.9998) k = next[k];
+      if (k < 0) {
+        k = made++;
+        next[k] = first[v]; first[v] = k;
+        for (let c = 0; c < 3; c++) P[k * 3 + c] = pos[v * 3 + c];
+        N[k * 3] = x; N[k * 3 + 1] = y; N[k * 3 + 2] = z;
+      }
+      out[i] = k;
+    }
+    return { pos: P.slice(0, made * 3), idx: out, nrm: N.slice(0, made * 3) };
+  },
+};
+
+</script>
+<script>
+// Sun exposure: how often each part of some surfaces can see the sun over a period, ignoring
+// cloud. The surfaces are a layer's objects, joined and cut into small triangles (mesh.js) whose
+// corners are the points tested; the renderer tests them against the model, as seen from the sun
+// at each time.
+
+const EXPOSURE_STEPS = [5, 10, 15, 20, 30, 60]; // minutes between times
+const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between points, at most
+const EXPOSURE_MAX_POINTS = 2e6;
+const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front of the surface
+const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
+
+// The times in a period, as [{ doy, hour }]: each day from the first to the last of days, at
+// hours from the first to the last of hours every step minutes, both ends included. Either pair
+// can be in either order.
+function exposureTimes({ days, hours, step }) {
+  const [d0, d1] = [Math.min(...days), Math.max(...days)], [h0, h1] = [Math.min(...hours), Math.max(...hours)];
+  const m0 = Math.round(h0 * 60), m1 = Math.round(h1 * 60), out = [];
+  for (let doy = d0; doy <= d1; doy++) for (let m = m0; m <= m1; m += step) out.push({ doy, hour: m / 60 });
+  return out;
+}
+
+// The sun's directions in model space at the times when it is up. loc: { lat, lon, utcOffset,
+// year, north }.
+function exposureSunDirs(times, loc) {
+  const dirs = [];
+  for (const { doy, hour } of times) {
+    const p = solarPosition({ ...loc, doy, hour });
+    if (p.altitude > 0) dirs.push(sunVector(p.azimuth, p.altitude, loc.north));
+  }
+  return dirs;
+}
+
+// The meshes of a layer's objects: [{ pos, idx, xf }], one list for each object (a block
+// instance's geometry is all on its layer here). skip(i): leave out object i.
+function exposureLayerMeshes(model, layer, skip) {
+  const out = [];
+  const walk = (defId, xf, list, depth, active) => {
+    const def = model.defs.get(defId);
+    if (!def || depth > 24 || active.has(defId)) return;
+    active.add(defId);
+    for (const e of def.entries) {
+      if (e.k === 'inst') walk(e.idef, mulRM(xf, e.xf), list, depth + 1, active);
+      else if (e.k === 'mesh') for (const p of e.parts) list.push({ pos: p.pos, idx: p.idx, xf });
+    }
+    active.delete(defId);
+  };
+  model.objects.forEach((o, i) => {
+    if (o.ai.layer !== layer || skip(i)) return;
+    const list = [];
+    if (o.k === 'mesh') for (const p of o.parts) list.push({ pos: p.pos, idx: p.idx, xf: o.xf });
+    else if (o.k === 'inst') walk(o.idef, o.xf, list, 0, new Set());
+    if (list.length) out.push(list);
+  });
+  return out;
+}
+
+// A rough count of the points a spacing gives on an area (from refining test surfaces).
+const exposurePointEstimate = (area, spacing) => (2.6 * area) / (spacing * spacing);
+
+// The surface to test: objects (from exposureLayerMeshes) each turned to face up, or down with flip
+// (one facing as much down as up, such as a closed object or a wall, keeps the file's sides, or the
+// others with flip), then joined and cut so that no edge is longer than spacing. upOnly keeps
+// only the faces that, turned up, face within EXPOSURE_UP_ONLY of straight up (before flip). Lengths
+// are in model units. Gives
+// { pos, nrm (Float32Arrays, at the surface), shown (positions lift in front of it), idx, area }
+// or { error }.
+function exposureSurface(objects, { spacing, flip, upOnly, lift, weldTol }) {
+  if (!objects.length) return { error: 'empty' };
+  const faced = objects.map((list) => {
+    const m = Meshes.join(list), step = Math.max(1, Math.floor(m.idx.length / 3 / 2000));
+    const z = Meshes.areaNormal(m, step)[2], up = Math.abs(z) < 0.01 * Meshes.area(m, step) || z > 0;
+    let faced = up ? m : Meshes.flip(m);
+    if (upOnly) faced = Meshes.keepFacing(faced, [0, 0, 1], EXPOSURE_UP_ONLY);
+    return flip ? Meshes.flip(faced) : faced;
+  });
+  const joined = Meshes.weld(Meshes.join(faced), weldTol), area = Meshes.area(joined);
+  if (!joined.idx.length) return { error: upOnly ? 'noneUp' : 'empty' };
+  if (exposurePointEstimate(area, spacing) > EXPOSURE_MAX_POINTS * 1.5) return { error: 'tooMany', area };
+  const fine = Meshes.refine(joined, spacing, EXPOSURE_MAX_POINTS);
+  if (!fine) return { error: 'tooMany', area };
+  const m = Meshes.sortVertices(Meshes.splitNormals(fine)), nrm = m.nrm, pos = Float32Array.from(m.pos), shown = new Float32Array(pos.length);
+  for (let i = 0; i < pos.length; i++) shown[i] = pos[i] + nrm[i] * lift;
+  return { pos, nrm, shown, idx: m.idx, area };
+}
+
+// The area of a surface (from exposureSurface) and how much of it is in sun on average, from the
+// percentage at each point (values), in model units squared.
+function exposureSummary({ pos, idx }, values) {
+  let area = 0, exposed = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    const i = idx[t], j = idx[t + 1], k = idx[t + 2], a = i * 3, b = j * 3, c = k * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const s = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+    area += s;
+    exposed += (s * (Math.min(100, values[i]) + Math.min(100, values[j]) + Math.min(100, values[k]))) / 300;
+  }
+  return { area, exposed };
 }
 
 </script>
@@ -3690,6 +4075,49 @@ class ChoiceList {
   item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
   setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
   setOpen(id, on) { this.item(id).classList.toggle('open', on); } // coloured, as a toolbar button whose panel is open
+}
+
+</script>
+<script>
+// A slider with two grips, for a range. Either grip can pass the other, or sit on it for a range
+// of one value: the range runs from the lower grip to the higher.
+//
+//   const r = new RangePair(el, { min: 0, max: 24, step: 0.25, label: 'Time', onInput: ([lo, hi]) => ... });
+//   r.value = [10, 12];
+
+class RangePair {
+  constructor(el, { min, max, step, label, onInput }) {
+    Object.assign(this, { el, min, max });
+    el.classList.add('range-pair');
+    this.fill = document.createElement('span');
+    this.fill.className = 'range-fill';
+    this.inputs = ['from', 'to'].map((end) => {
+      const r = document.createElement('input');
+      Object.assign(r, { type: 'range', min, max, step });
+      r.setAttribute('aria-label', `${label}, ${end}`);
+      r.addEventListener('input', () => { this.paint(); onInput(this.value); });
+      return r;
+    });
+    el.append(this.fill, ...this.inputs);
+  }
+
+  get value() {
+    const [a, b] = this.inputs.map((r) => +r.value);
+    return [Math.min(a, b), Math.max(a, b)];
+  }
+
+  set value([a, b]) {
+    this.inputs[0].value = a;
+    this.inputs[1].value = b;
+    this.paint();
+  }
+
+  // The bar between the grips (each grip's centre moves over the width less one grip).
+  paint() {
+    const [a, b] = this.value, f = (v) => (v - this.min) / (this.max - this.min);
+    this.fill.style.left = `calc(7px + ${f(a)} * (100% - 14px))`;
+    this.fill.style.width = `calc(${f(b) - f(a)} * (100% - 14px))`;
+  }
 }
 
 </script>
@@ -5127,6 +5555,35 @@ const SHADOW_SHADER = /* wgsl */ `
 }
 `;
 
+// Sun exposure (exposure.js): for one view from the sun (a depth map drawn with SHADOW_SHADER),
+// adds to each point how much it sees the sun, in sixteenths: the share of the four texels round it
+// that see the sun, blended by where it falls between them. A point facing away from the sun, or
+// outside the part of the map that is its tile, gets nothing.
+const EXPOSURE_SIZE = 4096, EXPOSURE_MARGIN = 4; // texels round a tile, so the four stay on the map
+const EXPOSURE_FULL = 16; // what one view adds to a point in full sun
+const EXPOSURE_SHADER = /* wgsl */ `
+struct ExposureUniform { m: mat4x4f, sun: vec4f, p: vec4f };  // p: texel size (model units), depth bias, points, margin (uv)
+@group(0) @binding(0) var<uniform> E: ExposureUniform;
+@group(0) @binding(1) var<storage, read> pts: array<vec4f>;
+@group(0) @binding(2) var<storage, read> nrm: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> lit: array<u32>;
+@group(0) @binding(4) var depthMap: texture_depth_2d;
+@group(0) @binding(5) var cmp: sampler_comparison;
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) g: vec3u) {
+  let i = g.x;
+  if (i >= u32(E.p.z)) { return; }
+  let n = nrm[i].xyz;
+  let c = dot(n, E.sun.xyz);
+  if (c <= 0.0) { return; }
+  // Off the surface by a texel or two (more at a grazing angle), clear of its own depth.
+  let p = pts[i].xyz + n * E.p.x * (0.6 + 1.5 * sqrt(max(1.0 - c * c, 0.0)));
+  let s = E.m * vec4f(p, 1.0);
+  let uv = vec2f(s.x * 0.5 + 0.5, 0.5 - s.y * 0.5);
+  if (any(uv < vec2f(E.p.w)) || any(uv >= vec2f(1.0 - E.p.w))) { return; }
+  lit[i] += u32(round(textureSampleCompareLevel(depthMap, cmp, uv, s.z + E.p.y) * ${EXPOSURE_FULL}.0));
+}
+`;
+
 const FRAME_SIZE = 1280;
 // How far each surface type yields to others where surfaces nearly coincide (see meshClip).
 const SURFACE_PRIORITY = { 1: 0.5, 4: 1, 5: 0.5, 6: 0, 7: 2 }; // water, grass, road, paving, ground
@@ -5758,6 +6215,10 @@ class Renderer {
       pass.setPipeline(s.xray ? P.mapX : P.map);
       this.drawResultMaps(pass, s);
     }
+    if (s.exposureMap && this.exposureMap) {
+      pass.setPipeline(s.xray ? P.mapX : P.map);
+      this.drawMap(pass, this.exposureMap, 0);
+    }
     if (this.resultLines && s.resultRanges?.length) {
       pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
       pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
@@ -5831,19 +6292,25 @@ class Renderer {
   // far they are moved up.
   setResultMaps(list) {
     for (const m of this.resultMaps || []) { m.pos.destroy(); m.idx.destroy(); m.val.destroy(); m.uni.destroy(); m.ramp?.destroy(); }
+    this.resultMaps = list.map(({ pos, indices }, index) => this.makeMap(pos, indices, index));
+  }
+
+  makeMap(pos, indices, index) {
     const dev = this.device, U = GPUBufferUsage;
     const make = (arr, usage) => {
       const buf = dev.createBuffer({ size: arr.byteLength, usage: usage | U.COPY_DST });
       dev.queue.writeBuffer(buf, 0, arr);
       return buf;
     };
-    this.resultMaps = list.map(({ pos, indices }, index) => ({ index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
-      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) }));
+    return { index, count: indices.length, lo: 0, hi: 1, pos: make(pos, U.VERTEX), idx: make(indices, U.INDEX),
+      val: dev.createBuffer({ size: pos.length / 3 * 4, usage: U.VERTEX | U.COPY_DST }), uni: dev.createBuffer({ size: 16, usage: U.UNIFORM | U.COPY_DST }) };
   }
 
   // values: Float32Array, one per vertex. ramp: { lo, hi, data } (ColourScales.ramp).
-  setMapResult(i, values, ramp) {
-    const m = this.resultMaps[i], dev = this.device, n = ramp.data.length / 4;
+  setMapResult(i, values, ramp) { this.fillMap(this.resultMaps[i], values, ramp); }
+
+  fillMap(m, values, ramp) {
+    const dev = this.device, n = ramp.data.length / 4;
     dev.queue.writeBuffer(m.val, 0, values);
     Object.assign(m, { lo: ramp.lo, hi: ramp.hi });
     if (!m.ramp || m.ramp.width !== n) {
@@ -5855,15 +6322,145 @@ class Renderer {
   }
 
   drawResultMaps(pass, s) {
-    for (const i of s.resultMaps) {
-      const m = this.resultMaps[i];
-      if (!m?.bg) continue;
-      this.device.queue.writeBuffer(m.uni, 0, new Float32Array([s.resultMapZ || 0, m.lo, m.hi, m.index]));
-      pass.setBindGroup(1, m.bg);
-      pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
-      pass.setIndexBuffer(m.idx, 'uint32');
-      pass.drawIndexed(m.count);
+    for (const i of s.resultMaps) this.drawMap(pass, this.resultMaps[i], s.resultMapZ || 0);
+  }
+
+  drawMap(pass, m, z) {
+    if (!m?.bg) return;
+    this.device.queue.writeBuffer(m.uni, 0, new Float32Array([z, m.lo, m.hi, m.index]));
+    pass.setBindGroup(1, m.bg);
+    pass.setVertexBuffer(0, m.pos); pass.setVertexBuffer(1, m.val);
+    pass.setIndexBuffer(m.idx, 'uint32');
+    pass.drawIndexed(m.count);
+  }
+
+  // The sun exposure results drawn while each frame's s.exposureMap is set: a surface
+  // ({ shown, idx } from exposureSurface) with a value at each point, or null for none.
+  setExposureMap(surface, values, ramp) {
+    const old = this.exposureMap;
+    if (old) for (const k of ['pos', 'idx', 'val', 'uni']) old[k].destroy();
+    old?.ramp?.destroy();
+    this.exposureMap = surface ? this.makeMap(surface.shown, surface.idx, -1) : null;
+    if (surface) this.fillMap(this.exposureMap, values, ramp);
+  }
+
+  // Sun exposure: the points to test (exposureSurface's pos and nrm), kept on the GPU for
+  // exposureRun. Null frees them.
+  setExposurePoints(surface) {
+    const X = this.exposure;
+    if (X) for (const k of ['pts', 'nrm', 'lit', 'read']) X[k].destroy();
+    this.exposure = null;
+    if (!surface) return;
+    const dev = this.device, U = GPUBufferUsage, n = surface.pos.length / 3;
+    const vec4s = (a) => {
+      const out = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) out.set(a.subarray(i * 3, i * 3 + 3), i * 4);
+      const buf = dev.createBuffer({ size: out.byteLength, usage: U.STORAGE | U.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, out);
+      return buf;
+    };
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < surface.pos.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], surface.pos[i]); hi[k] = Math.max(hi[k], surface.pos[i]); }
+    if (!this.exposurePipe) {
+      this.exposurePipe = dev.createComputePipeline({ layout: 'auto', compute: { module: dev.createShaderModule({ code: EXPOSURE_SHADER }), entryPoint: 'main' } });
+      const size = Math.min(EXPOSURE_SIZE, dev.limits.maxTextureDimension2D);
+      this.exposureDepth = dev.createTexture({ size: [size, size], format: DEPTH, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      this.exposureUni = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.exposureShadowBuf = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.exposureCmp = dev.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
     }
+    this.exposure = { n, lo, hi, pts: vec4s(surface.pos), nrm: vec4s(surface.nrm),
+      lit: dev.createBuffer({ size: n * 4, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST }),
+      read: dev.createBuffer({ size: n * 4, usage: U.MAP_READ | U.COPY_DST }) };
+    this.exposure.bg = dev.createBindGroup({ layout: this.exposurePipe.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: this.exposureUni } }, { binding: 1, resource: { buffer: this.exposure.pts } },
+      { binding: 2, resource: { buffer: this.exposure.nrm } }, { binding: 3, resource: { buffer: this.exposure.lit } },
+      { binding: 4, resource: this.exposureDepth.createView() }, { binding: 5, resource: this.exposureCmp }] });
+  }
+
+  // Tests the points from setExposurePoints against the shown model, from each of the sun
+  // directions dirs (model space, towards the sun). texel: the size of a depth map texel to aim for
+  // (model units): an area too big for 4 x 4 maps of it gets coarser ones. Resolves to how much
+  // each point saw the sun, summed over dirs (Uint32Array; EXPOSURE_FULL for each view in full
+  // sun), or null if stop() turned true. progress(f) is told how far it has got.
+  async exposureRun({ dirs, texel, stop, progress }) {
+    const X = this.exposure, dev = this.device;
+    if (!X) return null;
+    const size = this.exposureDepth.width, inner = size - 2 * EXPOSURE_MARGIN;
+    // Everything that can cast a shadow, along each direction.
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const b of this.batches) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
+    for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], X.lo[k]); mx[k] = Math.max(mx[k], X.hi[k]); }
+    const centre = V3.scale(V3.add(mn, mx), 0.5), radius = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6) * 1.02;
+    const corners = [];
+    for (let c = 0; c < 8; c++) corners.push([c & 1 ? X.hi[0] : X.lo[0], c & 2 ? X.hi[1] : X.lo[1], c & 4 ? X.hi[2] : X.lo[2]]);
+    const clear = dev.createCommandEncoder();
+    clear.clearBuffer(X.lit);
+    dev.queue.submit([clear.finish()]);
+    let last = performance.now();
+    for (let di = 0; di < dirs.length; di++) {
+      const L = dirs[di];
+      let lx = V3.cross([0, 0, 1], L);
+      if (V3.len(lx) < 1e-4) lx = [1, 0, 0];
+      lx = V3.norm(lx);
+      const ly = V3.cross(L, lx);
+      // The points' extent across the sun's view, in tiles of inner texels.
+      const xs = corners.map((p) => V3.dot(p, lx)), ys = corners.map((p) => V3.dot(p, ly));
+      const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+      const t = Math.max(texel, w / (inner * 4), h / (inner * 4), 1e-9);
+      const nx = Math.max(1, Math.ceil(w / (t * inner))), ny = Math.max(1, Math.ceil(h / (t * inner)));
+      const sc = V3.dot(centre, L), sMin = sc - radius, range = 2 * radius, r = (t * size) / 2;
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const cx = x0 + (i + 0.5) * t * inner, cy = y0 + (j + 0.5) * t * inner, m = new Float32Array(16);
+        m[0] = lx[0] / r; m[4] = lx[1] / r; m[8] = lx[2] / r; m[12] = -cx / r;
+        m[1] = ly[0] / r; m[5] = ly[1] / r; m[9] = ly[2] / r; m[13] = -cy / r;
+        m[2] = L[0] / range; m[6] = L[1] / range; m[10] = L[2] / range; m[14] = -sMin / range;
+        m[15] = 1;
+        const uni = new Float32Array(24);
+        uni.set(m); uni.set([L[0], L[1], L[2], 0], 16); uni.set([t, (1.5 * t) / range, X.n, EXPOSURE_MARGIN / size], 20);
+        dev.queue.writeBuffer(this.exposureShadowBuf, 0, m);
+        dev.queue.writeBuffer(this.exposureUni, 0, uni);
+        if (this.exposureShadowBG?.flags !== this.objFlagsBuf) {
+          this.exposureShadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
+            { binding: 0, resource: { buffer: this.exposureShadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
+          this.exposureShadowBG.flags = this.objFlagsBuf;
+        }
+        const enc = dev.createCommandEncoder();
+        const pass = enc.beginRenderPass({ colorAttachments: [],
+          depthStencilAttachment: { view: this.exposureDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+        pass.setPipeline(this.shadowPipe);
+        pass.setBindGroup(0, this.exposureShadowBG, [0]);
+        this.cull(m);
+        for (const b of this.batches) {
+          if (!b.visible || b.kind !== 'mesh' || !b.castsShadow || !this.seen(b)) continue;
+          pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+          pass.setIndexBuffer(b.gpu.idx, 'uint32');
+          this.drawCells(pass, b);
+        }
+        pass.end();
+        const cp = enc.beginComputePass();
+        cp.setPipeline(this.exposurePipe);
+        cp.setBindGroup(0, X.bg);
+        cp.dispatchWorkgroups(Math.ceil(X.n / 64));
+        cp.end();
+        dev.queue.submit([enc.finish()]);
+      }
+      // Let the GPU catch up, and the page draw, now and then.
+      if (performance.now() - last > 30 || di === dirs.length - 1) {
+        await dev.queue.onSubmittedWorkDone();
+        await new Promise((res) => setTimeout(res, 0));
+        if (stop() || this.exposure !== X) return null;
+        progress?.((di + 1) / dirs.length);
+        last = performance.now();
+      }
+    }
+    const enc = dev.createCommandEncoder();
+    enc.copyBufferToBuffer(X.lit, 0, X.read, 0, X.n * 4);
+    dev.queue.submit([enc.finish()]);
+    await X.read.mapAsync(GPUMapMode.READ);
+    const out = new Uint32Array(X.read.getMappedRange()).slice();
+    X.read.unmap();
+    return stop() || this.exposure !== X ? null : out;
   }
 
   // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
@@ -6223,6 +6820,8 @@ function frameState() {
   const SL = state.streamlines;
   s.resultMaps = state.maps.on ? state.maps.list.flatMap((m, i) => (state.maps.off.has(m.key) ? [] : [i])) : [];
   s.resultMapZ = state.maps.z / model.metresPerUnit;
+  s.exposureMap = expo.on && expo.shown;
+  checkExposure();
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
@@ -7606,6 +8205,7 @@ function resetObjectState() {
   $('inspect').hidden = true; inspectPin = null;
   closeLayerMenu();
   syncHiddenButton();
+  resetExposure();
 }
 
 let flagsHidden = '';
@@ -7980,6 +8580,7 @@ function syncSunPanel() {
   $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
   syncWeather(month, day);
   syncComfortPanel();
+  syncExposurePanel();
   document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
   const located = !!activeLocation();
   $('sunRead').hidden = located;
@@ -8746,6 +9347,271 @@ const pickPoint = (e) => pickAt(e).then((h) => h && h.p);
 // unset over empty space, where the camera's distance is all there is to go on.
 const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.depth = V3.dot(V3.sub(p, camera.eye), camera.forward); });
 
+// ---------------------------------------------------------------------------------------------
+// Sun exposure (Tools): how often each part of a layer's objects sees the sun over a period. The
+// results are drawn on the model until the settings change; nothing is kept.
+
+const expo = {
+  panel: false, on: true, layer: -1, flip: false, upOnly: false, summary: null, days: [80, 80], hours: [10, 12], step: 10, spacing: 1, auto: true, picking: false,
+  // Working state: the surface tested (for surfaceKey), the run going on (runKey, token), the
+  // settings of the results shown (doneKey), and of a run stopped or waiting for Update.
+  surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', token: 0, timer: 0,
+  progress: null, status: '', shown: false, stale: false,
+};
+let toolsMenu = null, toolsList = null, exposureDays = null, exposureHours = null;
+
+const fmtDay = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
+const fmtMetres = (m) => `${m} m`;
+const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
+
+// The settings a surface and a run depend on, or null when there is nothing to work out.
+function exposureKeys() {
+  if (!model || expo.layer < 0 || !activeLocation()) return null;
+  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.');
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden].join('|');
+  return { surface, run: [surface, expo.days, expo.hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
+}
+
+// Each frame, and on a change in the panel: whether the results still match the settings, and if not, a new run (after a
+// pause, so that dragging a slider runs once) or, without Update automatically, a note to update.
+function checkExposure() {
+  const k = expo.on ? exposureKeys() : null;
+  if (!k || k.run === expo.doneKey || k.run === expo.runKey || k.run === expo.pendingKey) return;
+  if (!expo.auto || k.run === expo.stoppedKey) {
+    if (!expo.stale) { expo.stale = true; syncExposurePanel(); }
+    return;
+  }
+  expo.pendingKey = k.run;
+  clearTimeout(expo.timer);
+  expo.timer = setTimeout(runExposure, 150);
+}
+
+async function runExposure() {
+  const k = exposureKeys();
+  expo.pendingKey = '';
+  if (!k) return;
+  const token = ++expo.token, t0 = performance.now(), u = 1 / model.metresPerUnit;
+  Object.assign(expo, { runKey: k.run, stoppedKey: '', stale: false });
+  if (k.surface !== expo.surfaceKey) {
+    Object.assign(expo, { status: 'Preparing the surfaces…', progress: 0 });
+    syncExposurePanel();
+    await new Promise((r) => setTimeout(r, 30));
+    if (token !== expo.token) return;
+    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: expo.spacing * u, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u });
+    Object.assign(expo, { surface, surfaceKey: k.surface });
+    renderer.setExposurePoints(surface.error ? null : surface);
+  }
+  const surface = expo.surface, S = state.sun;
+  const times = exposureTimes(expo), dirs = surface.error ? [] : exposureSunDirs(times, { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north });
+  const done = (status) => {
+    Object.assign(expo, { status, progress: null, runKey: '', doneKey: k.run });
+    syncExposurePanel();
+    redraw();
+  };
+  if (surface.error || !dirs.length) {
+    renderer.setExposureMap(null);
+    expo.shown = false;
+    expo.summary = null;
+    done(surface.error === 'tooMany' ? 'Too many points to test at this spacing: try a wider one.'
+      : surface.error === 'noneUp' ? 'None of the layer’s surfaces face within 45° of straight up.'
+      : surface.error ? 'The layer has no surfaces to analyse that are shown.' : `The sun is down at all ${times.length.toLocaleString()} times.`);
+    return;
+  }
+  Object.assign(expo, { status: 'Calculating…', progress: 0 });
+  syncExposurePanel();
+  const lit = await renderer.exposureRun({ dirs, texel: (expo.spacing * u) / 2, stop: () => token !== expo.token,
+    progress: (f) => { expo.progress = f; syncExposureProgress(); } });
+  if (!lit) return;
+  const values = new Float32Array(lit.length), all = EXPOSURE_FULL * dirs.length;
+  for (let i = 0; i < lit.length; i++) values[i] = (lit[i] * 100) / all;
+  renderer.setExposureMap(surface, values, ColourScales.ramp(ColourScales.preferred('sunExposure')));
+  expo.shown = true;
+  const sum = exposureSummary(surface, values), u2 = model.metresPerUnit ** 2;
+  expo.summary = { area: sum.area * u2, exposed: sum.exposed * u2 };
+  const n = surface.pos.length / 3, secs = (performance.now() - t0) / 1000;
+  done(`${times.length.toLocaleString()} ${times.length === 1 ? 'time' : 'times'}, the sun up at ${dirs.length.toLocaleString()} · ${n.toLocaleString()} points · ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
+}
+
+function stopExposure() {
+  if (!expo.runKey && !expo.pendingKey) return;
+  clearTimeout(expo.timer);
+  expo.token++;
+  Object.assign(expo, { stoppedKey: expo.runKey || expo.pendingKey, runKey: '', pendingKey: '', progress: null, status: 'Stopped.', stale: true });
+  syncExposurePanel();
+}
+
+// A new model: nothing chosen, nothing shown.
+function resetExposure() {
+  clearTimeout(expo.timer);
+  expo.token++;
+  Object.assign(expo, { layer: -1, summary: null, surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', progress: null, status: '', shown: false, stale: false });
+  setExposurePicking(false);
+  renderer.setExposurePoints(null);
+  renderer.setExposureMap(null);
+  syncExposurePanel();
+}
+
+// The layers that hold surfaces (meshes, polysurfaces and the like, or block instances), with how
+// many objects each.
+function exposureLayerCounts() {
+  const n = new Map();
+  for (const o of model ? model.objects : []) if (o.k === 'mesh' || o.k === 'inst') n.set(o.ai.layer, (n.get(o.ai.layer) || 0) + 1);
+  return n;
+}
+
+function setExposureLayer(layer) {
+  expo.layer = layer;
+  if (layer >= 0) {
+    // The finest spacing that keeps the points to a quick run, to start with.
+    const u = model.metresPerUnit, area = exposureLayerMeshes(model, layer, objectOff).reduce((s, list) => s + Meshes.area(Meshes.join(list)), 0) * u * u;
+    expo.spacing = EXPOSURE_SPACINGS.find((s) => exposurePointEstimate(area, s) <= 200000) || EXPOSURE_SPACINGS[EXPOSURE_SPACINGS.length - 1];
+  } else {
+    renderer.setExposureMap(null);
+    expo.shown = false;
+    expo.summary = null;
+  }
+  expo.status = '';
+  syncExposurePanel();
+  checkExposure();
+  redraw();
+}
+
+function setExposurePicking(on) {
+  expo.picking = on && !!model;
+  canvas.classList.toggle('picking', expo.picking);
+  $('exposurePick').setAttribute('aria-pressed', String(expo.picking));
+  if (expo.picking && hoverAt) showWalkMarker(hoverAt);
+  if (!expo.picking && !walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
+}
+
+// The picker's click on the model: the layer of the object under it.
+function pickExposureLayer(e) {
+  setExposurePicking(false);
+  pickAt(e).then((h) => { if (h?.id != null && model.objects[h.id]) setExposureLayer(model.objects[h.id].ai.layer); });
+}
+
+function setExposure(changes) {
+  Object.assign(expo, changes);
+  syncExposurePanel();
+  checkExposure();
+  redraw();
+}
+
+function toggleExposurePanel() {
+  expo.panel = !expo.panel;
+  $('exposurePanel').hidden = !expo.panel;
+  if (!expo.panel) setExposurePicking(false);
+  toolsList?.setOpen('exposure', expo.panel);
+  syncExposurePanel();
+}
+
+function syncExposureProgress() {
+  const going = expo.progress != null;
+  $('exposureBarBox').hidden = !going;
+  $('exposureStop').hidden = !going;
+  if (going) $('exposureBar').style.width = `${(expo.progress * 100).toFixed(1)}%`;
+}
+
+function syncExposurePanel() {
+  if (!exposureDays) return;
+  $('btnTools').setAttribute('aria-pressed', String(expo.panel));
+  if (!expo.panel) return;
+  const located = !!activeLocation();
+  $('exposureRead').hidden = located;
+  if (!located) $('exposureRead').innerHTML = 'No location is set, so the sun’s position is not known. <button class="link">Set location…</button>';
+  $('exposureOn').checked = expo.on;
+  const counts = exposureLayerCounts(), sel = $('exposureLayer');
+  const options = [['-1', counts.size ? 'Choose a layer…' : 'No layers with surfaces']].concat([...counts.keys()]
+    .sort((a, b) => model.layers[a].fullPath.localeCompare(model.layers[b].fullPath))
+    .map((l) => [String(l), `${model.layers[l].fullPath} (${counts.get(l).toLocaleString()})`]));
+  const html = options.map(([v, t]) => `<option value="${v}">${escapeHtml(t)}</option>`).join('');
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.value = String(expo.layer);
+  $('exposureFlip').checked = expo.flip;
+  $('exposureUp').checked = expo.upOnly;
+  exposureDays.max = daysInYear(EPW_YEAR);
+  for (const r of exposureDays.inputs) r.max = exposureDays.max;
+  exposureDays.value = expo.days;
+  exposureHours.value = expo.hours;
+  $('exposureDaysOut').textContent = fmtRange(expo.days, fmtDay);
+  $('exposureHoursOut').textContent = fmtRange(expo.hours, fmtClock);
+  $('exposureStep').value = EXPOSURE_STEPS.indexOf(expo.step);
+  $('exposureStepOut').textContent = `every ${expo.step} min`;
+  $('exposureSpacing').value = EXPOSURE_SPACINGS.indexOf(expo.spacing);
+  $('exposureSpacingOut').textContent = fmtMetres(expo.spacing);
+  $('exposureAuto').checked = expo.auto;
+  const going = expo.progress != null, ready = located && expo.layer >= 0 && expo.on;
+  $('exposureUpdate').hidden = expo.auto && !expo.stale;
+  $('exposureUpdate').disabled = !ready || going || (!expo.stale && !!expo.doneKey);
+  syncExposureProgress();
+  const status = !ready ? (expo.layer < 0 ? 'Choose the layer to analyse, or pick it from the model.' : located && !expo.on ? 'Results are hidden.' : '')
+    : expo.stale && !going ? `${expo.status && expo.status !== 'Stopped.' && expo.shown ? 'Settings changed since these results. ' : expo.status === 'Stopped.' ? 'Stopped. ' : ''}Press Update to calculate.` : expo.status;
+  $('exposureStatus').textContent = status;
+  const m2 = (a) => `${Math.round(a).toLocaleString()} m²`, pc = (a) => `${Math.round((a / sum.area) * 100)}%`, sum = expo.summary;
+  const stats = expo.shown && expo.on && sum && sum.area > 0;
+  $('exposureStats').hidden = !stats;
+  if (stats) setHtml($('exposureStats'), `<dl class="wx exposure-stats"><dt>Area analysed</dt><dd><b>${m2(sum.area)}</b></dd>
+    <dt>In sun, on average</dt><dd><b>${m2(sum.exposed)}</b> (${pc(sum.exposed)})</dd>
+    <dt>Shaded, on average</dt><dd><b>${m2(sum.area - sum.exposed)}</b> (${pc(sum.area - sum.exposed)})</dd></dl>`);
+  const scale = ColourScales.preferred('sunExposure');
+  setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
+}
+
+function showExposureHelp() {
+  Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
+    <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
+    <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
+    <p><b>Dates</b> and <b>Times:</b> drag either grip. The period runs from the earlier grip to the later, both included, and both grips together give a single day or time. Every day in the dates is tested at the times, every <b>Interval</b>. Right-click either slider for the usual choices.</p>
+    <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
+    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Sun panel.</p>
+    <p>With <b>Update automatically</b> off, nothing is calculated until you press <b>Update</b>: for long periods, so that changing the settings stays quick.</p>
+    <p>The results are not kept: they go when the model is closed.</p>` });
+}
+
+function bindExposurePanel() {
+  const equinox = dayOfYear(EPW_YEAR, 3, 21);
+  expo.days = [equinox, equinox];
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
+  toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
+  toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
+  toolsMenu.body.append(toolsList.el);
+  $('exposureClose').addEventListener('click', () => expo.panel && toggleExposurePanel());
+  $('exposureHelp').addEventListener('click', showExposureHelp);
+  $('exposureRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
+  $('exposureOn').addEventListener('change', (e) => {
+    if (!e.target.checked) stopExposure();
+    setExposure({ on: e.target.checked });
+  });
+  $('exposureLayer').addEventListener('change', (e) => setExposureLayer(+e.target.value));
+  $('exposurePick').addEventListener('click', () => setExposurePicking(!expo.picking));
+  $('exposureFlip').addEventListener('change', (e) => setExposure({ flip: e.target.checked }));
+  $('exposureUp').addEventListener('change', (e) => setExposure({ upOnly: e.target.checked }));
+  exposureDays = new RangePair($('exposureDays'), { min: 1, max: 365, step: 1, label: 'Dates', onInput: (days) => setExposure({ days }) });
+  exposureHours = new RangePair($('exposureHours'), { min: 0, max: 24, step: 1 / 12, label: 'Times', onInput: (hours) => setExposure({ hours: hours.map((h) => Math.round(h * 12) / 12) }) });
+  $('exposureDays').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (label, m, d) => { const doy = dayOfYear(EPW_YEAR, m, d); return { label, run: () => setExposure({ days: [doy, doy] }) }; };
+    showMenu('Dates', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23), at('21 December · solstice', 12, 21), '-',
+      { label: 'Whole year', run: () => setExposure({ days: [1, daysInYear(EPW_YEAR)] }) }], [e.clientX, e.clientY]);
+  });
+  $('exposureHours').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const at = (a, b) => ({ label: `${fmtClock(a)} – ${fmtClock(b)}`, run: () => setExposure({ hours: [a, b] }) });
+    showMenu('Times', [at(10, 12), at(9, 15), at(12, 16), at(8, 18), '-', { label: 'All day', run: () => setExposure({ hours: [0, 24] }) }], [e.clientX, e.clientY]);
+  });
+  $('exposureStep').addEventListener('input', (e) => setExposure({ step: EXPOSURE_STEPS[+e.target.value] }));
+  $('exposureSpacing').addEventListener('input', (e) => setExposure({ spacing: EXPOSURE_SPACINGS[+e.target.value] }));
+  $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked }));
+  $('exposureUpdate').addEventListener('click', () => { clearTimeout(expo.timer); runExposure(); });
+  $('exposureStop').addEventListener('click', stopExposure);
+  // Esc puts the picker down.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && expo.picking) { e.preventDefault(); e.stopPropagation(); setExposurePicking(false); }
+  }, true);
+  syncExposurePanel();
+}
+
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -8779,7 +9645,7 @@ function bindPointer() {
 
   canvas.addEventListener('pointermove', (e) => {
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
-    if (walker.placing && !drag) showWalkMarker(hoverAt);
+    if ((walker.placing || expo.picking) && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -8811,6 +9677,7 @@ function bindPointer() {
     // While choosing where to start walking, it starts there instead.
     if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
       if (walker.placing) startWalkAt(e);
+      else if (expo.picking) pickExposureLayer(e);
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
     if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
@@ -8822,7 +9689,7 @@ function bindPointer() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('pointerleave', () => { if (walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
+  canvas.addEventListener('pointerleave', () => { if ((walker.placing || expo.picking) && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -9244,12 +10111,13 @@ function endPlacing() {
   placing.next = null;
   if (state.walkMarker) { state.walkMarker = null; redraw(); }
 }
-// Moves the marker to the surface under the cursor (one pick at a time, the latest position next).
+// Moves the marker to the surface under the cursor (one pick at a time, the latest position next),
+// while choosing where to walk or picking a layer for sun exposure.
 function showWalkMarker(at) {
   if (placing.busy) { placing.next = at; return; }
   placing.busy = true;
   pickAt(at).then((h) => {
-    if (walker.placing) {
+    if (walker.placing || expo.picking) {
       // At least about 12 pixels across, so it shows from far off too.
       const px = h && (2 * V3.len(V3.sub(h.p, camera.eye)) * Math.tan(camera.fov / 2)) / canvas.clientHeight;
       state.walkMarker = h ? { p: h.p, r: Math.max(WALK_MARKER / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
@@ -9259,7 +10127,7 @@ function showWalkMarker(at) {
     placing.busy = false;
     const next = placing.next;
     placing.next = null;
-    if (next && walker.placing) showWalkMarker(next);
+    if (next && (walker.placing || expo.picking)) showWalkMarker(next);
   });
 }
 // A click while choosing: start walking there.
@@ -9665,6 +10533,7 @@ function bindUi() {
   }
   bindLightsPanel();
   bindComfortPanel();
+  bindExposurePanel();
   document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
     if (!model) return;
     layerOn = model.layers.map(() => b.dataset.layers === 'all');
