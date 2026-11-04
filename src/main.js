@@ -80,10 +80,10 @@ const driver = new Driver({
 driver.settings.collide = true;
 if (prefs.drive) {
   const D = driver.settings, P = prefs.drive;
-  if (P.top > 0) D.top = Math.min(DRIVE.MAX_TOP, Math.max(DRIVE.MIN_TOP, P.top));
   D.shadows = P.shadows !== false;
   D.collide = P.collide !== false;
   if (P.cam >= 0 && P.cam < DRIVE_CAMS.length) D.cam = P.cam;
+  D.headlights = P.headlights === true;
 }
 // Walking or driving: the frame round the window, the thumb stick, drag to look.
 const moving = () => walker.active || driver.active;
@@ -3368,6 +3368,7 @@ function litLamps() {
 // first MAX_LAMPS; lampShadowPlan decides which of those cast shadows.
 function shownLamps() {
   const on = litLamps();
+  if (driver.active && model) return [...driver.headlamps(), ...on];
   if (!state.torch || !walker.active || !model) return on;
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const hand = V3.add(camera.eye, V3.add(V3.scale(camera.right, 0.2 * u), V3.scale(camera.up, -0.3 * u)));
@@ -3458,7 +3459,7 @@ function onKey(e) {
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (driver.active) {
-    if (driver.key(e, true)) { e.preventDefault(); if (k === 'c') { syncDrivePanel(); savePrefs(); } return; }
+    if (driver.key(e, true)) { e.preventDefault(); if (k === 'c' || k === 't') { syncDrivePanel(); savePrefs(); syncLightsPanel(); } return; }
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
@@ -3695,10 +3696,10 @@ function fadeIntoDrive(start, heading) {
 
 function showDriveHelp() {
   Dialog.open({ title: 'Driving', html: true, width: 420, body: `<p><b>Drive</b> in the camera list, or <kbd>5</kbd>, starts driving: click where the car should start. It faces the way the camera looks. Until you click you can still move the view; <kbd>Esc</kbd> cancels. Closing this panel does not stop you: pick Drive again to bring it back.</p>
-    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
+    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>T</kbd> headlights · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
     <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
-    <p><b>Top speed</b> limits how fast the car goes · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models.</p>` });
+    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves.</p>` });
 }
 
 let driveShown = '';
@@ -3709,21 +3710,20 @@ function syncDriveSpeed() {
 
 function syncDrivePanel() {
   const S = driver.settings;
-  $('driveTop').value = S.top;
-  $('driveTopOut').value = `${S.top} km/h`;
   $('driveCam').value = String(S.cam);
   $('driveCollide').checked = S.collide;
   $('driveShadows').checked = S.shadows;
+  $('driveHeadlights').checked = S.headlights;
   syncDriveSpeed();
 }
 
 function bindDrivePanel() {
   const S = driver.settings, changed = () => { syncDrivePanel(); savePrefs(); };
   $('driveCam').innerHTML = DRIVE_CAMS.map((c, i) => `<option value="${i}">${c.label}</option>`).join('');
-  $('driveTop').addEventListener('input', () => { S.top = +$('driveTop').value; changed(); });
   $('driveCam').addEventListener('change', () => { S.cam = +$('driveCam').value; driver.camPos = null; changed(); canvas.focus(); });
   $('driveCollide').addEventListener('change', () => { S.collide = $('driveCollide').checked; changed(); canvas.focus(); });
   $('driveShadows').addEventListener('change', () => { S.shadows = $('driveShadows').checked; changed(); redraw(); canvas.focus(); });
+  $('driveHeadlights').addEventListener('change', () => { S.headlights = $('driveHeadlights').checked; changed(); syncLightsPanel(); redraw(); canvas.focus(); });
   $('driveHelp').addEventListener('click', showDriveHelp);
   $('driveExit').addEventListener('click', () => { if (driver.active) leaveWalk(); });
   $('driveClose').addEventListener('click', () => { $('drivePanel').hidden = true; canvas.focus(); });

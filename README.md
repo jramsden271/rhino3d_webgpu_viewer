@@ -40,7 +40,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: click the N or a tick | |
-| Drive mode | Camera button: Drive · drag to look round · wheel zooms · touch: drag on the left half to drive, on the right to look | `5` · `W` `S` or arrows to accelerate and brake · `A` `D` to steer · `Space` handbrake · `C` camera · `R` reset · `Esc` to stop |
+| Drive mode | Camera button: Drive · drag to look round · wheel zooms · touch: drag on the left half to drive, on the right to look | `5` · `W` `S` or arrows to accelerate and brake · `A` `D` to steer · `Space` handbrake · `T` headlights · `C` camera · `R` reset · `Esc` to stop |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
@@ -129,10 +129,12 @@ drives onto ramps up to 30°; anything higher or steeper, and lower than its roo
 Driving off the model, or `R`, puts it back where it last stood firmly. On a touch screen, drag
 on the left half of the view: forward accelerates, back brakes and reverses, sideways steers.
 
-The **Drive panel** shows the speed, and sets the **Top speed** (20 to 160 km/h), the **Camera**
+The **Drive panel** shows the speed (up to 160 km/h), and sets the **Camera**
 (Chase, High or Driver; `C` cycles them; drag to look round, and the view swings back behind the
 car when you let go), **Collision detection**, and **Shadows**: whether the car casts the sun's
-shadows, which redraws them every frame and can be slow on big models. As with walking, closing
+shadows, which redraws them every frame and can be slow on big models; and **Headlights** (`T`):
+two beams that light the model, best at night, as the walker's torch does. The brake lights come
+on as you brake and the reversing lights as you reverse. As with walking, closing
 the panel does not stop driving, another camera or `Esc` does, and the settings are remembered.
 The car is the viewer's own: it is not part of the model, and is never picked, analysed or saved.
 

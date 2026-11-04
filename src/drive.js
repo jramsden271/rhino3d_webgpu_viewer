@@ -23,8 +23,7 @@ const DRIVE = {
   REV_ACC: 6,        // reversing
   REV_MAX: 7,        // top speed in reverse (m/s)
   COAST: 2.2,        // slowing (m/s²) with neither pedal pressed
-  MIN_TOP: 20,       // top speed range (km/h) of the Drive panel's slider
-  MAX_TOP: 160,
+  TOP: 160,          // top speed (km/h)
   GRIP: 9,           // how fast sideways sliding dies away (1/s)
   HAND_GRIP: 1.1,    // the same with the handbrake on
   HAND_TURN: 1.6,    // the handbrake makes the car turn this much more sharply
@@ -59,9 +58,20 @@ const DRIVE_CAMS = [
 
 const DRIVE_KEYS = { w: 'gas', arrowup: 'gas', s: 'brake', arrowdown: 'brake', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', ' ': 'hand' };
 
+// The car's lamps: their colours unlit and lit. Lit, they glow (Renderer.setActor).
+const LAMPS = {
+  head: { off: [205, 205, 196], on: [255, 246, 220] },
+  tail: { off: [120, 18, 22], on: [255, 30, 24] },
+  reverse: { off: [178, 180, 184], on: [255, 255, 250] },
+};
+// The headlights' beams, for the renderer's lamps: from the lamps, dipped a little.
+const HEADLIGHT = { at: [2.2, 0.68, 0.66], dip: 0.06, inner: 12, outer: 30, rgb: [1, 0.95, 0.85], power: 60, range: 70 };
+
 // The car's shape: flat-shaded panels, so each face has its own vertices.
 function carGeometry() {
-  const pos = [], nrm = [], col = [], idx = [];
+  const pos = [], nrm = [], col = [], idx = [], lamps = {};
+  // The vertices drawn by fn are one of the car's lamps (see Driver.syncLamps).
+  const lamp = (name, fn) => { const s = pos.length / 3; fn(); (lamps[name] ||= []).push([s, pos.length / 3]); };
   const tri = (a, b, c, rgb) => {
     const n = V3.norm(V3.cross(V3.sub(b, a), V3.sub(c, a))), i = pos.length / 3;
     for (const p of [a, b, c]) { pos.push(...p); nrm.push(...n); col.push(...rgb, 255); }
@@ -123,8 +133,9 @@ function carGeometry() {
   tube(-2.34, -2.0, -0.55, 0.27, 0.045, [120, 122, 126]);     // exhaust
   box(2.15, 2.215, -0.38, 0.38, 0.5, 0.64, TRIM);
   for (const s of [1, -1]) {
-    box(2.1, 2.2, s > 0 ? 0.5 : -0.86, s > 0 ? 0.86 : -0.5, 0.6, 0.71, [255, 246, 220]);
-    box(-2.225, -2.16, s > 0 ? 0.46 : -0.88, s > 0 ? 0.88 : -0.46, 0.72, 0.84, [210, 24, 30]);
+    lamp('head', () => box(2.1, 2.2, s > 0 ? 0.5 : -0.86, s > 0 ? 0.86 : -0.5, 0.6, 0.71, LAMPS.head.off));
+    lamp('tail', () => box(-2.225, -2.16, s > 0 ? 0.58 : -0.88, s > 0 ? 0.88 : -0.58, 0.72, 0.84, LAMPS.tail.off));
+    lamp('reverse', () => box(-2.22, -2.165, s > 0 ? 0.42 : -0.56, s > 0 ? 0.56 : -0.42, 0.72, 0.84, LAMPS.reverse.off));
     box(0.62, 0.8, s * 0.95, s * 1.07, 1.0, 1.1, PAINT);  // door mirrors
   }
   // Wheels, with dark arches behind them down to the sill.
@@ -133,7 +144,7 @@ function carGeometry() {
       arch(x, s * 0.953, 0.34, 0.45, 0.32, ARCH);
       wheel(x, s * 0.86, 0.34, 0.34, 0.24, TYRE, RIM);
     }
-  return { pos: Float32Array.from(pos), nrm: Float32Array.from(nrm), col: Uint8Array.from(col), idx: Uint32Array.from(idx), gloss: 0.55 };
+  return { pos: Float32Array.from(pos), nrm: Float32Array.from(nrm), col: Uint8Array.from(col), idx: Uint32Array.from(idx), gloss: 0.55, lamps };
 }
 
 class Driver {
@@ -145,8 +156,9 @@ class Driver {
     this.placing = false;
     this.input = { gas: false, brake: false, left: false, right: false, hand: false };
     this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
-    // Set from the Drive panel: top speed in km/h, the car casts the sun's shadows, which camera.
-    this.settings = { top: 60, shadows: true, cam: 0 };
+    // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on.
+    this.settings = { shadows: true, cam: 0, headlights: false };
+    this.lampsShown = '';
   }
 
   get u() { return 1 / this.ctx.mpu(); } // model units per metre
@@ -183,7 +195,10 @@ class Driver {
     this.map = map;
     this.z = g;
     this.grounded = true;
+    this.lampsShown = '';
+    this.braking = this.reversing = false;
     this.place3d();
+    this.syncLamps();
     this.updateCamera(0);
     return true;
   }
@@ -209,6 +224,7 @@ class Driver {
     if (!down || e.repeat) return false;
     if (k === 'c') { this.settings.cam = (this.settings.cam + 1) % DRIVE_CAMS.length; this.camPos = null; return true; }
     if (k === 'r') { this.reset(); return true; }
+    if (k === 't') { this.settings.headlights = !this.settings.headlights; return true; }
     return false;
   }
   blur() { this.releaseAll(); }
@@ -226,7 +242,7 @@ class Driver {
   }
 
   get speed() { return Math.abs(this.vF || 0); } // m/s
-  get topSpeed() { return this.settings.top / 3.6; }
+  get topSpeed() { return DRIVE.TOP / 3.6; }
 
   // Ask the renderer for the surroundings. Resolves to the decoded map, or null if a previous look
   // is still in flight or the probe failed (the caller asks again).
@@ -397,7 +413,37 @@ class Driver {
       if (this.z < mn[2] - 5 * u || (g == null && this.air > DRIVE.LOST)) this.lost(now);
     }
     this.place3d();
+    // Brake lights while braking, and in reverse as the accelerator stops the car; reversing lights
+    // while going backwards; the rear lights glow faintly with the headlights on.
+    this.braking = this.grounded && ((inp.brake && this.vF > 0.5) || (inp.gas && this.vF < -0.5));
+    this.reversing = this.vF < -0.2;
+    this.syncLamps();
     this.updateCamera(dt);
+  }
+
+  // The lamps' colours and glow (0 to 1), written to the renderer when they change.
+  syncLamps() {
+    const { renderer } = this.ctx, H = this.settings.headlights;
+    const glow = { head: H ? 1 : 0, tail: this.braking ? 1 : H ? 0.3 : 0, reverse: this.reversing ? 1 : 0 };
+    const key = JSON.stringify(glow);
+    if (key === this.lampsShown || !renderer.actor) return;
+    this.lampsShown = key;
+    const geo = renderer.actor.geo, col = geo.col.slice();
+    for (const name in geo.lamps) {
+      const g = glow[name], L = LAMPS[name], rgb = L.off.map((v, k) => Math.round(v + (L.on[k] - v) * Math.min(1, g * 2)));
+      for (const [s, e] of geo.lamps[name])
+        for (let i = s; i < e; i++) { col.set(rgb, i * 4); col[i * 4 + 3] = Math.round(255 * (1 - g)); }
+    }
+    renderer.setActorColours(col);
+  }
+
+  // The headlights' beams as the renderer's spot lights (in model units), or none.
+  headlamps() {
+    if (!this.active || !this.settings.headlights || !this.basis) return [];
+    const u = this.u, { f, l, up } = this.basis, H = HEADLIGHT;
+    const dir = V3.norm(V3.sub(f, V3.scale(up, H.dip)));
+    return [1, -1].map((s) => ({ name: 'Headlight', p: V3.add([this.x, this.y, this.z], V3.add(V3.add(V3.scale(f, H.at[0] * u), V3.scale(l, s * H.at[1] * u)), V3.scale(up, H.at[2] * u))),
+      dir, inner: H.inner, outer: H.outer, rgb: H.rgb, power: H.power, range: H.range }));
   }
 
   // Moves the car by v (m/s) over dt in short steps: each step pushes both body circles out of

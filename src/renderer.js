@@ -75,7 +75,7 @@ struct Frame {
   // z = tan of the shadow view's half angle, w = number of views (1 along the spot, 6 cube faces).
   lamps: array<vec4f, ${MAX_LAMPS * 4}>,
 };
-// flags.x vertex colours, flags.y edge, flags.z material type (see materials.js), resolved on the
+// flags.x vertex colours, flags.y edge (2: the actor, whose vertex colour alpha below 1 glows), flags.z material type (see materials.js), resolved on the
 // CPU from the rule mode and any layer settings made in the viewer; flags.w gloss (0..1).
 struct Batch { color: vec4f, mat: vec4f, flags: vec4f };
 
@@ -762,6 +762,8 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   // Vertex colours keep an even, readable shading under the headlight; with the sun on they take
   // the scene's light like any other surface (so they darken at dusk and night).
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
+  // The actor's lamps glow (the car's lights): the less its vertex colour's alpha, the brighter.
+  if (B.flags.y > 1.5) { lit += toLinear(in.c.rgb) * (1.0 - in.c.a) * 2.5; }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
   if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
   var col = highlight(finish(lit, in.wp), in.oid);
@@ -1415,9 +1417,18 @@ class Renderer {
     const gpu = { pos: make(new Float32Array(n * 3), U.VERTEX), nrm: make(new Int16Array(n * 4), U.VERTEX), col: make(col, U.VERTEX),
       oid: make(new Uint32Array(n).fill(0xffffffff), U.VERTEX), idx: make(geo.idx, U.INDEX), uni: dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST }) };
     // Vertex colours, no surface priority, opaque, with the gloss a car's paint has.
-    dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, geo.gloss || 0]));
+    dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 0, geo.gloss || 0]));
     const bg = dev.createBindGroup({ layout: this.batchLayout, entries: [{ binding: 0, resource: { buffer: gpu.uni, size: 48 } }] });
     this.actor = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
+  }
+
+  // New vertex colours for the actor (as many as it has): its lamps going on and off.
+  setActorColours(col) {
+    const A = this.actor;
+    if (!A) return;
+    const c = new Uint8Array(Math.ceil(col.length / 4) * 4); c.set(col);
+    this.device.queue.writeBuffer(A.gpu.col, 0, c);
+    this.dirty = true;
   }
 
   // Places the actor: m (column-major 4 × 4, its metres to model units, rotation and uniform scale
