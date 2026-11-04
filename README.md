@@ -118,11 +118,11 @@ View changes, date and time, hiding objects, turning layers on or off and the si
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
 
-The filter box at the top of the Layers and Block definitions panels narrows the list to names
+The filter box at the top of the Layers and Blocks widgets narrows the list to names
 containing what you type. In Layers, a matching layer shows with the layers above it, even inside
 a collapsed one.
 
-In the Layers and Block definitions panels, click a row to select it, Ctrl-click to add or remove a row, and
+In the Layers and Blocks widgets, click a row to select it, Ctrl-click to add or remove a row, and
 Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
 selected rows.
 
@@ -135,7 +135,7 @@ visibility saved in the file. Right-click a layer for:
 
 Double-click a layer's row to open its colour or material window, as its square does.
 
-The Block definitions panel appears for models with blocks. It lists each block definition that has an
+The Blocks widget appears for models with blocks. It lists each block definition that has an
 instance, including those only used inside other blocks, with its number of copies in the model
 (a sub-block used 3 times in a block placed 10 times has 30). Right-click a block for:
 
@@ -171,7 +171,7 @@ none. Hiding or showing what is below moves it to match. Trees also get their ow
 leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
 The tag then reads "magic", and the sub-element setting doesn't apply.
 
-The Layers, Block definitions and Date widgets close with their × button or from the toolbar. The first
+The Layers, Blocks and Date widgets close with their × button or from the toolbar. The first
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
@@ -185,7 +185,7 @@ Widgets can be arranged within the column:
   - **Thermal comfort** keeps its UTCI reading.
   - **Sun exposure** keeps its switch, progress and legend, with the button that picks the layer from the model in the title bar.
   - **CFD streamlines** and **CFD map** keep their switch and legends.
-  - **Layers** and **Block definitions** keep a list up to 300 px tall, without the filter.
+  - **Layers** and **Blocks** keep a list up to 300 px tall, without the filter.
   - **Walk** keeps the speed slider, in the title bar.
   - **Lights** keeps its title bar.
 - **Making room.** When the open widgets need more height than the column has, the ones used least
@@ -295,7 +295,7 @@ is not saved in the copy.
 
 **Inspect and hide objects.** The object panel can be dragged by its title bar; it then stays
 put until it closes. Click a surface or mesh to select the whole object (a block
-instance is one object) and show its type, block name (click to find it in the Block definitions panel), layer (click to find it in the Layers
+instance is one object) and show its type, block name (click to find it in the Blocks widget), layer (click to find it in the Layers
 panel), material, size, triangle count, Rhino user text and ID (click to copy). Shift-click
 adds or removes objects; with several selected the panel summarises types, layers, overall
 extent and triangles. **Hide** (or `H`) removes the selection from view, including its edges,

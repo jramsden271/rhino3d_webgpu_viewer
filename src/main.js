@@ -666,7 +666,7 @@ function showLayersHelp() {
 }
 
 function showBlocksHelp() {
-  Dialog.open({ title: 'Block definitions', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
+  Dialog.open({ title: 'Blocks', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
     <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
     <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
@@ -1651,7 +1651,7 @@ function sourceControl(objs) {
       html += `<div class="fine">${chip(shownRgb(look))}${rgbHex(shownRgb(look))}</div>`;
     }
   }
-  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Block definitions panel.</div>';
+  if (objs.some((o) => o.k === 'inst')) html += '<div class="fine">On a block, this reaches only sub-elements set to “By parent”: see its sub-element setting in the Blocks widget.</div>';
   return html;
 }
 

@@ -1,5 +1,5 @@
 // Magic blocks: a library of geometry, hard coded here, that can replace every instance of a block
-// definition (Block definitions panel). Nothing in a block definition changes, and the original
+// definition (Blocks widget). Nothing in a block definition changes, and the original
 // geometry comes back when the setting is cleared. To add one, paste the entry printed by
 // tools/make-magic-block.js into MAGIC_BLOCKS.
 //
