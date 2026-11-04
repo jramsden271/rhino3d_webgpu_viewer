@@ -20,11 +20,18 @@ const rhino3dm = require(path.join(__dirname, '../vendor/package/rhino3dm.js'));
   const layer = (name, rgb) => { const l = new rhino.Layer(); l.name = name; l.color = { r: rgb[0], g: rgb[1], b: rgb[2], a: 255 }; return layers.add(l); };
   const ground = layer('Ground', [150, 160, 140]), buildings = layer('Buildings', [225, 215, 195]), shades = layer('Shades', [245, 245, 245]);
   const attrs = (layerIndex) => { const a = new rhino.ObjectAttributes(); a.layerIndex = layerIndex; return a; };
-  // A box from (x0, y0, z0) to (x1, y1, z1), as a mesh with outward faces.
+  // A box from (x0, y0, z0) to (x1, y1, z1), as a mesh with outward faces. Each face has its own
+  // four corners: shared corners would get normals averaged over three faces, and the faces would
+  // shade as if rounded.
   const box = (x0, y0, z0, x1, y1, z1) => {
     const m = new rhino.Mesh(), v = m.vertices(), f = m.faces();
-    for (const [x, y, z] of [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]) v.add(x, y, z);
-    for (const q of [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]) f.addQuadFace(...q);
+    const c = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+    let n = 0;
+    for (const q of [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]) {
+      for (const i of q) v.add(...c[i]);
+      f.addQuadFace(n, n + 1, n + 2, n + 3);
+      n += 4;
+    }
     m.normals().computeNormals();
     return m;
   };
