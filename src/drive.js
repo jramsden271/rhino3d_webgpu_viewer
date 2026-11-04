@@ -226,6 +226,25 @@ class DriveSound {
     return g;
   }
 
+  // Landing on all four wheels, strength 0 to 1: a low, soft thud, and the tyres and
+  // suspension taking the weight (low-passed noise). No crack.
+  land(str) {
+    str = Math.max(0, Math.min(1, str));
+    if (!this.ready) return;
+    const A = this.audio, ac = A.ac, t = ac.currentTime;
+    if (t - A.lastCrash < 0.12) return;
+    A.lastCrash = t;
+    const o = ac.createOscillator();
+    o.type = 'sine'; o.frequency.setValueAtTime(85, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.22);
+    const g = this.env(0.2 + 0.35 * str, 0.008, 0.32, t);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.4);
+    const src = ac.createBufferSource(); src.buffer = A.noise;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260 + 200 * str;
+    const g2 = this.env(0.08 + 0.12 * str, 0.01, 0.2, t);
+    src.connect(lp); lp.connect(g2); g2.connect(ac.destination);
+    src.start(t, Math.random() * 0.4); src.stop(t + 0.3);
+  }
+
   // A crash of strength 0 to 1: a burst of noise, rattling debris and a thud.
   crash(str) {
     str = Math.max(0, Math.min(1, str));
@@ -585,7 +604,18 @@ class Driver {
       this.roll *= Math.exp(-dt * 0.8);
       this.rawPitch = this.pitch; this.rawRoll = this.roll;
       if (g != null && this.z <= g) {
-        if (this.vz < -4) this.bump(Math.min(1, -this.vz / 16));
+        // Down on all four wheels, tilted as the ground is: the suspension takes it, a soft thud.
+        // Anything else (nose first, on one side, half on an edge) is a crash.
+        if (this.vz < -4) {
+          const str = Math.min(1, -this.vz / 16);
+          let clean = known.length === 4;
+          if (clean) {
+            const [fl, fr, rl, rr] = wheels;
+            const p = Math.atan2((fl + fr - rl - rr) / 2, DRIVE.WHEELBASE * u), r = Math.atan2((fl + rl - fr - rr) / 2, DRIVE.TRACK * u);
+            clean = Math.abs(p - this.pitch) < 0.2 && Math.abs(r - this.roll) < 0.2;
+          }
+          if (clean) this.land(str); else this.bump(str);
+        }
         this.z = g; this.vz = 0; this.grounded = true;
         if (this.launch) this.launch.landed = now;
       }
@@ -661,6 +691,12 @@ class Driver {
       this.x = x; this.y = y;
     }
     return v;
+  }
+
+  // A clean landing: a little shake and a low thud.
+  land(strength) {
+    this.shake = Math.max(this.shake, strength * 0.45);
+    if (this.settings.sound) this.sound.land(strength);
   }
 
   bump(strength) {
