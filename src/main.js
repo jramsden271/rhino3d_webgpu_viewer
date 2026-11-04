@@ -3847,12 +3847,19 @@ function bindUi() {
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
 
-  const drop = $('drop');
+  // Only a drag that carries files shows the drop screen. Any other (text, a link, an image) can
+  // still be dropped into a text box, and elsewhere is refused, so a link can't open over the model.
+  const drop = $('drop'), hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  const editable = (e) => e.target instanceof Element && !!e.target.closest('input, textarea, [contenteditable]');
   let depth = 0;
-  window.addEventListener('dragenter', (e) => { e.preventDefault(); if (++depth === 1) { drop.hidden = false; drop.classList.add('over'); } });
-  window.addEventListener('dragleave', () => { if (--depth === 0) { drop.classList.remove('over'); if (model && !atHome) drop.hidden = true; } });
-  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (++depth === 1) { drop.hidden = false; drop.classList.add('over'); } });
+  window.addEventListener('dragleave', (e) => { if (!hasFiles(e) || !depth) return; if (--depth === 0) { drop.classList.remove('over'); if (model && !atHome) drop.hidden = true; } });
+  window.addEventListener('dragover', (e) => {
+    if (hasFiles(e)) e.preventDefault();
+    else if (!editable(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; }
+  });
   window.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) { if (!editable(e)) e.preventDefault(); return; }
     e.preventDefault(); depth = 0; drop.classList.remove('over');
     if (model && !atHome) drop.hidden = true;
     const f = e.dataTransfer.files[0];
