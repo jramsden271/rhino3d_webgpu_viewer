@@ -45,8 +45,12 @@ const Widgets = (() => {
 
   // --- Drawing a state ---
 
-  const LINE = '<svg viewBox="0 0 12 12"><path d="M2 9.5h8"/></svg>';
-  const SQUARE = '<svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>';
+  // The title bar's symbols, drawn the same on every system and centred in one 12 px box, with
+  // one line weight: minimise (as Windows draws it), restore, help and close.
+  const LINE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>';
+  const SQUARE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.25" y="2.25" width="7.5" height="7.5" rx="1"/></svg>';
+  const HELP = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.9 4.1a2.1 2.1 0 1 1 3 1.9c-.6.3-.9.8-.9 1.4v.3"/><circle class="dot" cx="6" cy="10" r="0.9"/></svg>';
+  const CLOSE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>';
   function draw(p) {
     const s = stateOf(p), { lock } = info(p), min = s === MINIMISED;
     p.classList.toggle('min', min);
@@ -276,6 +280,8 @@ const Widgets = (() => {
     for (const p of panels()) {
       if (!p.id) continue;
       const head = p.querySelector('.panel-head');
+      for (const b of head.querySelectorAll('.panel-actions .x.q')) b.innerHTML = HELP;
+      for (const b of head.querySelectorAll('.panel-actions .x[id$="Close"]')) b.innerHTML = CLOSE;
       p.dataset.name = p.getAttribute('aria-label') || head.firstElementChild.textContent.trim();
       p._moves = [...p.querySelectorAll('[data-min-move]')];
       for (const el of p._moves) { el._home = document.createComment(` ${el.id} `); el.before(el._home); }

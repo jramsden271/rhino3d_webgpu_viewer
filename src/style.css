@@ -101,7 +101,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .panel-head { user-select: none; -webkit-user-select: none; }
 .panel-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel-sum { margin-left: 10px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
-.x.win svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
@@ -129,10 +128,12 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; flex: none; align-items: center; gap: 10px; font-weight: 400; font-size: 12px; white-space: nowrap; }
 /* The title bar buttons (? _ □ ×): one size in every widget and state, set close together. */
-.panel-actions .x { flex: none; width: 22px; height: 22px; padding: 0; margin: -3px 0; display: inline-flex; align-items: center; justify-content: center; }
-.panel-actions .x + .x { margin-left: -6px; }
-.panel-actions .x:last-child { margin-right: -5px; }
-.panel-actions .x.q { font-size: 14px; font-weight: 600; }
+/* Each fills the title bar's height, the buttons touch, and the last reaches the widget's edge. */
+.panel-actions { align-self: stretch; margin: -10px -12px -10px 0; }
+.panel-actions .x { flex: none; width: 28px; align-self: stretch; padding: 0; margin: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 0; }
+.panel-actions .x + .x { margin-left: -10px; }
+.panel-actions .x svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.panel-actions .x svg .dot { fill: currentColor; stroke: none; }
 .layer-tree { overflow: auto; flex: 1; padding: 4px 0; }
 .layer-row { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: default; user-select: none; }
 .layer-row:hover { background: var(--hover); }
