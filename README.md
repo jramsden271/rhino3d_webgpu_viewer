@@ -171,6 +171,21 @@ The Layers, Block definitions and Date widgets close with their × button or fro
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
+Widgets can be arranged within the column:
+
+- **Minimise.** The Date and Weather widgets have a minimised state: Date shows its date and time in
+  the title bar, and Weather keeps its readings without the View choices. The **_** button
+  minimises a widget and the **□** button restores it. Double-clicking the title bar does the same.
+- **Making room.** When the open widgets need more height than the column has, the ones used least
+  recently are minimised. They are restored when room comes back. If that still isn't enough, the
+  column scrolls.
+- **Lock.** Right-click the title bar to **Lock widget**, which keeps the widget minimised or open as it
+  is. Its button then looks pressed in. Right-click again to unlock it.
+- **Reorder.** Drag a title bar up or down to move the widget in the stack. A widget opened for the
+  first time goes to the bottom, and one opened again goes back to its place.
+
+The order, and each widget's state and lock, are remembered for every model.
+
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
 its material dialog (click the layer's square in Rendered view):

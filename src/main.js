@@ -1945,6 +1945,7 @@ function syncDatePanel() {
   $('dateHour').value = S.hour;
   $('dateDayOut').textContent = dayName(S.doy);
   $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
+  $('dateSum').textContent = `${dayName(S.doy)} · ${fmtHour(S.hour)}`; // the minimised widget's reading
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -3887,6 +3888,7 @@ function bindUi() {
   layerRows.bind($('layerTree'));
   bindBlocksPanel();
   bindSideResize();
+  Widgets.init({ showMenu });
   renderRecent();
   $('btnUndo').addEventListener('click', () => stepHistory(false));
   $('btnRedo').addEventListener('click', () => stepHistory(true));

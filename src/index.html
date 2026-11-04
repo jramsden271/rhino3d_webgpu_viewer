@@ -121,12 +121,12 @@
     </div>
   </aside>
 
-  <section id="datePanel" class="chrome panel sun-panel" hidden aria-label="Date">
+  <section id="datePanel" class="chrome panel sun-panel" hidden aria-label="Date" data-min>
     <div class="panel-head">
-      <span>Date</span>
+      <span>Date<span class="panel-sum" id="dateSum" data-min-only></span></span>
       <span class="panel-actions"><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
     </div>
-    <div class="sun-body">
+    <div class="sun-body" data-full>
       <div class="field">
         <div class="field-label"><span>Date</span><output id="dateDayOut"></output></div>
         <input type="range" id="dateDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes">
@@ -137,14 +137,14 @@
       </div>
     </div>
   </section>
-  <section id="weatherPanel" class="chrome panel sun-panel" hidden aria-label="Weather">
+  <section id="weatherPanel" class="chrome panel sun-panel" hidden aria-label="Weather" data-min>
     <div class="panel-head">
       <span>Weather</span>
       <span class="panel-actions"><button class="link" id="weatherAdd" hidden></button><label class="switch" title="Weather on/off: turns off everything ticked under View, and keeps the ticks for when it is back on"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close the Weather widget" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="weatherRead" class="wx-grid"></div>
-      <div class="field">
+      <div class="field" data-full>
         <div class="field-label"><button class="field-toggle" id="weatherViewToggle" aria-controls="weatherView"><span class="caret"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>View</button></div>
         <div id="weatherView" class="field-details view-checks">
           <div class="check-row">
@@ -387,6 +387,7 @@
 <script src="listselect.js"></script>
 <script src="walk.js"></script>
 <script src="renderer.js"></script>
+<script src="widgets.js"></script>
 <script src="main.js"></script>
 </body>
 </html>
