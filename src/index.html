@@ -208,14 +208,8 @@
         <div class="field-label"><span>Time span</span><output id="exposureHoursOut"></output></div>
         <select class="exposure-span" id="exposureTimeSpan" aria-label="Time span" title="The times tested each day, round the Date widget's time (S). Both ends are included"></select>
       </div>
-      <div class="field">
-        <div class="field-label"><span>Interval</span><output id="exposureStepOut"></output></div>
-        <input type="range" id="exposureStep" min="0" max="5" step="1" title="Time between the times tested">
-      </div>
-      <div class="field">
-        <div class="field-label"><span>Grid spacing</span><output id="exposureSpacingOut"></output></div>
-        <input type="range" id="exposureSpacing" min="0" max="7" step="1" title="Most distance between the points tested on the surfaces. Closer is finer, and slower">
-      </div>
+      <label class="field-label exposure-inline"><span>Interval</span><select class="exposure-span" id="exposureStep" title="Time between the times tested"></select></label>
+      <label class="field-label exposure-inline"><span>Grid spacing</span><select class="exposure-span" id="exposureSpacing" title="Most distance between the points tested on the surfaces. Closer is finer, and slower"></select></label>
       <div class="field">
         <label class="check" title="Recalculate as soon as anything changes. Off: the results stay as they are; tick it again to bring them up to date"><input type="checkbox" id="exposureAuto"> Update automatically</label>
         <div class="exposure-run"><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>

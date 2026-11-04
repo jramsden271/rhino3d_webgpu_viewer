@@ -2912,10 +2912,8 @@ function syncExposurePanel() {
   $('exposureTimeSpan').value = expo.timeSpan;
   $('exposureDaysOut').textContent = fmtRange([days[0], days[days.length - 1]], fmtDay);
   $('exposureHoursOut').textContent = fmtRange(hours, fmtClock);
-  $('exposureStep').value = EXPOSURE_STEPS.indexOf(expo.step);
-  $('exposureStepOut').textContent = `every ${expo.step} min`;
-  $('exposureSpacing').value = EXPOSURE_SPACINGS.indexOf(expo.spacing);
-  $('exposureSpacingOut').textContent = fmtMetres(expo.spacing);
+  $('exposureStep').value = String(expo.step);
+  $('exposureSpacing').value = String(expo.spacing);
   $('exposureAuto').checked = expo.auto;
   const going = expo.progress != null, ready = located && expo.layer >= 0 && expo.on;
   syncExposureProgress();
@@ -2965,8 +2963,10 @@ function bindExposurePanel() {
   $('exposureTimeSpan').innerHTML = options(EXPOSURE_TIME_SPANS);
   $('exposureDateSpan').addEventListener('change', (e) => setExposure({ dateSpan: e.target.value }));
   $('exposureTimeSpan').addEventListener('change', (e) => setExposure({ timeSpan: e.target.value }));
-  $('exposureStep').addEventListener('input', (e) => setExposure({ step: EXPOSURE_STEPS[+e.target.value] }));
-  $('exposureSpacing').addEventListener('input', (e) => setExposure({ spacing: EXPOSURE_SPACINGS[+e.target.value] }));
+  $('exposureStep').innerHTML = EXPOSURE_STEPS.map((m) => `<option value="${m}">every ${m} min</option>`).join('');
+  $('exposureSpacing').innerHTML = EXPOSURE_SPACINGS.map((m) => `<option value="${m}">${fmtMetres(m)}</option>`).join('');
+  $('exposureStep').addEventListener('change', (e) => setExposure({ step: +e.target.value }));
+  $('exposureSpacing').addEventListener('change', (e) => setExposure({ spacing: +e.target.value }));
   // Ticking it again also restarts a stopped run.
   $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked, ...(e.target.checked ? { stoppedKey: '' } : {}) }));
   $('exposureStop').addEventListener('click', stopExposure);

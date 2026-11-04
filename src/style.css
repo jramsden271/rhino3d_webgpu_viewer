@@ -511,6 +511,8 @@ body.walking .walk-frame { display: block; }
 .exposure-layer { display: flex; gap: 6px; align-items: center; }
 .exposure-layer select, select.exposure-span { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
 .exposure-layer .btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.exposure-inline { gap: 10px; }
+.exposure-inline select.exposure-span { flex: 0 0 9.5em; }
 .exposure-run { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .exposure-run:not(:has(> :not([hidden]))) { display: none; }
 .exposure-run .link[hidden] { display: none; }
