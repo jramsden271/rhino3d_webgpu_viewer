@@ -280,7 +280,6 @@ class Driver {
     if (!renderer.actor) renderer.setActor(carGeometry());
     this.placing = false;
     this.parked = false;
-    this.music.pick(); // a new drive, a new track (getting back in carries on with the last)
     this.side = this.ctx.side?.() === -1 ? -1 : 1;
     this.active = true;
     this.pending = true;

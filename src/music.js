@@ -1,5 +1,5 @@
 // Music for Drive mode, the car radio: a small library of original tracks, synthesised as they
-// play with the Web Audio API (no audio files). Turning the music on picks one at random.
+// play with the Web Audio API (no audio files). Change track (the Drive panel) picks another at random.
 //
 // Each track is data: sections of bars, each bar a chord, with the parts that play in it, and a
 // play() that turns one sixteenth-note step of that into notes. Notes are MIDI numbers; times are
@@ -150,7 +150,82 @@ const BOULEVARD = (() => {
   };
 })();
 
-const TRACKS = [NEON, BOULEVARD];
+// "Iron Furnace" ------------------------------------------------------------------------------
+// 90s shooter metal in E minor at 132 bpm: double-tracked distorted rhythm guitars chugging
+// palm-muted sixteenths on the low E between power chords, with the tritone and the flat second
+// for menace; a driven bass doubling them, a tight kick (double kick in the choruses and the
+// gallop), a cracking snare, and a lead guitar solo. Intro, verse, chorus, gallop, solo, verse,
+// half-time breakdown, double chorus, then from the verse.
+
+const FURNACE = (() => {
+  // Riffs: bars of [step, root, length in steps, palm-muted]. Open notes are power chords.
+  const M = true, O = false;
+  const RIFF_A = [
+    [[0, 40, 1, M], [1, 40, 1, M], [2, 40, 1, M], [3, 40, 1, M], [4, 43, 2, O], [6, 40, 1, M], [7, 40, 1, M], [8, 46, 2, O], [10, 40, 1, M], [11, 40, 1, M], [12, 45, 2, O], [14, 43, 2, O]],
+    [[0, 40, 1, M], [1, 40, 1, M], [2, 40, 1, M], [3, 40, 1, M], [4, 43, 2, O], [6, 40, 1, M], [7, 40, 1, M], [8, 41, 4, O], [12, 40, 1, M], [13, 40, 1, M], [14, 40, 1, M], [15, 40, 1, M]],
+  ];
+  const RIFF_B = [
+    [[0, 40, 3, O], [3, 40, 1, M], [4, 40, 1, M], [5, 40, 1, M], [6, 43, 2, O], [8, 45, 3, O], [11, 45, 1, M], [12, 48, 4, O]],
+    [[0, 47, 3, O], [3, 47, 1, M], [4, 47, 1, M], [5, 47, 1, M], [6, 45, 2, O], [8, 43, 4, O], [12, 46, 2, O], [14, 45, 2, O]],
+  ];
+  // The gallop: an eighth and two sixteenths, over and over, the chord moving every beat.
+  const gallop = (roots) => roots.flatMap((r, b) => [[b * 4, r, 2, M], [b * 4 + 2, r, 1, M], [b * 4 + 3, r, 1, M]]);
+  const RIFF_C = [gallop([40, 40, 43, 40]), gallop([40, 40, 46, 45])];
+  // Half time: big open chords left to ring.
+  const RIFF_D = [[[0, 40, 6, O], [6, 40, 1, M], [7, 40, 1, M], [8, 41, 8, O]], [[0, 40, 6, O], [6, 40, 1, M], [7, 40, 1, M], [8, 46, 4, O], [12, 45, 4, O]]];
+  // The solo, in E harmonic minor over riff B.
+  const SOLO = [
+    [[0, 76, 2], [2, 79, 2], [4, 83, 4], [8, 81, 2], [10, 79, 2], [12, 78, 2], [14, 79, 2]],
+    [[0, 83, 6], [6, 84, 2], [8, 83, 4], [12, 75, 4]],
+    [[0, 76, 2], [2, 79, 2], [4, 83, 2], [6, 88, 6], [12, 87, 4]],
+    [[0, 88, 8], [8, 83, 2], [10, 84, 2], [12, 83, 2], [14, 81, 2]],
+    [[0, 76, 1], [1, 78, 1], [2, 79, 1], [3, 81, 1], [4, 83, 4], [8, 84, 4], [12, 83, 4]],
+    [[0, 81, 2], [2, 79, 2], [4, 78, 2], [6, 79, 6], [12, 75, 4]],
+    [[0, 76, 2], [2, 83, 2], [4, 88, 2], [6, 91, 6], [12, 90, 2], [14, 88, 2]],
+    [[0, 87, 4], [4, 88, 12]],
+  ];
+  // Parts: riff, guitars (1: one guitar alone, 2: both), bass, drums ('beat', 'double' or
+  // 'half'), lead.
+  const SONG = [
+    { name: 'intro', bars: 2, riff: RIFF_A, guitars: 1 },
+    { name: 'intro', bars: 2, riff: RIFF_A, guitars: 2, bass: true, drums: 'beat' },
+    { name: 'verse', bars: 8, riff: RIFF_A, guitars: 2, bass: true, drums: 'beat' },
+    { name: 'chorus', bars: 8, riff: RIFF_B, guitars: 2, bass: true, drums: 'double' },
+    { name: 'gallop', bars: 4, riff: RIFF_C, guitars: 2, bass: true, drums: 'double' },
+    { name: 'solo', bars: 8, riff: RIFF_B, guitars: 2, bass: true, drums: 'beat', lead: SOLO },
+    { name: 'verse', bars: 8, riff: RIFF_A, guitars: 2, bass: true, drums: 'beat' },
+    { name: 'breakdown', bars: 4, riff: RIFF_D, guitars: 2, bass: true, drums: 'half' },
+    { name: 'chorus', bars: 8, riff: RIFF_B, guitars: 2, bass: true, drums: 'double' },
+    { name: 'chorus', bars: 8, riff: RIFF_B, guitars: 2, bass: true, drums: 'double' },
+  ].map((s) => ({ ...s, chords: Array(s.bars).fill(null) }));
+
+  return {
+    title: 'Iron Furnace', bpm: 132, swing: 0, volume: 0.3, song: SONG, loopTo: 2,
+    play(m, t, S, bar, step) {
+      const st = m.step, riff = S.riff[bar % S.riff.length];
+      for (const [s, root, len, mute] of riff) if (s === step) {
+        m.guitar(t, root, len * st, mute, S.guitars === 1 ? -0.2 : -0.65);
+        if (S.guitars === 2) m.guitar(t, root, len * st, mute, 0.65);
+        if (S.bass) m.metalBass(t, root - 12, len * st, mute);
+      }
+      if (step === 0 && S.drums && (bar === 0 || (S.drums === 'double' && bar % 2 === 0) || S.drums === 'half')) m.crash(t);
+      if (S.drums === 'beat') {
+        if (step % 8 === 0 || step === 6 || step === 11 || step === 14) m.thump(t);
+        if (step === 4 || step === 12) m.crack(t);
+      } else if (S.drums === 'double') {
+        m.thump(t, step % 2 ? 0.6 : 0.85);
+        if (step === 4 || step === 12) m.crack(t);
+      } else if (S.drums === 'half') {
+        if (step === 0 || step === 6 || step === 7) m.thump(t);
+        if (step === 8) m.crack(t);
+      }
+      if (S.drums && step % 2 === 0) m.hat(t, S.drums === 'half' ? 0.25 : 0.05, step % 4 === 0 ? 0.08 : 0.05);
+      if (S.lead) for (const [s, n, len] of S.lead[bar]) if (s === step) m.leadGuitar(t, n, len * st);
+    },
+  };
+})();
+
+const TRACKS = [NEON, BOULEVARD, FURNACE];
 
 class DriveMusic {
   // ctx(): the AudioContext to play through (shared with the car's sounds), or null.
@@ -454,5 +529,83 @@ class DriveMusic {
       hp.connect(g); g.connect(this.out.comp);
       this.noiseSrc(at, this.env(g, at, 0.01 + Math.random() * 0.03, 0.0005, 0, 0.004), hp);
     }
+  }
+  // Iron Furnace's instruments ---------------------------------------------------------------
+
+  // The distortion: a soft-clipping curve, made once.
+  get dist() {
+    if (!this.distCurve) {
+      const n = 2048, c = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(x * 6) / Math.tanh(6); }
+      this.distCurve = c;
+    }
+    return this.distCurve;
+  }
+
+  // A distorted rhythm guitar, panned to one side: a power chord (root, fifth, octave) or, palm
+  // muted, a short dark chug of root and fifth. The notes go into the distortion together, as on
+  // a real amp, then a cabinet's filtering.
+  guitar(t, root, dur, mute, pan) {
+    const ac = this.out.ac, pre = ac.createGain(), sh = ac.createWaveShaper(), hp = ac.createBiquadFilter(), lp = ac.createBiquadFilter(), mid = ac.createBiquadFilter(), g = ac.createGain();
+    pre.gain.value = 2.5; sh.curve = this.dist; sh.oversample = '2x';
+    hp.type = 'highpass'; hp.frequency.value = 90;
+    mid.type = 'peaking'; mid.frequency.value = 800; mid.Q.value = 0.9; mid.gain.value = -5; // scooped mids
+    lp.type = 'lowpass'; lp.Q.value = 0.9;
+    if (mute) { lp.frequency.setValueAtTime(2400, t); lp.frequency.exponentialRampToValueAtTime(700, t + 0.08); } else lp.frequency.value = 4200;
+    pre.connect(sh); sh.connect(hp); hp.connect(mid); mid.connect(lp); lp.connect(g);
+    let out = g;
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+    out.connect(this.out.comp);
+    const end = mute ? this.env(g, t, 0.28, 0.002, Math.min(dur * 0.5, 0.06), 0.05) : this.env(g, t, 0.21, 0.003, Math.max(0, dur - 0.06), 0.14);
+    const notes = mute ? [root, root + 7] : [root, root + 7, root + 12], det = pan < 0 ? -6 : 6;
+    for (const n of notes) this.osc('sawtooth', mtof(n), t, end, pre, det + (Math.random() - 0.5) * 4);
+  }
+
+  // The bass, an octave down, a little driven.
+  metalBass(t, m, dur, mute) {
+    const ac = this.out.ac, pre = ac.createGain(), sh = ac.createWaveShaper(), lp = ac.createBiquadFilter(), g = ac.createGain();
+    pre.gain.value = 1.2; sh.curve = this.dist; lp.type = 'lowpass'; lp.frequency.value = mute ? 500 : 900;
+    pre.connect(sh); sh.connect(lp); lp.connect(g); g.connect(this.out.comp);
+    const end = this.env(g, t, 0.1, 0.003, Math.max(0, (mute ? Math.min(dur, 0.09) : dur) - 0.04), 0.06);
+    this.osc('sawtooth', mtof(m), t, end, pre);
+    const sg = ac.createGain(); sg.gain.value = 0.8; sg.connect(g);
+    this.osc('sine', mtof(m), t, end, sg);
+  }
+
+  // A tight metal kick, short enough for double kick: a fast pitch drop and a hard beater click.
+  thump(t, level = 0.85) {
+    const ac = this.out.ac, g = ac.createGain();
+    g.connect(this.out.comp);
+    const end = this.env(g, t, level, 0.001, 0.02, 0.16);
+    const o = this.osc('sine', 190, t, end, g);
+    o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.05);
+    const cg = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 3200; bp.Q.value = 1; bp.connect(cg); cg.connect(this.out.comp);
+    this.noiseSrc(t, this.env(cg, t, 0.3 * level, 0.0005, 0, 0.012), bp);
+  }
+
+  // A cracking snare, brighter and higher than the others.
+  crack(t) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 0.7;
+    bp.connect(g); g.connect(this.out.comp); g.connect(this.out.rev);
+    this.noiseSrc(t, this.env(g, t, 0.55, 0.001, 0.02, 0.17), bp);
+    const tg = ac.createGain(); tg.connect(this.out.comp);
+    const o = this.osc('triangle', 240, t, this.env(tg, t, 0.4, 0.001, 0.01, 0.09), tg);
+    o.frequency.exponentialRampToValueAtTime(170, t + 0.08);
+  }
+
+  // The lead guitar: more gain, a bright cabinet, wide vibrato on long notes, into the delay.
+  leadGuitar(t, m, dur) {
+    const ac = this.out.ac, pre = ac.createGain(), sh = ac.createWaveShaper(), hp = ac.createBiquadFilter(), lp = ac.createBiquadFilter(), g = ac.createGain(), f = mtof(m);
+    pre.gain.value = 5; sh.curve = this.dist; sh.oversample = '2x';
+    hp.type = 'highpass'; hp.frequency.value = 300; lp.type = 'lowpass'; lp.frequency.value = 4800;
+    pre.connect(sh); sh.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.out.comp);
+    const send = ac.createGain(); send.gain.value = 0.35; g.connect(send); send.connect(this.out.del); send.connect(this.out.rev);
+    const end = this.env(g, t, 0.14, 0.004, Math.max(0, dur - 0.03), 0.12);
+    const lfo = ac.createOscillator(), depth = ac.createGain();
+    lfo.frequency.value = 6.5; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(dur > 0.3 ? 30 : 0, t + Math.min(dur, 0.3));
+    lfo.connect(depth); lfo.start(t); lfo.stop(end + 0.05);
+    for (const det of [-5, 5]) depth.connect(this.osc('sawtooth', f, t, end, pre, det).detune);
   }
 }

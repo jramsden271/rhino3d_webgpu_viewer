@@ -341,7 +341,9 @@ body.walking .walk-frame { display: block; }
 /* Choosing where to start driving: a plain crosshair, as the marker is the car's size. */
 #gfx.placing.placing-car, #gfx.placing.placing-car.dragging { cursor: crosshair; }
 .drive-speed { margin-left: 6px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
-.drive-track { color: var(--muted, #8a8f98); font-size: 11px; margin-left: 4px; white-space: nowrap; }
+.drive-radio { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: -2px 0 8px; }
+.drive-radio[hidden] { display: none; }
+.drive-track { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #driveCam { width: 100%; }
 /* The Thermal comfort panel's sunlight line: in sunlight, weak sunlight, under a simulated cloud, in shade. */
 .sun-state { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); }
