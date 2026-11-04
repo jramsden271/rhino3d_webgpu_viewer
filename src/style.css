@@ -118,6 +118,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 #streamlinesPanel.min:has(#streamlineLegend:empty) .panel-head { border-bottom: 0; }
 #streamlinesPanel.min #streamlineLegend:empty { display: none; }
 #weatherPanel.min #weatherRead > :not(.min-row) { display: none; }
+/* Sun exposure minimised: the progress row only while it runs, so no empty row leaves a gap. */
+#exposurePanel.min .field:has(> .exposure-run):not(:has(#exposureBarBox:not([hidden]), #exposureStop:not([hidden]))) { display: none; }
 /* Sun exposure minimised with nothing running and no results: the title bar alone. */
 #exposurePanel.min:not(:has(#exposureBarBox:not([hidden]), #exposureLegend:not(:empty), #exposureRead:not([hidden]))) .sun-body { display: none; }
 #exposurePanel.min:not(:has(#exposureBarBox:not([hidden]), #exposureLegend:not(:empty), #exposureRead:not([hidden]))) .panel-head { border-bottom: 0; }
@@ -530,7 +532,7 @@ body.walking .walk-frame { display: block; }
 .utci-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .utci-val small { font-size: 13px; font-weight: 400; color: var(--muted); }
 .utci-cat { font-weight: 600; text-align: right; }
-.utci-top .utci-sun { align-self: center; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.utci-top .utci-sun { align-self: flex-start; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .utci-scale { display: flex; gap: 2px; }
 .utci-scale span { flex: 1; height: 6px; border-radius: 2px; opacity: 0.45; }
 .utci-scale span.on { opacity: 1; outline: 2px solid var(--text); outline-offset: 1px; }

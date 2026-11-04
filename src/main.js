@@ -3540,6 +3540,7 @@ function bindWalkPanel() {
   $('walkCollide').addEventListener('change', () => { S.collide = $('walkCollide').checked; changed(); canvas.focus(); });
   $('walkFly').addEventListener('change', () => { S.fly = $('walkFly').checked; if (S.fly) walker.lift(); changed(); canvas.focus(); });
   $('walkHelp').addEventListener('click', showWalkHelp);
+  $('walkExit').addEventListener('click', () => { if (walker.active) leaveWalk(); });
   $('walkClose').addEventListener('click', () => { $('walkPanel').hidden = true; canvas.focus(); });
   syncWalkPanel();
 }

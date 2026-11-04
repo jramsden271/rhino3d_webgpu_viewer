@@ -187,8 +187,7 @@ Widgets can be arranged within the column:
   - **Sun exposure** keeps its switch, progress and legend, with the button that picks the layer from the model in the title bar.
   - **CFD streamlines** and **CFD map** keep their switch and legends.
   - **Layers** and **Blocks** keep a list up to 300 px tall, without the filter.
-  - **Walk** keeps the speed slider, in the title bar.
-  - **Lights** keeps its title bar.
+  - **Lights** and **Walk** keep their title bar. Walk's **Exit** stops walking, in either state.
 - **Making room.** When the open widgets need more height than the column has, the ones used least
   recently are minimised. They are restored when room comes back. If that still isn't enough, the
   column scrolls.
