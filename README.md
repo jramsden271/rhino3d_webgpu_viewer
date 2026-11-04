@@ -620,6 +620,14 @@ double precision before conversion, so there is no jitter when zoomed in.
 There is no `package.json` and no `npm install`: the build and tools use only Node's built-in
 modules, and the page has no framework or bundler.
 
+### Terms
+
+- **Widget:** a panel that opens on the right of the screen, such as Sun, Weather, Thermal
+  comfort, Sun exposure, Lights, Walk, Layers, Blocks or the CFD panels. In the code it is a
+  `.chrome.panel` element in `src/index.html` (`sunPanel`, `weatherPanel` and so on), so search
+  for "panel". The pop-ups (layer material, block, file) share the `panel-head` style but are not
+  widgets. New code may use "widget", as the Date widget will.
+
 ### Setting up
 
 ```bash
