@@ -104,7 +104,11 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
-.side.over { overflow-y: auto; scrollbar-width: none; } /* scrolls with the wheel; no scrollbar, as it could not be dragged */
+/* Scrolling, the column clips what overflows it, the widgets' shadows included: it grows by room
+   for them (24 px left and below, to the window edge on the right) and pads that back, so the
+   widgets stay put. It scrolls with the wheel, without a scrollbar, as that could not be dragged. */
+.side.over { overflow-y: auto; scrollbar-width: none; right: 0; bottom: 46px; padding: 0 12px 24px 24px;
+  width: calc(min(var(--side-width, 300px), calc(100vw - 24px)) + 36px); }
 .side.over::-webkit-scrollbar { display: none; }
 .side.over > .panel { flex-shrink: 0; }
 .panel.ghost { flex: none !important; pointer-events: none; overflow: hidden; }
@@ -381,6 +385,7 @@ body.walking .walk-frame { display: block; }
 
 @media (max-width: 720px) {
   .side { width: auto; left: 12px; top: auto; height: 55vh; }
+  .side.over { width: auto; left: 0; right: 0; padding: 0 12px 24px; height: calc(55vh + 24px); }
   .stats { display: none; }
   .brand span { display: none; }
 }

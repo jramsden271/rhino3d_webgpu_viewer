@@ -96,7 +96,7 @@ const Widgets = (() => {
     const from = heights();
     if (grow) from.set(grow, 0);
     stop();
-    const room = side.clientHeight;
+    const cs = getComputedStyle(side), room = side.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     // Room to spare: restore widgets minimised to make room, most recently used first.
     for (const p of list.filter((q) => hasMin(q) && info(q).auto && !info(q).lock && stateOf(q) === MINIMISED).sort((a, b) => lastUsed(b) - lastUsed(a))) {
       set(p, NORMAL);
