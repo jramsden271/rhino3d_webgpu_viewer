@@ -16,6 +16,10 @@ on the code, see [Development](#development).
    built `index.html` (double-click it).
 2. Drag a `.3dm` file onto the page, or click **browse for one**.
 
+With no recent files to reopen, which is always the case where the browser can't keep the list
+(on phones and tablets, for example), the welcome screen offers **Open the demo model**: a small
+site in London with three buildings and two shade canopies, as blocks, built into the page.
+
 The welcome screen lists the last five files opened (in this browser); click one to open it
 again, or × to remove it from the list. The browser asks once per session for permission to
 read the file again. A file that has been moved or renamed has to be opened afresh.
@@ -768,6 +772,8 @@ src/utci.js              UTCI (Universal Thermal Climate Index), its stress cate
 src/cities.js            city list for the Set location dialog
 src/dialog.js            centred dialog / message box (Dialog.open, Dialog.confirm)
 src/recent.js            recent files list (file handles in IndexedDB)
+src/widgets.js           the right-hand column: minimise, lock, make room, drag to reorder
+src/demo.js              the demo model, as base64 (written by tools/make-demo.js)
 src/materials.js         magic materials: keyword rules and default colours
 src/camera.js            Z-up orbit / pan / zoom camera, matching Rhino's named views
 src/toolmenu.js          toolbar menus: a button with a popup that takes any content (ToolbarMenu), a list of choices (ChoiceList)

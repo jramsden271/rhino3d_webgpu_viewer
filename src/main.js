@@ -3815,6 +3815,7 @@ function leaveHome() {
 async function renderRecent() {
   const list = await Recent.list(), ul = $('recentList');
   $('recent').hidden = !list.length;
+  $('demo').hidden = !!list.length; // with nothing to reopen (always, where the list isn't kept), the demo
   ul.innerHTML = '';
   const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   list.forEach((r, i) => {
@@ -3828,6 +3829,13 @@ async function renderRecent() {
     li.querySelector('.x').addEventListener('click', async () => { await Recent.remove(i); renderRecent(); });
     ul.appendChild(li);
   });
+}
+
+// The demo model built into the page (src/demo.js, from tools/make-demo.js): a small site in
+// London with a few blocks and shades, for trying the viewer without a Rhino file.
+async function openDemo() {
+  showBusy('Opening the demo model', 0.02);
+  await openBytes('Demo.3dm', Uint8Array.from(atob(DEMO_3DM), (c) => c.charCodeAt(0)));
 }
 
 async function openRecent(r) {
@@ -3857,6 +3865,7 @@ function bindUi() {
   $('btnResultsFiles').addEventListener('click', openResultsDialog);
   $('btnMessages').addEventListener('click', openMessages);
   $('btnBack').addEventListener('click', leaveHome);
+  $('btnDemo').addEventListener('click', openDemo);
   $('dropBrowse').addEventListener('click', browse);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
 

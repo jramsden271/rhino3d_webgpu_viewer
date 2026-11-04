@@ -355,6 +355,8 @@ body.walking .walk-frame { display: block; }
 .drop-card p { margin: 4px 0; color: #5e6672; }
 .drop-card .link { color: #2563eb; }
 .drop-back { margin-top: 16px !important; }
+.demo-open { margin-top: 18px !important; }
+.drop.over .demo-open { display: none; }
 .drop-back .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drop-card .fine { font-size: 12px; margin-top: 14px; }
 .recent { margin-top: 22px; text-align: left; }
