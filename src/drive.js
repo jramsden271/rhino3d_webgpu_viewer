@@ -159,7 +159,7 @@ function carGeometry() {
 const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
 const WIND_FROM = 60;   // km/h: the wind starts above this...
 const WIND_LEVEL = 0.053; // ...and is this loud at the top speed: under the engine
-const SCREECH_LEVEL = 0.08; // the tyres at full slide: about as loud as the engine
+const SCREECH_LEVEL = 0.14; // the tyres at full slide: about as loud as the engine
 class DriveSound {
   constructor() { this.audio = null; this.failed = false; }
 
@@ -198,26 +198,31 @@ class DriveSound {
       lfo.connect(lg); lg.connect(gust.gain); lfo2.connect(lg2); lg2.connect(gust.gain);
       wf.connect(wg); wg.connect(gust); gust.connect(ac.destination);
       lfo.start(); lfo2.start();
-      // The tyres screeching: rubber scrubbing (white noise through a narrow band-pass) and the
-      // squeal itself, two tones a little apart, wavering. Silent until the car slides.
+      // The tyres screeching, all from white noise: a high-pass to lose the rumble, then two
+      // fairly narrow bands, for the squeal's colour without a pitch to wail; its level flutters
+      // fast and at random (slow-moving noise), as rubber sticks and slips. Silent until the car slides.
       const sg = ac.createGain(); sg.gain.value = 0; sg.connect(ac.destination);
       const sb = ac.createBuffer(1, Math.floor(ac.sampleRate * 3.7), ac.sampleRate), sd = sb.getChannelData(0);
       for (let i = 0; i < sd.length; i++) sd[i] = Math.random() * 2 - 1;
       const ss = ac.createBufferSource(); ss.buffer = sb; ss.loop = true;
-      const sbp = ac.createBiquadFilter(); sbp.type = 'bandpass'; sbp.frequency.value = 2300; sbp.Q.value = 5;
-      const sng = ac.createGain(); sng.gain.value = 1.6;
-      ss.connect(sbp); sbp.connect(sng); sng.connect(sg); ss.start();
-      const tones = [1180, 1460].map((fq, k) => {
-        const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = fq;
-        const og = ac.createGain(); og.gain.value = 0.25; o.connect(og); og.connect(sg);
-        for (const [rate, depth] of [[6.1 + k * 1.7, 35], [13.3 - k * 2.9, 18]]) {
-          const l = ac.createOscillator(), lg = ac.createGain(); l.frequency.value = rate; lg.gain.value = depth;
-          l.connect(lg); lg.connect(o.frequency); l.start();
-        }
-        o.start();
-        return o;
+      const shp = ac.createBiquadFilter(); shp.type = 'highpass'; shp.frequency.value = 700;
+      const flutter = ac.createGain(); flutter.gain.value = 1;
+      ss.connect(shp);
+      const bands = [[1100, 3.5, 1], [2600, 4, 0.8]].map(([fq, q, k]) => {
+        const bp = ac.createBiquadFilter(), kg = ac.createGain();
+        bp.type = 'bandpass'; bp.frequency.value = fq; bp.Q.value = q; kg.gain.value = k;
+        shp.connect(bp); bp.connect(kg); kg.connect(flutter);
+        return bp;
       });
-      this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0, wind: { f: wf, g: wg }, screech: { g: sg, tones, base: [1180, 1460] } };
+      flutter.connect(sg);
+      const fb = ac.createBuffer(1, Math.floor(ac.sampleRate * 2.9), ac.sampleRate), fd = fb.getChannelData(0);
+      for (let i = 0; i < fd.length; i++) fd[i] = Math.random() * 2 - 1;
+      const fs = ac.createBufferSource(); fs.buffer = fb; fs.loop = true;
+      const flp = ac.createBiquadFilter(); flp.type = 'lowpass'; flp.frequency.value = 30;
+      const fdepth = ac.createGain(); fdepth.gain.value = 16;
+      fs.connect(flp); flp.connect(fdepth); fdepth.connect(flutter.gain);
+      ss.start(); fs.start();
+      this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0, wind: { f: wf, g: wg }, screech: { g: sg, bands, base: [1100, 2600] } };
     } catch (_) { this.failed = true; }
     return this.audio;
   }
@@ -251,7 +256,7 @@ class DriveSound {
     if (!A) return;
     const t = A.ac.currentTime, S = A.screech;
     S.g.gain.setTargetAtTime(SCREECH_LEVEL * level, t, level > 0 ? 0.04 : 0.09);
-    S.tones.forEach((o, k) => o.frequency.setTargetAtTime(S.base[k] * (0.92 + Math.min(1, kmh / 120) * 0.16), t, 0.1));
+    S.bands.forEach((bp, k) => bp.frequency.setTargetAtTime(S.base[k] * (0.9 + Math.min(1, kmh / 120) * 0.2), t, 0.1));
   }
 
   silence() {
