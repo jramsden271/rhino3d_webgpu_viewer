@@ -4,9 +4,10 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, devMode: state.devMode })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
+  devMode: prefs.devMode === true, // the secret developer mode: five quick clicks on the home screen's logo
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
@@ -3225,6 +3226,13 @@ function endStick() {
   el.style.left = el.style.top = el.firstElementChild.style.transform = '';
 }
 
+function setDevMode(on) {
+  state.devMode = on;
+  window.devMode = on;
+  $('devLabel').hidden = !on;
+  document.body.classList.toggle('dev', on);
+}
+
 function pinchInfo() {
   const [a, b] = [...pointers.values()];
   return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
@@ -3911,6 +3919,18 @@ function bindUi() {
   $('btnBack').addEventListener('click', leaveHome);
   $('btnDemo').addEventListener('click', openDemo);
   $('dropBrowse').addEventListener('click', browse);
+  // Developer mode: five quick clicks on the logo turn it on, and five more turn it off.
+  let logoClicks = 0, logoLast = 0;
+  $('dropLogo').addEventListener('click', () => {
+    const now = performance.now();
+    logoClicks = now - logoLast < 400 ? logoClicks + 1 : 1;
+    logoLast = now;
+    if (logoClicks < 5) return;
+    logoClicks = 0;
+    setDevMode(!state.devMode);
+    savePrefs();
+  });
+  setDevMode(state.devMode);
   input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
 
   // Only a drag that carries files shows the drop screen. Any other (text, a link, an image) can

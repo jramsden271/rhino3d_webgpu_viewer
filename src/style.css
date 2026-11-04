@@ -362,6 +362,9 @@ body.walking .walk-frame { display: block; }
 .drop-card { text-align: center; padding: 40px 48px; border: 2px dashed rgba(20, 24, 31, 0.25); border-radius: 18px; background: rgba(255, 255, 255, 0.7); color: #1b1f24; transition: transform 0.12s, border-color 0.12s; max-width: min(520px, calc(100% - 32px)); }
 .drop-card svg { width: 44px; height: 44px; fill: #2563eb; stroke: none; }
 .drop-card h1 { font-size: 20px; margin: 12px 0 6px; }
+.drop-logo { cursor: default; user-select: none; -webkit-tap-highlight-color: transparent; }
+.dev-label { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #8a929c; pointer-events: none; user-select: none; }
+.dev-label[hidden] { display: none; }
 .drop-card p { margin: 4px 0; color: #5e6672; }
 .drop-card .link { color: #2563eb; }
 .drop-back { margin-top: 16px !important; }
