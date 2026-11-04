@@ -147,7 +147,7 @@ class Driver {
     this.fov0 = camera.fov;
     this.ortho0 = camera.ortho;
     camera.ortho = false;
-    Object.assign(this, { x: start[0], y: start[1], z: start[2], a: heading, vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0,
+    Object.assign(this, { x: start[0], y: start[1], z: start[2], a: heading, vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0,
       grounded: false, air: 0, map: null, stable: [], lastStable: 0, lockUntil: 0, shake: 0, orbit: 0, tilt: 0, dragging: false,
       camPos: null, last: performance.now(), gen: (this.gen || 0) + 1 });
     // The first look round: the ground straight below the start, however far down.
@@ -245,11 +245,12 @@ class Driver {
     return best;
   }
 
-  // Height of the plane the wheels sit in, at (x, y).
+  // Height of the plane the wheels sit in, at (x, y): as the ground under them was last frame,
+  // not the eased tilt the car is drawn with, which lags behind on the way onto a ramp.
   planeAt(x, y) {
     const f = [Math.cos(this.a), Math.sin(this.a)], dx = x - this.x, dy = y - this.y;
     const along = dx * f[0] + dy * f[1], left = -dx * f[1] + dy * f[0];
-    return this.z + along * Math.tan(this.pitch) + left * Math.tan(this.roll);
+    return this.z + along * Math.tan(this.rawPitch) + left * Math.tan(this.rawRoll);
   }
 
   // Obstacle points (x, y) within r of p: wall hits and ground above kerb height, below the roof.
@@ -264,9 +265,16 @@ class Driver {
       const h = z - this.planeAt(x, y);
       return h > (DRIVE.CLIMB + DRIVE.SLOPE * past) * u && h < hi;
     };
-    const w = m.walls;
-    for (let i = 0; i < w.length; i += 3) if (near(w[i], w[i + 1]) && test(w[i], w[i + 1], w[i + 2])) out.push([w[i], w[i + 1]]);
     const { x0, y1, cell, G, g } = m;
+    // A side view's hit on a surface the ground map sees from above too is a ramp, not a wall.
+    const fromAbove = (x, y, z) => {
+      const col = Math.floor((x - x0) / cell), row = Math.floor((y1 - y) / cell);
+      if (col < 0 || row < 0 || col >= G || row >= G) return false;
+      const i = (row * G + col) * 4;
+      return g[i + 3] > 0 && g[i + 2] > z - 0.15 * u;
+    };
+    const w = m.walls;
+    for (let i = 0; i < w.length; i += 3) if (near(w[i], w[i + 1]) && test(w[i], w[i + 1], w[i + 2]) && !fromAbove(w[i], w[i + 1], w[i + 2])) out.push([w[i], w[i + 1]]);
     const c0 = Math.max(0, Math.floor((p[0] - r - x0) / cell)), c1 = Math.min(G - 1, Math.floor((p[0] + r - x0) / cell));
     const r0 = Math.max(0, Math.floor((y1 - p[1] - r) / cell)), r1 = Math.min(G - 1, Math.floor((y1 - p[1] + r) / cell));
     for (let row = r0; row <= r1; row++)
@@ -327,7 +335,8 @@ class Driver {
     // The ground under each wheel: the car's height, pitch and roll.
     const wheels = [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sy]) => {
       const p = [this.x + f[0] * sx * DRIVE.AXLE * u + l[0] * sy * (DRIVE.TRACK / 2) * u, this.y + f[1] * sx * DRIVE.AXLE * u + l[1] * sy * (DRIVE.TRACK / 2) * u];
-      return this.groundAt(p, DRIVE.WHEEL_R * u, this.planeAt(...p) + DRIVE.CLIMB * u);
+      // Moving onto a ramp, the ground ahead of a wheel rises above last frame's plane.
+      return this.groundAt(p, DRIVE.WHEEL_R * u, this.planeAt(...p) + (DRIVE.CLIMB + DRIVE.SLOPE * (Math.abs(vF) * dt + 0.1)) * u);
     });
     const known = wheels.filter((g) => g != null), offMap = wheels.some((g) => g === undefined);
     const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
@@ -335,6 +344,7 @@ class Driver {
     if (known.length === 4) {
       const [fl, fr, rl, rr] = wheels, ease = 1 - Math.exp(-dt / DRIVE.TILT_EASE);
       const pitch = Math.atan2((fl + fr - rl - rr) / 2, DRIVE.WHEELBASE * u), roll = Math.atan2((fl + rl - fr - rr) / 2, DRIVE.TRACK * u);
+      this.rawPitch = pitch; this.rawRoll = roll;
       this.pitch += (Math.max(-0.6, Math.min(0.6, pitch)) - this.pitch) * ease;
       this.roll += (Math.max(-0.5, Math.min(0.5, roll)) - this.roll) * ease;
     }
@@ -418,7 +428,7 @@ class Driver {
   lost(now) {
     const s = this.stable[0];
     if (!s) { this.ctx.notice('The car went off the model.'); this.exit(); return; }
-    Object.assign(this, { x: s[0], y: s[1], z: s[2], a: s[3], vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, grounded: true, air: 0,
+    Object.assign(this, { x: s[0], y: s[1], z: s[2], a: s[3], vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0, grounded: true, air: 0,
       lockUntil: now + DRIVE.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1, camPos: null });
     this.ctx.fade();
   }
