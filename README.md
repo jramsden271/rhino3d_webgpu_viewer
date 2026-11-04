@@ -183,7 +183,7 @@ Widgets can be arranged within the column:
   - **Weather** keeps one row of readings: temperature, humidity and wind, or the sun's without a
     weather file.
   - **Thermal comfort** keeps its UTCI reading.
-  - **Sun exposure** keeps its switch, progress and legend, with the layer picker in the title bar.
+  - **Sun exposure** keeps its switch, progress and legend, with the button that picks the layer from the model in the title bar.
   - **CFD streamlines** and **CFD map** keep their switch and legends.
   - **Layers** and **Block definitions** keep a list up to 300 px tall, without the filter.
   - **Walk** keeps the speed slider, in the title bar.
