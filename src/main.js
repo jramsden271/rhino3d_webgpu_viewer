@@ -304,9 +304,14 @@ function loop() {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
   }
+  diag.ticks++;
   if (renderer.dirty) {
     anim.drawn = now;
-    renderer.dirty = false; renderer.draw(frameState()); positionInspector(); syncCompass();
+    renderer.dirty = false;
+    const t = performance.now();
+    renderer.draw(frameState());
+    if (state.devMode) diagFrame(t);
+    positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
   }
   requestAnimationFrame(loop);
@@ -3232,6 +3237,42 @@ function setDevMode(on) {
   window.devMode = on;
   $('devLabel').hidden = !on;
   document.body.classList.toggle('dev', on);
+  clearInterval(diag.timer);
+  if (on) { diagReset(); diag.timer = setInterval(showDiag, 500); }
+  showDiag();
+}
+
+// Developer diagnostics: an overlay over the model with the frame rate and what the GPU holds.
+// The viewer draws only when something changes, so an untouched view shows 0 frames a second;
+// "display" is how often the browser offers a frame (the screen's refresh rate).
+const diag = { timer: 0, t0: 0, ticks: 0, frames: 0, cpu: 0, cpuMax: 0, gpu: 0, gpuN: 0, gpuWaiting: false };
+function diagReset() { Object.assign(diag, { t0: performance.now(), ticks: 0, frames: 0, cpu: 0, cpuMax: 0, gpu: 0, gpuN: 0 }); }
+function diagFrame(t) {
+  const ms = performance.now() - t;
+  diag.frames++; diag.cpu += ms; diag.cpuMax = Math.max(diag.cpuMax, ms);
+  // Until the GPU has finished the frame: one frame at a time, so the measuring costs nothing.
+  if (diag.gpuWaiting) return;
+  diag.gpuWaiting = true;
+  const t1 = performance.now();
+  renderer.device.queue.onSubmittedWorkDone().then(() => { diag.gpu += performance.now() - t1 + ms; diag.gpuN++; diag.gpuWaiting = false; });
+}
+function showDiag() {
+  const el = $('diag'), on = state.devMode && !!model && !atHome && !!renderer;
+  el.hidden = !on;
+  if (!on) return;
+  const s = (performance.now() - diag.t0) / 1000 || 1, n = (v) => Math.round(v).toLocaleString();
+  const ms = (v) => v.toFixed(v < 10 ? 1 : 0), st = renderer.stats, info = renderer.adapterInfo;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), heap = performance.memory?.usedJSHeapSize;
+  const rows = [
+    ['fps', `${n(diag.frames / s)} drawn · ${n(diag.ticks / s)} display`],
+    ['frame', diag.frames ? `${ms(diag.cpu / diag.frames)} ms CPU (max ${ms(diag.cpuMax)}) · ${diag.gpuN ? ms(diag.gpu / diag.gpuN) + ' ms GPU' : '–'}` : 'idle'],
+    ['view', `${canvas.width} × ${canvas.height} px @${dpr}× · MSAA ${MSAA}×`],
+    ['model', `${n(st.triangles)} triangles · ${n(st.vertices)} vertices · ${renderer.batches.length} batches`],
+    ['memory', `${st.bytes < 1048576 ? (st.bytes / 1024).toFixed(0) + ' KB' : (st.bytes / 1048576).toFixed(1) + ' MB'} geometry${heap ? ` · ${(heap / 1048576).toFixed(0)} MB JS heap` : ''}`],
+  ];
+  if (info) rows.push(['adapter', [info.vendor, info.architecture, info.description].filter(Boolean).join(' · ') || 'unknown']);
+  el.innerHTML = rows.map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join('');
+  diagReset();
 }
 
 function pinchInfo() {

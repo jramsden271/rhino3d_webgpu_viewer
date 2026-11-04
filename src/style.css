@@ -365,6 +365,11 @@ body.walking .walk-frame { display: block; }
 .drop-logo { cursor: default; user-select: none; -webkit-tap-highlight-color: transparent; }
 .dev-label { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #8a929c; pointer-events: none; user-select: none; }
 .dev-label[hidden] { display: none; }
+/* Developer diagnostics over the model, under the top-left bar. */
+.diag { position: absolute; top: 64px; left: 12px; padding: 6px 9px; border-radius: 8px; background: rgba(10, 12, 16, 0.72); color: #d6dbe2;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; pointer-events: none; user-select: none; white-space: nowrap; z-index: 5; }
+.diag[hidden] { display: none; }
+.diag b { display: inline-block; width: 56px; color: #8a929c; font-weight: normal; }
 .drop-card p { margin: 4px 0; color: #5e6672; }
 .drop-card .link { color: #2563eb; }
 .drop-back { margin-top: 16px !important; }

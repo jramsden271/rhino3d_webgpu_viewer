@@ -1095,7 +1095,9 @@ class Renderer {
     if (!adapter) throw new Error('NO_ADAPTER');
     const lim = adapter.limits;
     const device = await adapter.requestDevice({ requiredLimits: { maxBufferSize: lim.maxBufferSize } });
-    return new Renderer(canvas, device);
+    const r = new Renderer(canvas, device);
+    r.adapterInfo = adapter.info || null; // for the developer diagnostics
+    return r;
   }
 
   constructor(canvas, device) {
@@ -1105,6 +1107,7 @@ class Renderer {
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.ctx.configure({ device, format: this.format, alphaMode: 'opaque' });
     this.batches = [];
+    this.stats = { triangles: 0, vertices: 0, bytes: 0 }; // the model on the GPU, for the developer diagnostics
     this.cells = new Float32Array(0);
     this.cellVis = new Uint8Array(0);
     this.dirty = true;
@@ -1400,8 +1403,10 @@ class Renderer {
     this.cells = batches.cells;
     this.cellVis = new Uint8Array(batches.cells.length / 6);
     const dev = this.device, U = GPUBufferUsage;
+    const stats = (this.stats = { triangles: 0, vertices: 0, bytes: 0 });
     const upload = (arr, usage) => {
       const size = Math.ceil(arr.byteLength / 4) * 4;
+      stats.bytes += size;
       const buf = dev.createBuffer({ size, usage, mappedAtCreation: true });
       new arr.constructor(buf.getMappedRange(0, size)).set(arr);
       buf.unmap();
@@ -1415,6 +1420,8 @@ class Renderer {
       ub.set(b.color, o);
       ub.set(b.mat || [1, 1, 1, 1], o + 4);
       const gpu = { pos: upload(b.position, U.VERTEX), oid: upload(b.objectId, U.VERTEX) };
+      stats.vertices += b.position.length / 3;
+      if (b.kind === 'mesh') stats.triangles += b.index.length / 3;
       if (b.kind === 'mesh') {
         gpu.nrm = upload(b.normal, U.VERTEX);
         gpu.idx = upload(b.index, U.INDEX);
