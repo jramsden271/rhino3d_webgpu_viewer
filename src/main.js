@@ -3472,6 +3472,8 @@ function onKey(e) {
   // Pedestrian mode: movement keys walk, Esc stops; other shortcuts still work.
   if (walker.active) {
     if (walker.key(e, true)) { e.preventDefault(); return; }
+    // F within 5 m of the parked car gets back in, as walking into it does.
+    if (k === 'f' && driver.parked && !e.repeat) { if (driver.near(walker.pos, 5)) { e.preventDefault(); enterVehicle(); return; } }
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (driver.active) {
@@ -3727,7 +3729,7 @@ function exitVehicle() {
     camera.yaw = out.heading + Math.PI;
     walker.enter(out.p).then((ok) => {
       swapping = false;
-      if (ok) { $('walkPanel').hidden = false; notice('Walk into the car to drive it again.', false, 4000); }
+      if (ok) { $('walkPanel').hidden = false; notice('Walk into the car, or press F near it, to drive it again.', false, 4000); }
       else driver.exit();
       f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw();
     });
@@ -3761,7 +3763,7 @@ function showDriveHelp() {
     <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
     <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine and crashes.</p>
-    <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car to drive it again. Stopping walking takes the car away too.</p>` });
+    <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car, or press <kbd>F</kbd> within 5 m of it, to drive it again. Stopping walking takes the car away too.</p>` });
 }
 
 let driveShown = '';

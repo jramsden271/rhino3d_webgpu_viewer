@@ -47,6 +47,7 @@ const DRIVE = {
   SUBSTEP: 0.2,      // longest single move, so thin walls cannot be driven through
   TILT_EASE: 0.08,   // time constant for pitch and roll following the ground
   LOST: 3,           // seconds flying with nothing below before going back
+  LEDGE: 3.5,        // off a ledge, its edge is no obstacle within this of where the car left
   LOCK: 0.8,         // seconds the controls are locked after going back
   MIN_FOV: 25,       // field of view range (degrees) for zooming with the mouse wheel
   MAX_FOV: 80,
@@ -266,7 +267,7 @@ class Driver {
     camera.ortho = false;
     Object.assign(this, { x: start[0], y: start[1], z: start[2], a: heading, vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0,
       grounded: false, air: 0, map: null, stable: [], lastStable: 0, lockUntil: 0, shake: 0, orbit: 0, tilt: 0, dragging: false,
-      camPos: null, last: performance.now(), gen: (this.gen || 0) + 1 });
+      camPos: null, launch: null, last: performance.now(), gen: (this.gen || 0) + 1 });
     // The first look round: the ground straight below the start, however far down.
     let map = null;
     while (this.active && !(map = await this.look(start[2] + DRIVE.ROOF * u))) await new Promise(requestAnimationFrame);
@@ -336,6 +337,9 @@ class Driver {
     this.updateCamera(0);
     return true;
   }
+
+  // Whether p (x, y) is within r (metres) of the parked car's middle.
+  near(p, r) { return this.parked && Math.hypot(p[0] - this.x, p[1] - this.y) < r * this.u; }
 
   // Whether someone standing at p (x, y, with their feet at height foot) is within r (metres)
   // of the parked car's sides: walking into it.
@@ -430,6 +434,9 @@ class Driver {
       const dx = x - this.x, dy = y - this.y, along = Math.abs(dx * f[0] + dy * f[1]) / u, side = Math.abs(-dx * f[1] + dy * f[0]) / u;
       const past = Math.max(0, along - DRIVE.AXLE) + Math.max(0, side - DRIVE.TRACK / 2);
       const h = z - this.planeAt(x, y);
+      // Off a ledge, the edge just driven off (no higher than the ground the car left, near where
+      // it left) is behind or under the car, not something it hits: it would snag the car.
+      if (this.launch && z <= this.launch.z + DRIVE.CLIMB * u && Math.hypot(x - this.launch.x, y - this.launch.y) < DRIVE.LEDGE * u) return false;
       return h > (DRIVE.CLIMB + DRIVE.SLOPE * past) * u && h < hi;
     };
     const { x0, y1, cell, G, g } = m;
@@ -499,22 +506,20 @@ class Driver {
     this.vF = v[0] * f[0] + v[1] * f[1];
     this.vL = v[0] * l[0] + v[1] * l[1];
 
-    // The ground under each wheel: the car's height, pitch and roll.
+    // The ground under each wheel: the car's height, pitch and roll. On the ground, moving onto a
+    // ramp, the ground ahead of a wheel rises above last frame's plane. In the air, a wheel only
+    // lands on what is below it: not on the top of the ledge it has dropped past.
+    const flying = !this.grounded;
     const wheels = [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sy]) => {
       const p = [this.x + f[0] * sx * DRIVE.AXLE * u + l[0] * sy * (DRIVE.TRACK / 2) * u, this.y + f[1] * sx * DRIVE.AXLE * u + l[1] * sy * (DRIVE.TRACK / 2) * u];
-      // Moving onto a ramp, the ground ahead of a wheel rises above last frame's plane.
-      return this.groundAt(p, DRIVE.WHEEL_R * u, this.planeAt(...p) + (DRIVE.CLIMB + DRIVE.SLOPE * (Math.abs(vF) * dt + 0.1)) * u);
+      const reach = flying ? 0.05 + Math.max(0, -this.vz) * dt : DRIVE.CLIMB + DRIVE.SLOPE * (Math.abs(vF) * dt + 0.1);
+      return this.groundAt(p, DRIVE.WHEEL_R * u, this.planeAt(...p) + reach * u);
     });
     const known = wheels.filter((g) => g != null), offMap = wheels.some((g) => g === undefined);
     const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
-    const g = known.length && !offMap ? mean(known) : offMap ? this.z : null;
-    if (known.length === 4) {
-      const [fl, fr, rl, rr] = wheels, ease = 1 - Math.exp(-dt / DRIVE.TILT_EASE);
-      const pitch = Math.atan2((fl + fr - rl - rr) / 2, DRIVE.WHEELBASE * u), roll = Math.atan2((fl + rl - fr - rr) / 2, DRIVE.TRACK * u);
-      this.rawPitch = pitch; this.rawRoll = roll;
-      this.pitch += (Math.max(-0.6, Math.min(0.6, pitch)) - this.pitch) * ease;
-      this.roll += (Math.max(-0.5, Math.min(0.5, roll)) - this.roll) * ease;
-    }
+    // Off the map (it arrives a frame late) the ground is unknown: on it, stay at this height;
+    // in the air, keep flying.
+    const g = known.length && !offMap ? mean(known) : offMap ? (flying ? undefined : this.z) : null;
     if (this.grounded) {
       if (g != null && g >= this.z - DRIVE.DROP * u) {
         this.vz = Math.min(30, (g - this.z) / u / dt);
@@ -525,24 +530,38 @@ class Driver {
           this.stable.push([this.x, this.y, this.z, this.a]);
           if (this.stable.length > 3) this.stable.shift();
         }
+        // Clear of the ledge it last drove off.
+        if (this.launch && (now - this.launch.landed > 1000 || Math.hypot(this.x - this.launch.x, this.y - this.launch.y) > DRIVE.LEDGE * u)) this.launch = null;
       } else {
+        // Off an edge: it keeps the tilt it had, not the drop under its front wheels.
         this.grounded = false;
         this.air = 0;
+        this.launch = { x: this.x, y: this.y, z: this.z, landed: Infinity };
       }
+    }
+    // The tilt follows the ground on it, and in the air only once the ground is close below.
+    if (known.length === 4 && (this.grounded || (g != null && this.z - g < 1 * u))) {
+      const [fl, fr, rl, rr] = wheels, ease = 1 - Math.exp(-dt / DRIVE.TILT_EASE);
+      const pitch = Math.atan2((fl + fr - rl - rr) / 2, DRIVE.WHEELBASE * u), roll = Math.atan2((fl + rl - fr - rr) / 2, DRIVE.TRACK * u);
+      this.rawPitch = pitch; this.rawRoll = roll;
+      this.pitch += (Math.max(-0.6, Math.min(0.6, pitch)) - this.pitch) * ease;
+      this.roll += (Math.max(-0.5, Math.min(0.5, roll)) - this.roll) * ease;
     }
     if (!this.grounded) {
       this.air += dt;
       this.vz -= DRIVE.GRAVITY * dt;
       this.z += this.vz * u * dt;
-      // Level out a little in the air.
+      // Level out a little in the air; the wheels' plane is the car's as drawn.
       this.pitch *= Math.exp(-dt * 0.8);
       this.roll *= Math.exp(-dt * 0.8);
+      this.rawPitch = this.pitch; this.rawRoll = this.roll;
       if (g != null && this.z <= g) {
         if (this.vz < -4) this.bump(Math.min(1, -this.vz / 16));
         this.z = g; this.vz = 0; this.grounded = true;
+        if (this.launch) this.launch.landed = now;
       }
       const [mn] = this.ctx.bounds();
-      if (this.z < mn[2] - 5 * u || (g == null && this.air > DRIVE.LOST)) this.lost(now);
+      if (this.z < mn[2] - 5 * u || (g === null && this.air > DRIVE.LOST)) this.lost(now);
     }
     this.place3d();
     // Brake lights while braking, and in reverse as the accelerator stops the car; reversing lights
@@ -628,7 +647,7 @@ class Driver {
     const s = this.stable[0];
     if (!s) { this.ctx.notice('The car went off the model.'); this.exit(); return; }
     Object.assign(this, { x: s[0], y: s[1], z: s[2], a: s[3], vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0, grounded: true, air: 0,
-      lockUntil: now + DRIVE.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1, camPos: null });
+      lockUntil: now + DRIVE.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1, camPos: null, launch: null });
     this.ctx.fade();
   }
 
