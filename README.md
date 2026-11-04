@@ -43,8 +43,8 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
-| Layers · Blocks · Sun panel | Toolbar | `L` · `K` · `S` |
-| Weather panel | Toolbar: Weather | |
+| Layers · Blocks · Date widget | Toolbar | `L` · `K` · `S` |
+| Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` |
@@ -167,7 +167,7 @@ none. Hiding or showing what is below moves it to match. Trees also get their ow
 leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
 The tag then reads "magic", and the sub-element setting doesn't apply.
 
-The Layers, Block definitions and Sun panels close with their × button or from the toolbar. The first
+The Layers, Block definitions and Date widgets close with their × button or from the toolbar. The first
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
@@ -317,7 +317,7 @@ The **weather button** next to the pin (a sun behind a cloud) opens the **Weathe
 dialog. The icon is in colour when a weather file is loaded, with the file's name in its
 tooltip, and greyed out when there is none. Choose an EnergyPlus weather file (`.epw`), or
 drop one onto the window; **Replace…** loads another and **Remove** takes it away. It gives
-the weather in the Weather panel and, when it has a latitude and longitude, the location.
+the weather in the Weather widget and, when it has a latitude and longitude, the location.
 
 The **results files button** next to it opens the **Results files** dialog, which lists the
 files added to the model and the parser that read each. **Add results file…** adds another, and
@@ -364,23 +364,51 @@ A CFD streamlines file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z
 `[Lines]` (pairs of node numbers) sections. Parsers live in `src/results.js`: each file goes to
 each parser in turn until one recognises it.
 
-Click **Weather** on the toolbar for the **Weather panel**, at the Sun panel's date and time. One
-row shows the air temperature, relative humidity and wind speed, with a compass arrow pointing
-the way the wind blows (north up; hover for the direction it comes from). **More** opens the
-cloud cover, the global horizontal, direct normal and diffuse horizontal irradiance, and the
-Cloud speed slider. Values are interpolated between the file's hourly records, each taken as the
-middle of its hour.
+### The Date and Weather widgets
+
+Click **Date** on the toolbar (or press `S`) for the **Date widget**: the date and local time that
+the sun, the sky, the weather and the Thermal comfort widget all follow. Right-click the date
+slider to jump to a solstice or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00,
+and press ▶ to run the time from sunrise to sunset. The date has no year: sun positions change too
+little from year to year to matter here (2017 is used). When the file has Rhino Sun settings, they
+set the starting date and time. The time is the location's clock time, shown with its offset from
+UTC (e.g. UTC+3 for Qatar).
+
+Click **Weather** on the toolbar for the **Weather widget**, at the Date widget's date and time.
+Its title has the weather file's sun and cloud icon and, without a weather file, an **Add EPW**
+link (or **Set location** without a location either: the location dialog takes a weather file
+too). Readings, three to a row, each with an icon (hover for more):
+
+- **The sun**, with a location: sunrise and sunset; the sun's altitude, drawn as the sun on a ray
+  up from the horizon; and its azimuth, drawn as the sun round a compass with north up.
+- **The weather**, with a weather file: air temperature, relative humidity and the wind speed,
+  with a compass arrow pointing the way the wind blows (north up; hover for the direction it
+  comes from); then the cloud cover, the global horizontal radiation (hover for the diffuse) and
+  the direct normal radiation. Values are interpolated between the file's hourly records, each
+  taken as the middle of its hour.
+
+**View** lists what is drawn. Each item is independent of the others; one that cannot show is
+greyed out, and its tooltip says why:
+
+- **Sun** (needs a location): the sun's light and shadows, and the moon's at night.
+- **Sky** (needs a location): the sky behind the model, from day to starry night. Off, or
+  without a location, the background is plain white, for screenshots for reports. The light on
+  the model is the same either way. With the Sun off the model keeps its usual light, so the sky
+  is never darker than dusk.
+- **Clouds** (needs a weather file): the file's clouds, in the sky and, with the Sun on, as
+  shadows on the model. **Cloud speed** shows under it while they are on.
+- **Haze** (needs a weather file): the file's radiation, beyond what the clouds account for. It
+  dims the sun and sets how bright the sky's light is (see below).
+- **Sun path diagram** (needs a location, in perspective views).
+
+The switch on the widget's title bar, and the sun and cloud icon on the toolbar's Weather button,
+turn all of View off and on again without changing the ticks. The ticks, the switch and the date
+and time are remembered for each model in this browser.
 
 ### Clouds and daylight
 
-With the sun on and a weather file loaded, the weather shows in the sky and the light. The
-cloud on the toolbar's Weather button (filled white while on) and the switch on the Weather
-panel turn this on and off; off, the sky and light are a clear day's, as without a file.
-
-With the sun off, perspective views still show the clouds, as many as the file gives for the Sun
-panel's date and time and drifting with its wind, on a neutral daytime sky that does not change
-with the date or time. The model keeps its usual lighting, so there are no cloud shadows. This
-needs no location.
+With a weather file loaded, the clouds and the haze show the weather in the sky and the light.
+Without them, the sky and the light are a clear day's, as without a file.
 
 - **Cloud cover** comes from the file's total sky cover (tenths), which nearly every EPW has,
   day and night, and which in most files comes from observations. Where it is missing or does
@@ -388,11 +416,11 @@ needs no location.
   from the share of diffuse light (diffuse over global horizontal) and filled in overnight; the
   panel says "from radiation". That estimate is rough (about 2 tenths out on average for
   Leeds), and low for broken cloud, which barely dims the sun.
-- **The sun's strength** follows the direct normal irradiance against a clear sky's (Meinel,
+- **The sun's strength** (Haze) follows the direct normal irradiance against a clear sky's (Meinel,
   with the Kasten & Young air mass), so an overcast hour has faint, soft shadows and a hazy
   desert sun is a little weaker, whatever the cloud cover says. Of the direct light lost, the
   cloud shadows (below) take about 0.9 × cover on average, and an even dimming the rest, which
-  stands for haze. **The sky light** follows the diffuse horizontal irradiance against about an
+  stands for haze. **The sky light** (Haze too) follows the diffuse horizontal irradiance against about an
   eighth of a clear sky's global (Haurwitz): overcast skies light the model more evenly. Near
   sunrise and sunset, where these ratios mean little, the cloud cover decides.
 - **Cloud shadows** fall on the model in every view: each lit point looks up towards the sun
@@ -405,7 +433,7 @@ needs no location.
   moonlit at night, and hide the stars. The sun is hidden when a cloud is in front of it, which
   is exactly when the camera stands in that cloud's shadow.
 - **The clouds drift with the wind**, from the file's wind direction at its speed times the
-  **Cloud speed** slider under **More** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
+  **Cloud speed** slider under **Clouds** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
   up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
   drift easier to see. Like the water ripples, they stop after 15 s without input, or at once
   with **Animations** off in the render mode menu, which saves the graphics card work on large
@@ -427,32 +455,19 @@ to, so these last only while they are open.
 
 ## Sun and shadows
 
-Click **Sun** (or press `S`) to open the Sun panel, and switch it on there to light the model
-by the sun with cast shadows. The sun icon on the Sun button is a switch of its own: click it to
-turn the sun on and off without opening the panel (it turns yellow and filled while on). In perspective views the sky shows the sun itself, and both
+Tick **Sun** under View in the Weather widget to light the model by the sun with cast shadows, at
+the Date widget's date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
 and time, so they turn through the night) and the model is lit by a dim blue night light.
 The moon is shown in its real position and phase (lit on the side facing the sun), and once
-the sky is dark it lights the model and casts soft shadows, brighter towards full moon. Set
-the date and local time with the sliders (right-click the date slider to jump to a solstice
-or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00), and press ▶ to animate
-from sunrise to sunset. **Details** on the panel opens the sun's altitude and azimuth and the
-day's sunrise and sunset. The date has no year: sun positions change too little from year to
-year to matter here (2017 is used). When the file has Rhino Sun settings, they set the
-starting date and time.
+the sky is dark it lights the model and casts soft shadows, brighter towards full moon.
 
-- **Date and time** also set the Weather and Thermal comfort panels, and work with the sun
-  off too.
-- **UTC offset** comes from the location: the clock's offset from UTC, e.g. 3 for Qatar.
-- **Sky** off draws a plain white background instead of the sky, with or without the sun. The
-  light on the model is unchanged: the sun, its shadows, and the weather's clouds, cloud shadows
-  and light.
 - **Sun path diagram** draws the sun's path on the sky, in perspective views and with the sun on or
   off: the 21st of each month (pairs of months with nearly the same path share an arc), a line for
-  each clock hour through the year, and the horizon with its compass points. The date on the
-  sliders is picked out in yellow, with a ring where the sun is at the time on the sliders. The
-  model hides it, as it would the sky. Orthographic views have no sky, so it does not show there.
+  each clock hour through the year, and the horizon with its compass points. The Date widget's
+  date is picked out in yellow, with a ring where the sun is at its time. The model hides it, as
+  it would the sky. Orthographic views have no sky, so it does not show there.
 
 Sun positions use the NOAA solar position equations (with refraction), which match
 published sunrise/sunset times to within about a minute. This is a visual study tool, not a
@@ -495,7 +510,7 @@ pass tests every point against it, blending the four texels round it.
 ## Thermal comfort
 
 Click **UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
-Universal Thermal Climate Index (UTCI) at the camera, at the Sun panel's date and time, and
+Universal Thermal Climate Index (UTCI) at the camera, at the Date widget's date and time, and
 shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
 file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
 
@@ -540,9 +555,9 @@ here even though you can walk through them; glass counts as opaque. It reads:
     under a cloud. The clouds are invented: the weather file gives how much of the sky is
     cloudy, not where the clouds are, so this shows what a passing cloud does rather than what
     happened. Over time the two agree on average. The sun-warmed surroundings keep the hourly
-    value either way (ground and walls do not cool as a cloud passes). It needs the sun and
-    the weather on, and an hour with some cloud; otherwise the panel says so and uses the hourly
-    figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
+    value either way (ground and walls do not cool as a cloud passes). It needs a location and
+    an hour with some cloud, and counts the clouds whether or not the Weather widget shows them;
+    otherwise the panel says so and uses the hourly figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
     gives the same values on both) so the panel and the picture agree.
 
 The value and its category show first; **Details** opens to show the wind factor, the simulated

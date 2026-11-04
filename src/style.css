@@ -196,9 +196,14 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .combo-icon svg { width: 16px; height: 16px; }
 .combo-icon[aria-pressed="true"] svg { stroke: #f2b100; }
 .combo-icon[aria-pressed="true"] svg circle, .combo-icon[aria-pressed="true"] svg path:last-child { fill: #f2b100; }
-/* Weather on: a filled white cloud (it stays distinct on the blue of an open panel's button). */
-#weatherQuick[aria-pressed="true"] svg { stroke: #d6e9fb; }
-#weatherQuick[aria-pressed="true"] svg path { fill: #f3f8fd; }
+/* The weather file's sun and cloud: grey with the weather off, the sun yellow and the cloud white with it on. */
+.wx-icon .cloud { fill: var(--surface-solid); }
+.combo-icon .wx-icon { width: 18px; height: 18px; }
+#weatherQuick[aria-pressed="false"] .wx-icon .sun { opacity: 0.55; }
+#weatherQuick[aria-pressed="true"] .wx-icon, .panel-title .wx-icon { stroke: currentColor; }
+#weatherQuick[aria-pressed="true"] .wx-icon .sun, .panel-title .wx-icon .sun { stroke: #f2b01e; }
+#weatherQuick[aria-pressed="true"] .wx-icon .sun circle, .panel-title .wx-icon .sun circle { fill: #f6c344; }
+#weatherQuick[aria-pressed="true"] .wx-icon path.cloud, .panel-title .wx-icon path.cloud { fill: #f3f4f6; }
 .combo-icon:disabled { opacity: 0.45; cursor: default; }
 .combo-icon:disabled:hover { background: transparent; }
 .sun-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 12px; }
@@ -446,6 +451,23 @@ body.walking .walk-frame { display: block; }
 .wx-now > span { display: inline-flex; align-items: center; gap: 4px; }
 .wx-now svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; }
 .wx-now .needle { fill: var(--accent); stroke: none; }
+/* The Weather widget's readings: three columns, the sun's row over the weather's two. */
+.wx-grid { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px 8px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-grid[hidden] { display: none; }
+.wx-grid > span { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.wx-grid > .rule { grid-column: 1 / -1; min-height: 0; border-top: 1px solid var(--border); }
+.wx-grid svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.wx-grid b { font-weight: 600; }
+.wx-grid .unit { font-size: 11px; color: var(--muted); }
+.wx-grid .needle { fill: var(--accent); stroke: none; }
+.wx-grid .sun-dot { fill: #f6c344; stroke: #f2b01e; stroke-width: 1.2; }
+.wx-grid .down .sun-dot { fill: var(--surface-solid); stroke: var(--muted); }
+.wx-grid .two { display: flex; flex-direction: column; font-size: 12px; line-height: 1.2; }
+.view-checks { gap: 8px; }
+.view-checks .check:has(input:disabled) { color: var(--muted); cursor: default; }
+.view-checks .check:has(input:disabled) input { opacity: 0.5; cursor: default; }
+.view-sub { margin: -2px 0 2px 20px; }
+.view-sub[hidden] { display: none; }
 #sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 /* North angle in the file panel */
 .north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }

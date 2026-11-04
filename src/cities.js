@@ -1,4 +1,4 @@
-// Cities for the Sun panel's location picker: [name, country, latitude, longitude, UTC offset in
+// Cities for the location picker: [name, country, latitude, longitude, UTC offset in
 // hours (standard time; daylight saving is ignored)].
 const CITIES = [
   ['London', 'United Kingdom', 51.5074, -0.1278, 0],

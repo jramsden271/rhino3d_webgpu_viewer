@@ -62,7 +62,7 @@ struct Frame {
   camRight: vec4f,  // xyz camera right, w = tan(fov / 2)
   camUp: vec4f,     // xyz camera up, w = aspect ratio
   skyGlow: vec4f,   // rgb = twilight glow along the horizon towards the sun (sRGB), w = night (0 day .. 1 dark)
-  stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians), w = 1 for a plain white background (Sky off)
+  stars: vec4f,     // x = latitude, y = local sidereal time, z = north angle (radians), w = 1 for a plain white background (no sky)
   moon: vec4f,      // xyz towards the moon, w = illuminated fraction
   skySun: vec4f,    // xyz towards the sun itself (sunDir is the moon when it lights the scene), w = draw the sky
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
@@ -1491,11 +1491,11 @@ class Renderer {
     const cam = s.cam;
     f.set(cam ? [...cam.right, Math.tan(cam.fov / 2)] : [1, 0, 0, 1], 76);
     f.set(cam ? [...cam.up, cam.aspect] : [0, 0, 1, 1], 80);
-    const sun = s.sun, rad = Math.PI / 180;
-    f.set(sun ? [...sun.glow, sun.night] : [0, 0, 0, 0], 84);
-    f.set(sun ? [sun.lat * rad, sun.lst, sun.north * rad, s.plainBg ? 1 : 0] : [0, 0, 0, s.plainBg ? 1 : 0], 88);
-    f.set(sun ? [...sun.moonDir, sun.moonLit] : [0, 0, -1, 0], 92);
-    f.set(sun ? [...sun.sunDir, 1] : [0, 0, 1, s.skyOnly ? 1 : 0], 96);
+    const sky = s.backdrop, rad = Math.PI / 180;
+    f.set(sky ? [...sky.glow, sky.night] : [0, 0, 0, 0], 84);
+    f.set(sky ? [sky.lat * rad, sky.lst, sky.north * rad, s.plainBg ? 1 : 0] : [0, 0, 0, s.plainBg ? 1 : 0], 88);
+    f.set(sky ? [...sky.moonDir, sky.moonLit] : [0, 0, -1, 0], 92);
+    f.set(sky ? [...sky.sunDir, 1] : [0, 0, 1, 0], 96);
     // The noise is worked out from the model's centre, snapped to a kilometre so it stays put:
     // far from the file's origin (map coordinates), float precision would break up fine grain.
     const step = 1000 / (s.metresPerUnit || 1), o = this.noiseOrigin || [0, 0, 0];

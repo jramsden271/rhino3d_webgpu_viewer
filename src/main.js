@@ -17,9 +17,13 @@ const state = {
   lightsOn: true,
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
+  datePanel: false,
   weatherPanel: false,
-  weatherMore: false, // the Weather panel's More section is open
-  weatherOn: true,  // the weather shown in the sky and light (clouds, sun and sky strength)
+  weatherViewOpen: true, // the Weather widget's View section is open
+  weatherOn: true,  // the Weather widget's switch: off, none of its View items show, whatever is ticked
+  // The Weather widget's View items, as ticked. Each also needs a location or a weather file
+  // (VIEW_NEEDS), and the switch on: viewOn says whether it shows.
+  view: { sun: false, sky: true, clouds: true, haze: true, path: false },
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // details: the Details section is open.
   // clouds: count the simulated cloud over the camera, rather than the hour's average sun.
@@ -28,9 +32,6 @@ const state = {
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
 state.sun = {
-  on: false, panel: false, details: false, // details: the Details section is open
-  path: false, // the sun path diagram is shown on the sky
-  sky: true, // the sky is drawn behind the model; off, a plain white background
   lat: 51.5074, lon: -0.1278, utcOffset: 0, north: 90,
   doy: dayOfYear(EPW_YEAR, 6, 21), hour: 12,
 };
@@ -149,75 +150,96 @@ function frameState() {
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
-  // Look: sky backdrop in sun mode, haze beyond the orbit target (perspective views only).
-  s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun on, the sky colours follow the time of day
-  s.edgeColor = state.sun.on ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
+  // Look: the sky behind the model, haze beyond the orbit target (perspective views only).
+  const sunOn = viewOn('sun'), skyOn = viewOn('sky'), cloudsOn = viewOn('clouds'), hazeOn = viewOn('haze');
+  s.bgTop = STUDIO.top; s.bgBot = STUDIO.bottom;   // with the sun or the sky, the sky colours follow the time of day
+  s.edgeColor = sunOn ? [0.1, 0.11, 0.13, state.mode === 1 ? 0.2 : 0.35] : state.edgeColor;
   s.time = anim.time;
   s.metresPerUnit = METRES_PER_UNIT[model.units] || 1;
   s.hazeStart = camera.distance;
   s.hazeDensity = camera.ortho ? 0 : 0.35 / R;
   s.lamps = shownLamps();
-  s.sunPath = state.sun.path && !camera.ortho && !!activeLocation();
+  s.sunPath = viewOn('path');
   if (s.sunPath) {
     const pos = sunPosition();
     fillSunPath();
     s.sunPathMark = pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : null;
   }
-  if (state.sun.on) {
-    const S = state.sun, pos = sunPosition(), light = sunLight(pos.altitude), moon = moonPosition(sunOpts());
-    const wx = currentSky(pos.altitude);
-    if (wx) overcastSky(light, wx.cover);
-    s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
-    const sunDir = sunVector(pos.azimuth, pos.altitude, S.north), moonDir = sunVector(moon.azimuth, moon.altitude, S.north);
+  // Without the sky, a plain white background: for screenshots, as the light on the model is the same.
+  s.plainBg = !skyOn;
+  if (!sunOn && !skyOn) return s;
+  const S = state.sun, pos = sunPosition(), moon = moonPosition(sunOpts());
+  // With the sun off the model keeps its usual light, so the sky is never darker than dusk.
+  const light = sunLight(sunOn ? pos.altitude : Math.max(pos.altitude, DUSK_ALTITUDE));
+  // With a weather file, the clouds grey the sky and shade the model; the haze dims the sun by
+  // the rest of what its direct radiation says (weatherSky), and sets the sky light by its diffuse.
+  const wx = currentSky(pos.altitude);
+  if (wx && cloudsOn) overcastSky(light, wx.cover);
+  const haze = wx && hazeOn ? wx.haze : 1;
+  s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
+  const sunDir = sunVector(pos.azimuth, pos.altitude, S.north), moonDir = sunVector(moon.azimuth, moon.altitude, S.north);
+  s.backdrop = { glow: light.glow, night: light.night, sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north, lst: siderealTime(sunOpts()) };
+  if (wx && (cloudsOn || hazeOn)) s.clouds = { cover: cloudsOn ? wx.cover : 0, drift: clouds.drift, haze };
+  if (sunOn) {
     // Once the sun is down, a moon above the horizon takes over as the light that casts shadows.
-    // With a weather file, the sky is as bright as its diffuse radiation says, and the sun as its
-    // direct: the cloud shadows (drawn on the model) and the haze between them (weatherSky)
-    // share the dimming. The moon is shaded by the clouds alone.
+    // The moon is shaded by the clouds alone.
     const moonRgb = moonLight(moon.altitude, moon.lit, light.night);
     const byMoon = light.up === 0 && moonRgb[2] > 0.004;
-    const sunRgb = light.rgb.map((v) => v * (wx ? wx.haze : 1));
-    s.sun = { dir: byMoon ? moonDir : sunDir, rgb: byMoon ? moonRgb : sunRgb, glow: light.glow, night: light.night,
-      sky: (light.sky + 0.06 * moonRgb[2] / 0.32) * (wx ? wx.sky : 1), sunDir, moonDir, moonLit: moon.lit, lat: S.lat, north: S.north,
-      lst: siderealTime(sunOpts()) };
-    if (wx) s.clouds = { cover: wx.cover, drift: clouds.drift, haze: wx.haze };
+    s.sun = { dir: byMoon ? moonDir : sunDir, rgb: byMoon ? moonRgb : light.rgb.map((v) => v * haze),
+      sky: (light.sky + 0.06 * moonRgb[2] / 0.32) * (wx && hazeOn ? wx.sky : 1) };
     if ((light.up > 0 || byMoon) && !state.xray) {
       s.shadows = shadowCascades(cam, s.sun.dir, { center: c, radius: R * 1.9, receiverRadius: R * 1.1 });
     }
-  } else if (!camera.ortho) {
-    // With the sun off, the weather's clouds still drift across a neutral day's sky, whatever the
-    // date and time. The model keeps its usual light, so no cloud shadows. Orthographic views draw
-    // no clouds, so they keep the usual backdrop.
-    const wx = currentSky(NEUTRAL_ALTITUDE);
-    if (wx) {
-      const light = sunLight(NEUTRAL_ALTITUDE);
-      overcastSky(light, wx.cover);
-      s.bgTop = [...light.top, 1]; s.bgBot = [...light.horizon, 1];
-      s.skyOnly = true;
-      s.clouds = { cover: wx.cover, drift: clouds.drift, haze: 1 };
-    }
   }
-  s.plainBg = !state.sun.sky;
   return s;
 }
 
-// Clouds: the weather file's sky at the Sun panel's date and time, and how far the clouds have
-// drifted. They move with the 10 m wind times the Weather panel's multiplier (clouds sit higher,
+// Clouds: the weather file's sky at the Date widget's date and time, and how far the clouds have
+// drifted. They move with the 10 m wind times the Weather widget's multiplier (clouds sit higher,
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
 const clouds = { drift: [0, 0], last: 0, speed: prefs.cloudSpeed >= 0 && prefs.cloudSpeed <= CLOUD_SPEED_MAX ? prefs.cloudSpeed : 10 };
-const NEUTRAL_ALTITUDE = 45; // the sun's height (degrees) whose sky colours are shown with the sun off
+const DUSK_ALTITUDE = -6; // the sun's height (degrees) whose sky is the darkest shown with the sun off
 
-// The weather as the sky and light show it: null without a weather file or with the weather
-// switched off (the Weather button's icon or the switch on its panel).
+// The weather file's sky at the date and time: null without a weather file or its records for the day.
 function currentSky(altitude) {
   const S = state.sun;
-  return site.epw && state.weatherOn ? weatherSky(site.epw, S.doy, S.hour, altitude) : null;
+  return site.epw ? weatherSky(site.epw, S.doy, S.hour, altitude) : null;
 }
+
+// The Weather widget's View items: what each needs, and what each is.
+const VIEW_ITEMS = ['sun', 'sky', 'clouds', 'haze', 'path'];
+const VIEW_NEEDS = { sun: 'location', sky: 'location', clouds: 'epw', haze: 'epw', path: 'location' };
+const VIEW_TITLES = {
+  sun: 'Sunlight and shadows at the Date widget\'s date and time, and the moon\'s at night',
+  sky: 'The sky behind the model. Off: a plain white background, for screenshots. The light on the model is the same either way',
+  clouds: 'The weather file\'s clouds, drifting with its wind. They show in the sky, and cast shadows with the Sun on',
+  haze: 'The weather file\'s haze: dims the sun beyond what the clouds account for, and sets how bright the sky\'s light is, from its radiation',
+  path: 'The sun\'s path on the sky: the 21st of each month, each clock hour through the year, and in yellow the Date widget\'s date',
+};
+
+// Why a View item cannot show, or null if it can: it needs a location or a weather file, the
+// widget's switch on, and (the sun path) a perspective view.
+function viewWhyNot(item) {
+  if (VIEW_NEEDS[item] === 'epw' ? !site.epw : !activeLocation()) return VIEW_NEEDS[item] === 'epw' ? 'Needs a weather file (EPW)' : 'Needs a location';
+  if (!state.weatherOn) return 'The Weather widget is switched off';
+  if (item === 'path' && camera.ortho) return 'Drawn in perspective views only';
+  return null;
+}
+// Does a View item show: ticked, and able to.
+const viewOn = (item) => state.view[item] && !viewWhyNot(item);
 
 function setWeatherOn(on) {
   state.weatherOn = on;
-  $('weatherOn').checked = on;
-  $('weatherQuick').setAttribute('aria-pressed', String(on));
+  syncDateWeather();
+  saveViewState();
+  redraw();
+}
+
+function setWeatherView(item, on) {
+  state.view[item] = on;
+  syncDateWeather();
+  saveViewState();
   redraw();
 }
 
@@ -234,8 +256,10 @@ function overcastSky(light, cover) {
 function driftClouds(now) {
   const dt = Math.min(0.1, (now - (clouds.last || now)) / 1000);
   clouds.last = now;
-  if (!site.epw || !clouds.speed || (!state.sun.on && camera.ortho)) return false;
-  const wx = currentSky(state.sun.on ? sunPosition().altitude : NEUTRAL_ALTITUDE);
+  // They move while they are seen, in the sky or by their shadows, or counted by the thermal comfort widget.
+  const seen = viewOn('clouds') && (viewOn('sun') || (viewOn('sky') && !camera.ortho));
+  if (!site.epw || !clouds.speed || !(seen || (state.comfort.panel && state.comfort.clouds))) return false;
+  const wx = currentSky(sunPosition().altitude);
   if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
   const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
   // Wrapped well before the noise's coordinates lose precision; a jump every few hundred km.
@@ -465,6 +489,7 @@ function setView(name, extents = true) {
 }
 
 function syncToolbar() {
+  syncViewChecks();
   syncCameraMenu();
   syncModeMenu();
   document.body.classList.toggle('walking', walker.active);
@@ -1176,7 +1201,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { on: state.sun.on, doy: state.sun.doy, hour: state.sun.hour, path: state.sun.path, sky: state.sun.sky } }));
+    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view } }));
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1215,10 +1240,19 @@ function restoreCameras(saved) {
 
 // The sun as it was left with this model. Without a location now (a weather file or custom location
 // that did not come back, say), it stays off.
+// The date and time, and the Weather widget's switch and View ticks. Saved before the Weather
+// widget had them, the sun's on, path and sky come back as its Sun, Sun path and Sky ticks.
 function restoreSun(saved) {
   const { on, doy, hour, path, sky } = saved.sun || {};
-  if (typeof on !== 'boolean' || !(doy >= 1 && doy <= 366) || !(hour >= 0 && hour <= 24)) return;
-  setSun({ on: on && !!activeLocation(), doy, hour, path: path === true, sky: sky !== false });
+  if (doy >= 1 && doy <= 366 && hour >= 0 && hour <= 24) Object.assign(state.sun, { doy, hour });
+  const w = saved.weather || (typeof on === 'boolean' ? { sun: on, path, sky } : null);
+  if (w) {
+    const tick = (x, d) => (typeof x === 'boolean' ? x : d);
+    state.weatherOn = tick(w.on, true);
+    Object.assign(state.view, { sun: tick(w.sun, false), sky: tick(w.sky, true), clouds: tick(w.clouds, true), haze: tick(w.haze, true), path: tick(w.path, false) });
+  }
+  syncDateWeather();
+  redraw();
 }
 
 function reportRestored() {
@@ -1879,7 +1913,7 @@ function bindFileDialog() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Sun panel
+// Date and Weather widgets
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1893,72 +1927,127 @@ function applyFileLocation(loc) {
   applyLocation();
 }
 
-function syncSunPanel() {
-  const S = state.sun;
-  $('sunOn').checked = S.on;
-  $('sunQuick').setAttribute('aria-pressed', String(S.on));
-  $('sunDay').max = daysInYear(EPW_YEAR);
-  $('sunDay').value = S.doy;
-  $('sunHour').value = S.hour;
-  const { month, day } = dateFromDayOfYear(EPW_YEAR, S.doy);
-  $('sunDateOut').textContent = `${day} ${MONTHS[month - 1]}`;
-  $('sunTimeOut').textContent = `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}`;
-  syncWeather(month, day);
+const dayName = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+
+// The Date and Weather widgets, and the widgets that follow the date and time.
+function syncDateWeather() {
+  syncDatePanel();
+  syncWeatherPanel();
   syncComfortPanel();
   syncExposurePanel();
-  document.querySelector('[data-act="sun"]').setAttribute('aria-pressed', String(S.panel));
-  $('sunSky').checked = S.sky;
-  const located = !!activeLocation();
-  $('sunRead').hidden = located;
-  $('sunDetailsField').hidden = !located;
-  $('sunPathField').hidden = !located;
-  $('sunPath').checked = S.path;
-  if (!located) {
-    $('sunTimeOut').textContent = fmtHour(S.hour);
-    $('sunRead').innerHTML = 'No location is set, so the sun cannot be shown. <button class="link">Set location…</button>';
-    return;
+}
+
+function syncDatePanel() {
+  const S = state.sun;
+  document.querySelector('[data-act="date"]').setAttribute('aria-pressed', String(state.datePanel));
+  $('dateDay').max = daysInYear(EPW_YEAR);
+  $('dateDay').value = S.doy;
+  $('dateHour').value = S.hour;
+  $('dateDayOut').textContent = dayName(S.doy);
+  $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
+}
+
+// The View ticks: each disabled, with why in its tooltip, when it cannot show.
+function syncViewChecks() {
+  for (const item of VIEW_ITEMS) {
+    const box = document.querySelector(`[data-view="${item}"]`), why = viewWhyNot(item);
+    box.checked = state.view[item];
+    box.disabled = !!why;
+    box.closest('label').title = why ? `${why}. ${VIEW_TITLES[item]}` : VIEW_TITLES[item];
   }
-  $('sunToggle').setAttribute('aria-expanded', String(S.details));
-  $('sunToggle').querySelector('.caret').classList.toggle('collapsed', !S.details);
-  $('sunDetails').hidden = !S.details;
-  const p = sunPosition();
-  const dirName = COMPASS[Math.round(p.azimuth / 22.5) % 16];
-  const pos = p.altitude > -0.83
-    ? `<dt>Altitude</dt><dd><b>${p.altitude.toFixed(1)}°</b></dd><dt>Azimuth</dt><dd><b>${p.azimuth.toFixed(1)}°</b> (${dirName})</dd>`
-    : `<dt>Altitude</dt><dd><b>${p.altitude.toFixed(1)}°</b> (below the horizon)</dd>`;
-  const day2 = p.polar === 'day' ? '<dt>Day</dt><dd>Sun up all day</dd>' : p.polar === 'night' ? '<dt>Day</dt><dd>Sun down all day</dd>'
-    : `<dt>Sunrise</dt><dd><b>${fmtHour(p.sunrise)}</b></dd><dt>Sunset</dt><dd><b>${fmtHour(p.sunset)}</b></dd>`;
-  $('sunDetails').innerHTML = `<dl class="wx">${pos}${day2}</dl>`;
+  $('cloudSpeedField').hidden = !viewOn('clouds');
+}
+
+function syncWeatherPanel() {
+  $('weatherOn').checked = state.weatherOn;
+  $('weatherQuick').setAttribute('aria-pressed', String(state.weatherOn));
+  document.querySelector('[data-act="weather"]').setAttribute('aria-pressed', String(state.weatherPanel));
+  syncViewChecks();
+  if (!state.weatherPanel) return;
+  const loc = activeLocation(), e = site.epw;
+  // Without a location, the location dialog: it takes a weather file too.
+  $('weatherAdd').hidden = !!e;
+  $('weatherAdd').textContent = loc ? 'Add EPW' : 'Set location';
+  $('weatherAdd').title = loc ? 'Add a weather file (EPW): its weather, clouds and haze' : 'Set the site location, for the sun and the sky. A weather file can set it too';
+  $('weatherViewToggle').setAttribute('aria-expanded', String(state.weatherViewOpen));
+  $('weatherViewToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherViewOpen);
+  $('weatherView').hidden = !state.weatherViewOpen;
+  $('cloudSpeed').value = clouds.speed;
+  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
+  const cells = [...(loc ? sunCells() : []), ...(loc && e ? ['<span class="rule"></span>'] : []), ...(e ? weatherCells() : [])];
+  $('weatherRead').hidden = !cells.length;
+  $('weatherRead').innerHTML = cells.join('');
+}
+
+const cell = (title, icon, text) => `<span title="${title}">${icon}${text}</span>`;
+const reading = (x, d, unit) => (x === null ? '—' : `<span><b>${x.toFixed(d)}</b>${unit}</span>`);
+
+// The sun at the location: sunrise and sunset, altitude and azimuth, each drawn in its icon.
+function sunCells() {
+  const p = sunPosition(), up = p.altitude > -0.83;
+  const riseIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 19h20M6.5 19a5.5 5.5 0 0 1 11 0M12 3.5v7M9.2 6.3 12 3.5l2.8 2.8"/></svg>';
+  const days = p.polar
+    ? cell(p.polar === 'day' ? 'The sun is up all day' : 'The sun is down all day', riseIcon, `<span class="two"><b>${p.polar === 'day' ? 'Up' : 'Down'}</b><span>all day</span></span>`)
+    : cell('Sunrise and sunset', riseIcon, `<span class="two"><span>↑ <b>${fmtHour(p.sunrise)}</b></span><span>↓ <b>${fmtHour(p.sunset)}</b></span></span>`);
+  // Altitude: the sun on a ray up from the horizon, at its angle (down to 20° below).
+  const a = (Math.max(-20, Math.min(90, p.altitude)) * Math.PI) / 180, at = (r) => [4 + r * Math.cos(a), 17 - r * Math.sin(a)].map((v) => v.toFixed(2)).join(' ');
+  const altIcon = `<svg viewBox="0 0 24 24" aria-hidden="true" class="${up ? '' : 'down'}"><path d="M2 17h20"/><path d="M11 17A7 7 0 0 ${a < 0 ? 1 : 0} ${at(7)}"/><path d="M4 17L${at(14)}"/><circle class="sun-dot" cx="${at(14).split(' ')[0]}" cy="${at(14).split(' ')[1]}" r="2.6"/></svg>`;
+  const alt = cell(up ? `Sun altitude: ${p.altitude.toFixed(1)}° above the horizon` : `Sun altitude: ${(-p.altitude).toFixed(1)}° below the horizon`, altIcon, `<b>${p.altitude.toFixed(0)}°</b>`);
+  // Azimuth: the sun round a compass, north up.
+  const z = (p.azimuth * Math.PI) / 180, zx = (12 + 7.5 * Math.sin(z)).toFixed(2), zy = (12 - 7.5 * Math.cos(z)).toFixed(2), dir = COMPASS[Math.round(p.azimuth / 22.5) % 16];
+  const azIcon = `<svg viewBox="0 0 24 24" aria-hidden="true" class="${up ? '' : 'down'}"><circle cx="12" cy="12" r="10"/><path d="M12 2v3.2M12 12L${zx} ${zy}"/><circle class="sun-dot" cx="${zx}" cy="${zy}" r="2.6"/></svg>`;
+  const az = cell(`Sun azimuth: ${p.azimuth.toFixed(1)}° from north (${dir}). The dot is the sun, with north up.`, azIcon, `<b>${p.azimuth.toFixed(0)}°</b> <span class="unit">${dir}</span>`);
+  return [days, alt, az];
+}
+
+// The weather file at the date and time (interpolated): air, humidity and wind; cloud and radiation.
+function weatherCells() {
+  const e = site.epw, S = state.sun, { month, day } = dateFromDayOfYear(EPW_YEAR, S.doy);
+  const w = e.at(month, day, S.hour), v = (x, d = 0) => (x === null ? '—' : x.toFixed(d));
+  const sky = weatherSky(e, S.doy, S.hour, activeLocation() ? sunPosition().altitude : 30);
+  const blowing = w.windSpeed >= 0.05 && w.windDirection !== null; // null >= 0.05 is false
+  const windTitle = blowing ? `Wind from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°). The arrow points the way it blows, with north up.` : 'Wind';
+  // The file gives the direction the wind comes from; the arrow points the way it goes.
+  const needle = blowing ? `<path class="needle" transform="rotate(${(w.windDirection + 180).toFixed(1)} 12 12)" d="M12 5.5 15.5 18 12 15.6 8.5 18Z"/>` : '';
+  const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  const cloudTitle = !sky || sky.source === 'none' ? 'Cloud cover: none in the weather file'
+    : sky.source === 'radiation' ? 'Cloud cover, estimated: this file has no usable cloud observations, so it is worked out from the share of diffuse light, by day, and filled in overnight'
+      : 'Cloud cover, observed: total sky cover from the weather file';
+  const cover = !sky || sky.source === 'none' ? '—' : `<span><b>${Math.round(sky.cover * 10)}</b><span class="unit">/10</span></span>`;
+  const wm2 = ' <span class="unit">W/m²</span>';
+  return [
+    cell('Air temperature', svg('<path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/>'), reading(w.dryBulb, 1, ' °C')),
+    cell('Relative humidity', svg('<path d="m12 2.7 5.66 5.66a8 8 0 1 1-11.31 0Z"/>'), reading(w.relativeHumidity, 0, '%')),
+    cell(windTitle, svg(`<circle cx="12" cy="12" r="10"/>${needle}`), w.windSpeed !== null && w.windSpeed < 0.05 ? '<b>Calm</b>' : reading(w.windSpeed, 1, ' m/s')),
+    cell(cloudTitle, svg('<path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 .25 8.5z"/>'), cover),
+    cell(`Global horizontal radiation: ${v(w.globalHorizontal)} W/m², of which diffuse horizontal ${v(w.diffuseHorizontal)} W/m²`,
+      svg('<circle cx="12" cy="6" r="3"/><path d="M3 21h18M7 12.5v5M12 12.5v5M17 12.5v5"/>'), reading(w.globalHorizontal, 0, wm2)),
+    cell('Direct normal radiation: the sun\'s beam, on a surface facing it', svg('<circle cx="17" cy="7" r="3"/><path d="M14.5 9.5 4.5 19.5M4.5 19.5h4.5M4.5 19.5V15"/>'), reading(w.directNormal, 0, wm2)),
+  ];
 }
 
 function setSun(changes) {
-  if (changes.on && !activeLocation()) {
-    changes = { ...changes, on: false };
-    warnNoLocation('The sun needs a location to be turned on.');
-  }
   Object.assign(state.sun, changes);
-  syncSunPanel();
+  syncDateWeather();
   redraw();
 }
 
-function toggleSunPanel() {
-  const S = state.sun;
-  S.panel = !S.panel;
-  $('sunPanel').hidden = !S.panel;
-  syncSunPanel();
+function toggleDatePanel() {
+  state.datePanel = !state.datePanel;
+  $('datePanel').hidden = !state.datePanel;
+  syncDateWeather();
 }
 
-function toggleSunPlay() {
-  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; $('sunPlay').classList.remove('on'); $('sunPlay').textContent = '▶'; return; }
-  if (!state.sun.on) setSun({ on: true });
-  if (!state.sun.on) return; // no location
-  $('sunPlay').classList.add('on'); $('sunPlay').textContent = '❚❚';
+// Runs the time through the day: from just before sunrise to just after sunset at the location.
+function toggleDatePlay() {
+  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; $('datePlay').classList.remove('on'); $('datePlay').textContent = '▶'; return; }
+  $('datePlay').classList.add('on'); $('datePlay').textContent = '❚❚';
   let last = performance.now();
   const step = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    const p = sunPosition();
+    const p = activeLocation() ? sunPosition() : {};
     const start = p.sunrise != null ? p.sunrise - 0.25 : 0, end = p.sunset != null ? p.sunset + 0.25 : 24;
-    let h = state.sun.hour + dt * 1.2; // 1.2 hours of sun per second
+    let h = state.sun.hour + dt * 1.2; // 1.2 hours a second
     if (h > end || h < start) h = start;
     setSun({ hour: h });
     sunAnim = requestAnimationFrame(step);
@@ -1966,82 +2055,43 @@ function toggleSunPlay() {
   sunAnim = requestAnimationFrame(step);
 }
 
-function bindSunPanel() {
-  $('sunOn').addEventListener('change', (e) => setSun({ on: e.target.checked }));
-  $('sunPath').addEventListener('change', (e) => { setSun({ path: e.target.checked }); saveViewState(); });
-  $('sunSky').addEventListener('change', (e) => { setSun({ sky: e.target.checked }); saveViewState(); });
-  // Date and time work with the sun off too, for the weather.
-  $('sunDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
-  $('sunHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
+function bindDateWeather() {
+  $('dateDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
+  $('dateHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
+  for (const id of ['dateDay', 'dateHour']) $(id).addEventListener('change', saveViewState);
   // Right-click the date slider for the solstices and equinoxes.
-  $('sunDay').addEventListener('contextmenu', (e) => {
+  $('dateDay').addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    const at = (label, m, d) => ({ label, run: () => setSun({ doy: dayOfYear(EPW_YEAR, m, d) }) });
+    const at = (label, m, d) => ({ label, run: () => { setSun({ doy: dayOfYear(EPW_YEAR, m, d) }); saveViewState(); } });
     showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
       at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
   });
   // Right-click the time slider for the usual analysis times.
-  $('sunHour').addEventListener('contextmenu', (e) => {
+  $('dateHour').addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    const at = (label, hour) => ({ label, run: () => setSun({ hour }) });
+    const at = (label, hour) => ({ label, run: () => { setSun({ hour }); saveViewState(); } });
     const noon = activeLocation() ? sunPosition().noon : null;
     showMenu('Go to', [at('10:00', 10), at('12:00', 12), noon != null && at(`Solar noon · ${fmtHour(noon)}`, noon), at('15:00', 15)].filter(Boolean),
       [e.clientX, e.clientY]);
   });
-  $('sunPlay').addEventListener('click', toggleSunPlay);
+  $('datePlay').addEventListener('click', toggleDatePlay);
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
-  $('weatherBody').addEventListener('click', (e) => { if (e.target.closest('.link')) openWeatherDialog(); });
-  $('weatherToggle').addEventListener('click', () => { state.weatherMore = !state.weatherMore; syncSunPanel(); });
-  $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncSunPanel(); redraw(); });
+  $('weatherAdd').addEventListener('click', () => (activeLocation() ? openWeatherDialog() : openLocationDialog()));
+  $('weatherViewToggle').addEventListener('click', () => { state.weatherViewOpen = !state.weatherViewOpen; syncWeatherPanel(); });
+  document.querySelectorAll('[data-view]').forEach((box) => box.addEventListener('change', () => setWeatherView(box.dataset.view, box.checked)));
+  $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncWeatherPanel(); redraw(); });
   $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
   $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
   $('weatherCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleWeatherPanel(); }); // the gaps round the icon
-  setWeatherOn(state.weatherOn);
-  $('sunRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
-  $('sunToggle').addEventListener('click', () => { state.sun.details = !state.sun.details; syncSunPanel(); });
-  syncSunPanel();
+  syncDateWeather();
 }
 
-// The Weather panel: the weather file at the Sun panel's date and time (interpolated).
+// The Weather widget: the sun and the weather file at the Date widget's date and time, and what to show.
 function toggleWeatherPanel() {
   state.weatherPanel = !state.weatherPanel;
   $('weatherPanel').hidden = !state.weatherPanel;
-  document.querySelector('[data-act="weather"]').setAttribute('aria-pressed', String(state.weatherPanel));
-  syncSunPanel();
-}
-
-function syncWeather(month, day) {
-  if (!state.weatherPanel) return;
-  const el = $('weatherBody'), e = site.epw;
-  $('weatherMoreField').hidden = !e;
-  $('weatherToggle').setAttribute('aria-expanded', String(state.weatherMore));
-  $('weatherToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherMore);
-  $('weatherDetails').hidden = !state.weatherMore;
-  $('cloudSpeed').value = clouds.speed;
-  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
-  if (!e) {
-    el.innerHTML = '<span class="fine">Add a weather file (EPW) to see the weather at this date and time.</span> <button class="link">Add one…</button>';
-    return;
-  }
-  const w = e.at(month, day, state.sun.hour), v = (x, d = 0) => (x === null ? '—' : x.toFixed(d));
-  const sky = weatherSky(e, state.sun.doy, state.sun.hour, activeLocation() ? sunPosition().altitude : 30);
-  const cloud = !sky || sky.source === 'none' ? '—'
-    : `<b>${Math.round(sky.cover * 10)}</b>/10 <span class="fine">${sky.source === 'observed' ? 'observed' : 'from radiation'}</span>`;
-  const reading = (x, d, unit) => (x === null ? '—' : `<span><b>${x.toFixed(d)}</b>${unit}</span>`);
-  const blowing = w.windSpeed >= 0.05 && w.windDirection !== null; // null >= 0.05 is false
-  const windTitle = blowing ? `Wind from ${COMPASS[Math.round(w.windDirection / 22.5) % 16]} (${v(w.windDirection)}°). The arrow points the way it blows, with north up.` : 'Wind';
-  // The file gives the direction the wind comes from; the arrow points the way it goes.
-  const needle = blowing ? `<path class="needle" transform="rotate(${(w.windDirection + 180).toFixed(1)} 12 12)" d="M12 5.5 15.5 18 12 15.6 8.5 18Z"/>` : '';
-  el.innerHTML = `<div class="wx-now">
-    <span title="Air temperature"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg>${reading(w.dryBulb, 1, ' °C')}</span>
-    <span title="Relative humidity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.7 5.66 5.66a8 8 0 1 1-11.31 0Z"/></svg>${reading(w.relativeHumidity, 0, '%')}</span>
-    <span title="${windTitle}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/>${needle}</svg>${w.windSpeed !== null && w.windSpeed < 0.05 ? '<b>Calm</b>' : reading(w.windSpeed, 1, ' m/s')}</span></div>`;
-  $('weatherMore').innerHTML = `<dl class="wx">
-    <dt>Cloud cover</dt><dd title="${sky?.source === 'radiation' ? 'This file has no usable cloud observations, so the cover is estimated from the share of diffuse light, by day, and filled in overnight' : 'Total sky cover from the weather file'}">${cloud}</dd>
-    <dt>Global horizontal</dt><dd><b>${v(w.globalHorizontal)}</b> W/m²</dd>
-    <dt>Direct normal</dt><dd><b>${v(w.directNormal)}</b> W/m²</dd>
-    <dt>Diffuse horizontal</dt><dd><b>${v(w.diffuseHorizontal)}</b> W/m²</dd></dl>`;
+  syncDateWeather();
 }
 
 // "UTC", "UTC+3", "UTC−3:30".
@@ -2077,7 +2127,6 @@ const activeLocation = () => (site.use && locationOf(site.use)) || locationOf('c
 function applyLocation() {
   const A = activeLocation();
   if (A) Object.assign(state.sun, { lat: +A.lat.toFixed(5), lon: +A.lon.toFixed(5), utcOffset: A.utcOffset });
-  else if (state.sun.on) { state.sun.on = false; warnNoLocation('The sun is off because there is no location now.'); }
   $('btnLocation').classList.toggle('set', !!A);
   $('locName').textContent = A ? A.name || fmtCoords(A.lat, A.lon) : 'Set location';
   $('btnLocation').title = A ? `${A.name ? fmtCoords(A.lat, A.lon) + ', ' : ''}${fmtUtc(A.utcOffset)}, ${LOCATION_KINDS[A.kind]}. Click to change the location.`
@@ -2087,13 +2136,8 @@ function applyLocation() {
   $('btnWeather').title = e ? `Weather file: ${e.fileName}` : 'Add a weather file (EPW)';
   locationDialog?.refresh();
   weatherDialog?.refresh();
-  syncSunPanel();
+  syncDateWeather();
   redraw();
-}
-
-function warnNoLocation(why) {
-  document.querySelectorAll('.notice.no-loc').forEach((n) => n.remove());
-  notice(`${why} Set one from a weather file, a custom location or the Rhino file.`, false, 0, { label: 'Set location…', run: openLocationDialog }).classList.add('no-loc');
 }
 
 // Save a change to the open model's links. Typing saves once the typing pauses.
@@ -2175,7 +2219,7 @@ function openWeatherDialog() {
     el('epw').innerHTML = epwStatusHtml();
     el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
     el('remove').hidden = !e;
-    el('note').textContent = `The weather file gives the weather in the Weather panel at the Sun panel's date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
+    el('note').textContent = `The weather file gives the weather in the Weather widget at the Date widget's date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
       ? 'It belongs to the open model; with none open, it is cleared when one is opened.'
       : model.handle ? `It belongs to ${model.name} and comes back when you reopen it from Recent files.`
         : `It belongs to ${model.name} while it is open.`}`;
@@ -2553,7 +2597,7 @@ function bindStreamlinesPanel() {
 let locationDialog = null;
 function showLocationHelp() {
   Dialog.open({ title: 'Location', html: true, width: 400, body: `<p>The site location places the sun and sets the clock's UTC offset. It can come from three sources; <b>Use this location</b> picks which one is used.</p>
-    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather shows in the Weather panel and drives the UTCI.</p>
+    <p><b>Weather file (EPW)</b>: the location in the file. Choose or replace it here, with the sun-and-cloud button next to the pin, or by dropping an .epw file onto the window. Its weather shows in the Weather widget and drives the UTCI.</p>
     <p><b>Custom location</b>: type a latitude and longitude, or search for a city or country. The UTC offset follows the longitude until you type one.</p>
     <p><b>Rhino file</b>: the location saved in the .3dm file, if it has one.</p>
     <p>The sun needs a location. The choice, the custom location and the weather file belong to the open model, and come back with it when you reopen it from Recent files.</p>` });
@@ -2891,7 +2935,7 @@ function showExposureHelp() {
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
     <p><b>Dates</b> and <b>Times:</b> drag either grip. The period runs from the earlier grip to the later, both included, and both grips together give a single day or time. Every day in the dates is tested at the times, every <b>Interval</b>. Right-click either slider for the usual choices.</p>
     <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
-    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Sun panel.</p>
+    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Date widget.</p>
     <p>With <b>Update automatically</b> off, nothing is calculated until you press <b>Update</b>: for long periods, so that changing the settings stays quick.</p>
     <p>The results are not kept: they go when the model is closed.</p>` });
 }
@@ -3291,7 +3335,7 @@ function onKey(e) {
     f: zoomExtents,
     1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
-    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleSunPanel,
+    e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
       if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
@@ -3550,7 +3594,7 @@ function sunState(r) {
 }
 
 // The Thermal comfort panel ---------------------------------------------------------------------
-// UTCI at the camera from the weather file at the Sun panel's date and time: air temperature and
+// UTCI at the camera from the weather file at the Date widget's date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised when the camera is in sunlight by
 // the direct sun on the person (SolarCal) and by sun-warmed surroundings (a placeholder).
@@ -3588,7 +3632,6 @@ function comfortNow() {
 // clouds to count; else { shade (1 open .. 0.1 under a cloud), gap (the beam between clouds, W/m²) }.
 function comfortClouds(pos) {
   if (!state.comfort.clouds) return null;
-  if (!state.sun.on || !state.weatherOn) return { off: 'Simulated clouds need the sun and the weather switched on' };
   if (!pos || pos.altitude <= 0) return { off: 'No sun to cover' };
   const sky = currentSky(pos.altitude);
   if (!sky || sky.cover < 0.01) return { off: 'No cloud in the weather file at this hour' };
@@ -3601,7 +3644,7 @@ function syncComfortPanel() {
   const C = state.comfort, f = (x, d = 1) => x.toFixed(d);
   $('comfortWind').value = C.wind;
   $('comfortWindOut').value = f(C.wind, 2);
-  $('comfortWhen').value = `${$('sunDateOut').textContent} · ${fmtHour(state.sun.hour)}`;
+  $('comfortWhen').value = `${dayName(state.sun.doy)} · ${fmtHour(state.sun.hour)}`;
   $('comfortToggle').setAttribute('aria-expanded', String(C.details));
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
   $('comfortDetails').hidden = !C.details;
@@ -3656,7 +3699,7 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
-    <p>It is estimated at the camera, at the Sun panel's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
+    <p>It is estimated at the camera, at the Date widget's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
@@ -3832,12 +3875,10 @@ function bindUi() {
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
-  document.querySelector('[data-act="sun"]').addEventListener('click', toggleSunPanel);
-  $('sunCombo').addEventListener('click', (e) => { if (e.target === e.currentTarget) toggleSunPanel(); }); // the gaps round the icon
-  $('sunQuick').addEventListener('click', () => setSun({ on: !state.sun.on }));
+  document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
   document.querySelectorAll('.compass-point').forEach((p) => p.addEventListener('dblclick', () => faceBearing(+p.dataset.bearing)));
   bindCompass();
-  $('sunClose').addEventListener('click', () => state.sun.panel && toggleSunPanel());
+  $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
@@ -3850,9 +3891,9 @@ function bindUi() {
   bindMaterialDialog();
   bindInspector();
   bindFileDialog();
-  bindSunPanel();
-  // Each tool panel's title carries its toolbar button's icon.
-  for (const [btn, panel] of [['#sunQuick', 'sunPanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
+  bindDateWeather();
+  // Each widget's title carries its toolbar button's icon.
+  for (const [btn, panel] of [['[data-act="date"]', 'datePanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
     ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');

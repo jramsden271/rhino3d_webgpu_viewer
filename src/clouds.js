@@ -9,7 +9,7 @@
 // The light itself comes from the radiation, which needs no inferring: the sun's strength from the
 // direct normal irradiance against a clear sky's, the sky's from the diffuse horizontal.
 
-const CLOUD_SPEED_MAX = 100; // the Weather panel's cloud speed multiplier: 0 .. this
+const CLOUD_SPEED_MAX = 100; // the Weather widget's cloud speed multiplier: 0 .. this
 const CLOUD_KM = 1.5;        // height of the cloud layer the sky shader draws
 
 // Clear-sky irradiance (W/m²) for a sun altitude in degrees: Haurwitz for global horizontal,
