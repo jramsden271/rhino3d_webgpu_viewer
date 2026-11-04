@@ -1978,6 +1978,9 @@ function syncWeatherPanel() {
   const cells = [...(loc ? sunCells() : []), ...(loc && e ? ['<span class="rule"></span>'] : []), ...(e ? weatherCells() : [])];
   $('weatherRead').hidden = !cells.length;
   $('weatherRead').innerHTML = cells.join('');
+  // Minimised, the widget keeps one row: the weather's first (temperature, humidity, wind), or the sun's.
+  const kids = [...$('weatherRead').children], first = e ? kids.length - 6 : 0;
+  kids.forEach((k, i) => k.classList.toggle('min-row', i >= first && i < first + 3));
 }
 
 const cell = (title, icon, text) => `<span title="${title}">${icon}${text}</span>`;

@@ -10,17 +10,19 @@
 // and the one just used are left alone. If that still isn't enough, the column scrolls.
 //
 // The title bar also drags a widget to a new place in the stack. A widget opened for the first
-// time goes to the bottom; one opened again goes back to its place.
+// time goes to the bottom; one opened again goes back to its place. Widgets slide as others
+// open, close, change state or move.
 //
 // The layout is a global preference: the order, and each widget's state and lock.
 const Widgets = (() => {
   const NORMAL = 0, MINIMISED = 1; // a widget's state; more may be added
   const KEY = '3dm-viewer-widgets';
-  const ANIM_MS = 180, DRAG_PX = 5;
+  const ANIM_MS = 180, DRAG_PX = 5, EASE = 'ease-out';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const CONTROLS = 'button, input, select, label, a, output, [role="button"]';
   let side, saved, menu;
   const used = new Map(); // widget id → when it was last used, this session
+  const lastHeight = new Map(); // widget → its height when last drawn, for sliding the rest up as it closes
 
   const load = () => {
     try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
@@ -32,111 +34,133 @@ const Widgets = (() => {
   const panels = () => [...side.children].filter((p) => p.classList.contains('panel'));
   const shown = () => panels().filter((p) => !p.hidden);
   const hasMin = (p) => p.hasAttribute('data-min');
-  const info = (p) => saved.w[p.id] || (hasMin(p) ? (saved.w[p.id] = { state: NORMAL, lock: false, auto: false }) : { state: NORMAL, lock: false, auto: false });
+  const blank = () => ({ state: NORMAL, lock: false, auto: false });
+  const info = (p) => saved.w[p.id] || (hasMin(p) ? (saved.w[p.id] = blank()) : blank());
   const stateOf = (p) => (hasMin(p) ? info(p).state : NORMAL);
   const touch = (p) => used.set(p.id, performance.now());
   const lastUsed = (p) => used.get(p.id) ?? -1;
+  const gap = () => parseFloat(getComputedStyle(side).rowGap) || 0;
+  const motion = () => !reduceMotion.matches;
 
   // --- Drawing a state ---
 
-  const ICON = {
-    [NORMAL]: '<svg viewBox="0 0 12 12"><path d="M2 9.5h8"/></svg>', // shown while normal: minimise
-    [MINIMISED]: '<svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>', // restore
-  };
+  const LINE = '<svg viewBox="0 0 12 12"><path d="M2 9.5h8"/></svg>';
+  const SQUARE = '<svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>';
   function draw(p) {
-    const s = stateOf(p), { lock } = info(p);
-    p.classList.toggle('min', s === MINIMISED);
+    const s = stateOf(p), { lock } = info(p), min = s === MINIMISED;
+    p.classList.toggle('min', min);
     const b = p.querySelector('.panel-head .win');
     if (!b) return;
-    b.innerHTML = ICON[s];
+    // Unlocked, the button shows what it does; locked, the state it holds.
+    b.innerHTML = lock ? (min ? LINE : SQUARE) : (min ? SQUARE : LINE);
     b.classList.toggle('locked', lock);
     b.setAttribute('aria-pressed', String(lock));
-    const name = p.dataset.name;
-    b.setAttribute('aria-label', `${s === MINIMISED ? 'Restore' : 'Minimise'} the ${name} widget`);
-    b.title = lock ? `Locked ${s === MINIMISED ? 'minimised' : 'open'}: right-click the title bar to unlock`
-      : `${s === MINIMISED ? 'Restore' : 'Minimise'} (or double-click the title bar)`;
+    b.setAttribute('aria-label', `${min ? 'Restore' : 'Minimise'} the ${p.dataset.name} widget`);
+    b.title = lock ? `Locked ${min ? 'minimised' : 'open'}: right-click the title bar to unlock`
+      : `${min ? 'Restore' : 'Minimise'} (or double-click the title bar)`;
   }
 
   // --- Fitting the column ---
 
+  const stretches = (p) => parseFloat(getComputedStyle(p).flexGrow) > 0;
   // The height a widget needs: its content, or for a widget that stretches to share the
   // leftover height (Layers and the like), its least height.
   function need(p) {
     const cs = getComputedStyle(p);
-    return parseFloat(cs.flexGrow) > 0 ? parseFloat(cs.minHeight) || 0 : p.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    return stretches(p) ? parseFloat(cs.minHeight) || 0 : p.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
   }
   function total() {
     const list = shown();
-    const gap = parseFloat(getComputedStyle(side).rowGap) || 0;
-    return list.reduce((sum, p) => sum + need(p), 0) + gap * Math.max(0, list.length - 1);
+    return list.reduce((sum, p) => sum + need(p), 0) + gap() * Math.max(0, list.length - 1);
   }
-  const room = () => side.clientHeight;
   const set = (p, s) => { info(p).state = s; draw(p); };
+  const heights = () => new Map(shown().map((p) => [p, p.getBoundingClientRect().height]));
+  const stop = () => { for (const p of shown()) for (const a of p.getAnimations()) if (a.id === 'height') a.cancel(); };
 
-  // Fits the widgets to the column. keep: the widget just used, never minimised here.
-  // Animates every widget whose height changes, from where it is now.
-  let animating = 0, pending = false;
-  function fit(keep = null) {
+  // Fits the widgets to the column. keep: the widget just used (by default the most recent),
+  // never minimised here. grow: a widget just opened, which grows from nothing.
+  function fit(keep = null, grow = null) {
     const list = shown();
-    keep ??= list.reduce((a, p) => (!a || lastUsed(p) > lastUsed(a) ? p : a), null); // the most recently used
-    const from = new Map(list.map((p) => [p, p.getBoundingClientRect().height]));
-    for (const p of list) for (const a of p.getAnimations()) a.cancel();
-    const space = room();
+    keep ??= list.reduce((a, p) => (!a || lastUsed(p) > lastUsed(a) ? p : a), null);
+    const from = heights();
+    if (grow) from.set(grow, 0);
+    stop();
+    const room = side.clientHeight;
     // Room to spare: restore widgets minimised to make room, most recently used first.
     for (const p of list.filter((q) => hasMin(q) && info(q).auto && !info(q).lock && stateOf(q) === MINIMISED).sort((a, b) => lastUsed(b) - lastUsed(a))) {
       set(p, NORMAL);
-      if (total() <= space) info(p).auto = false;
+      if (total() <= room) info(p).auto = false;
       else set(p, MINIMISED);
     }
     // Not enough room: minimise the least recently used.
-    while (total() > space) {
+    while (total() > room) {
       const p = list.filter((q) => q !== keep && hasMin(q) && !info(q).lock && stateOf(q) === NORMAL).sort((a, b) => lastUsed(a) - lastUsed(b))[0];
       if (!p) break;
       set(p, MINIMISED);
       info(p).auto = true;
     }
-    side.classList.toggle('over', total() > space + 0.5);
+    side.classList.toggle('over', total() > room + 0.5);
     save();
-    animateFrom(from);
+    slideFrom(from, grow);
   }
 
-  function animateFrom(from) {
-    if (reduceMotion.matches) return;
+  // Animates each widget from the height it had to the one it has now. Pinning both its least and
+  // most height does it for widgets that stretch as well as those that don't; the widgets
+  // below slide with it. A widget growing from nothing also closes the gap above it as it goes.
+  let animating = 0, pending = false;
+  function slideFrom(from, grow = null) {
+    if (!motion()) return;
     for (const [p, a] of from) {
       const b = p.getBoundingClientRect().height;
       if (p.hidden || Math.abs(a - b) < 1) continue;
+      const start = { minHeight: a + 'px', maxHeight: a + 'px' }, end = { minHeight: b + 'px', maxHeight: b + 'px' };
+      if (p === grow) { Object.assign(start, { marginTop: -gap() + 'px', opacity: 0 }); Object.assign(end, { marginTop: '0px', opacity: 1 }); }
       p.classList.add('anim');
       animating++;
-      const anim = p.animate([{ height: a + 'px' }, { height: b + 'px' }], { duration: ANIM_MS, easing: 'ease-out' });
+      const anim = p.animate([start, end], { duration: ANIM_MS, easing: EASE, id: 'height' });
+      anim.id = 'height';
       const done = () => {
         p.classList.remove('anim');
-        if (--animating === 0 && pending) { pending = false; requestAnimationFrame(() => fit()); }
+        if (--animating === 0 && pending) { pending = false; refit(); }
       };
       anim.onfinish = done;
       anim.oncancel = done;
     }
   }
 
+  // A widget closing: a gap of its height takes its place and closes up, so the rest slide.
+  function closeUp(p) {
+    const h = lastHeight.get(p);
+    if (!motion() || !h || !shown().length) return;
+    const gapEl = document.createElement('div');
+    gapEl.className = 'panel-gap';
+    side.insertBefore(gapEl, p);
+    const below = shown().some((q) => gapEl.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const margin = below ? 'marginBottom' : 'marginTop';
+    gapEl.animate([{ height: h + 'px', [margin]: '0px' }, { height: '0px', [margin]: -gap() + 'px' }], { duration: ANIM_MS, easing: EASE })
+      .onfinish = () => gapEl.remove();
+  }
+
   // Sizes change (content, the window, the column width): fit again, once the animations end.
   let queued = null;
-  function refit(keep = null) {
+  function refit() {
     if (animating) { pending = true; return; }
     if (queued) return;
-    queued = requestAnimationFrame(() => { queued = null; fit(keep); });
+    queued = requestAnimationFrame(() => { queued = null; fit(); });
   }
 
   // --- Changing state ---
 
   function toggle(p) {
     if (!hasMin(p) || info(p).lock) return;
-    const from = new Map(shown().map((q) => [q, q.getBoundingClientRect().height]));
-    for (const q of shown()) for (const a of q.getAnimations()) a.cancel();
+    const from = heights();
+    stop();
     set(p, stateOf(p) === MINIMISED ? NORMAL : MINIMISED);
     info(p).auto = false;
     touch(p);
     save();
-    animateFrom(from);
-    refit(p);
+    slideFrom(from);
+    refit();
   }
   function setLock(p, lock) {
     info(p).lock = lock;
@@ -158,67 +182,67 @@ const Widgets = (() => {
       prev = p;
     }
   }
-  function opened(p) {
-    if (!saved.order.includes(p.id)) saved.order.push(p.id); // first time: the bottom
-    arrange();
-    touch(p);
-    refit(p);
-  }
 
   // Dragging a title bar moves the widget in the stack; the others slide out of its way.
+  // Positions are the layout's (offsetTop), not where the sliding widgets are drawn, so the
+  // stack doesn't shuffle back and forth while they move. A widget below moves above once the
+  // dragged one's bottom edge passes its middle; one above moves below once the top edge does.
   function bindDrag() {
     let drag = null;
-    side.addEventListener('pointerdown', (e) => {
-      const head = e.target.closest('.panel-head');
-      if (!head || e.button !== 0 || e.target.closest(CONTROLS) || side.classList.contains('at-edge')) return;
-      drag = { p: head.parentElement, id: e.pointerId, y: e.clientY, on: false };
-    });
-    side.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
+    const at = (e) => e.clientY - side.getBoundingClientRect().top - side.clientTop + side.scrollTop; // in the column's layout
+    const mid = (q) => q.offsetTop + q.offsetHeight / 2;
+    function move(e) {
+      if (e.pointerId !== drag.id) return;
       const { p } = drag;
       if (!drag.on) {
         if (Math.abs(e.clientY - drag.y) < DRAG_PX) return;
         drag.on = true;
-        drag.grab = e.clientY - p.getBoundingClientRect().top;
-        p.setPointerCapture(e.pointerId);
+        drag.grab = drag.from - p.offsetTop; // where it was pressed
         p.classList.add('dragging');
         side.classList.add('reordering');
       }
-      // Where the pointer is among the other widgets' middles.
-      const others = shown().filter((q) => q !== p);
-      let at = others.findIndex((q) => { const r = q.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
-      if (at < 0) at = others.length;
-      if (others.length && at !== shown().indexOf(p)) {
+      const top = at(e) - drag.grab, bottom = top + p.offsetHeight;
+      const list = shown(), others = list.filter((q) => q !== p), i = list.indexOf(p);
+      const above = others.filter((q) => (list.indexOf(q) < i ? top > mid(q) : bottom > mid(q))).length;
+      if (above !== i) {
         const tops = new Map(others.map((q) => [q, q.getBoundingClientRect().top]));
-        p.style.transform = '';
-        side.insertBefore(p, at < others.length ? others[at] : others[others.length - 1].nextElementSibling);
-        if (!reduceMotion.matches) {
+        side.insertBefore(p, above < others.length ? others[above] : others[others.length - 1].nextElementSibling);
+        if (motion()) {
           for (const [q, t] of tops) {
             const d = t - q.getBoundingClientRect().top;
-            if (Math.abs(d) > 0.5) q.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: ANIM_MS, easing: 'ease-out' });
+            if (Math.abs(d) > 0.5) q.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: ANIM_MS, easing: EASE });
           }
         }
       }
-      p.style.transform = '';
-      p.style.transform = `translateY(${e.clientY - drag.grab - p.getBoundingClientRect().top}px)`;
-    });
-    const end = (e) => {
+      p.style.transform = `translateY(${top - p.offsetTop}px)`;
+    }
+    function end(e) {
       if (!drag || e.pointerId !== drag.id) return;
       const { p, on } = drag;
       drag = null;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', end);
+      document.removeEventListener('pointercancel', end);
       if (!on) return;
       p.classList.remove('dragging');
       side.classList.remove('reordering');
       const off = p.style.transform;
       p.style.transform = '';
-      if (!reduceMotion.matches && off) p.animate([{ transform: off }, { transform: 'none' }], { duration: ANIM_MS, easing: 'ease-out' });
+      if (motion() && off) p.animate([{ transform: off }, { transform: 'none' }], { duration: ANIM_MS, easing: EASE });
       const known = new Set(saved.order);
       saved.order = panels().map((q) => q.id).filter((id) => known.has(id) || id === p.id);
       touch(p);
       save();
-    };
-    side.addEventListener('pointerup', end);
-    side.addEventListener('pointercancel', end);
+    }
+    side.addEventListener('pointerdown', (e) => {
+      const head = e.target.closest('.panel-head');
+      if (drag || !head || e.button !== 0 || e.target.closest(CONTROLS) || side.classList.contains('at-edge')) return;
+      drag = { p: head.parentElement, id: e.pointerId, y: e.clientY, from: at(e), on: false };
+      // On the whole page: moving the widget in the stack would lose a pointer capture.
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    });
   }
 
   // --- Setting up ---
@@ -242,22 +266,32 @@ const Widgets = (() => {
     }
     arrange();
 
-    // A widget opens or closes wherever main.js shows or hides it.
+    // A widget opens or closes wherever main.js shows or hides it. This runs before the page
+    // is drawn again, so a widget can start its slide from where it was.
     new MutationObserver((records) => {
       for (const r of records) {
-        if (r.target.parentNode !== side) continue;
-        if (!r.target.hidden && r.oldValue !== null) opened(r.target);
-        else if (r.target.hidden && r.oldValue === null) refit();
+        const p = r.target;
+        if (p.parentNode !== side || !p.classList.contains('panel')) continue;
+        if (!p.hidden && r.oldValue !== null) {
+          if (!saved.order.includes(p.id)) saved.order.push(p.id); // first time: the bottom
+          arrange();
+          touch(p);
+          fit(p, p);
+        } else if (p.hidden && r.oldValue === null) {
+          closeUp(p);
+          fit();
+        }
       }
     }).observe(side, { subtree: true, attributes: true, attributeFilter: ['hidden'], attributeOldValue: true });
 
     // A widget's content changing height, or the column's own size.
-    const ro = new ResizeObserver((entries) => {
-      const p = entries.map((en) => en.target.closest?.('.panel')).find((q) => q && !q.hidden && parseFloat(getComputedStyle(q).flexGrow) === 0);
-      refit(p || null);
-    });
+    const ro = new ResizeObserver(() => refit());
     ro.observe(side);
     for (const p of panels()) for (const c of p.children) ro.observe(c);
+    const sizes = new ResizeObserver((entries) => {
+      for (const en of entries) { const h = en.borderBoxSize?.[0]?.blockSize; if (h) lastHeight.set(en.target, h); }
+    });
+    for (const p of panels()) sizes.observe(p);
 
     // Using a widget makes it the most recent.
     side.addEventListener('pointerdown', (e) => { const p = e.target.closest('.panel'); if (p) touch(p); }, true);
@@ -270,8 +304,7 @@ const Widgets = (() => {
       toggle(head.parentElement);
     });
     side.addEventListener('contextmenu', (e) => {
-      const head = e.target.closest('.panel-head');
-      const p = head?.parentElement;
+      const p = e.target.closest('.panel-head')?.parentElement;
       if (!p || !hasMin(p)) return;
       e.preventDefault();
       const { lock } = info(p);

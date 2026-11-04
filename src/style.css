@@ -108,7 +108,13 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
 .side.over { overflow-y: auto; scrollbar-width: thin; }
 .side.over > .panel { flex-shrink: 0; }
-#datePanel.min .panel-head { border-bottom: 0; }
+.panel-gap { flex: none; pointer-events: none; }
+.layers-panel.min { flex: none; min-height: 0; }
+/* Minimised to the title bar alone. */
+:is(#datePanel, #layersPanel, #blocksPanel, #lightsPanel, #walkPanel).min .panel-head,
+#streamlinesPanel.min:has(#streamlineLegend:empty) .panel-head { border-bottom: 0; }
+#streamlinesPanel.min #streamlineLegend:empty { display: none; }
+#weatherPanel.min #weatherRead > :not(.min-row) { display: none; }
 #weatherPanel.min:has(#weatherRead[hidden]) .sun-body { display: none; }
 #weatherPanel.min:has(#weatherRead[hidden]) .panel-head { border-bottom: 0; }
 .layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */

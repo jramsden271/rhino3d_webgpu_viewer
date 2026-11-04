@@ -173,16 +173,24 @@ these panels to widen the column they share (double-click the edge for the defau
 
 Widgets can be arranged within the column:
 
-- **Minimise.** The Date and Weather widgets have a minimised state: Date shows its date and time in
-  the title bar, and Weather keeps its readings without the View choices. The **_** button
-  minimises a widget and the **□** button restores it. Double-clicking the title bar does the same.
+- **Minimise.** The **_** button minimises a widget and the **□** button restores it. Double-clicking
+  the title bar does the same. Each widget has its own minimised design:
+  - **Date** shows its date and time in the title bar.
+  - **Weather** keeps one row of readings: temperature, humidity and wind, or the sun's without a
+    weather file.
+  - **Thermal comfort** keeps its UTCI reading.
+  - **Sun exposure** keeps its switch, progress, status and legend.
+  - **CFD streamlines** and **CFD map** keep their switch and legends.
+  - **Layers**, **Block definitions**, **Lights** and **Walk** keep their title bar.
 - **Making room.** When the open widgets need more height than the column has, the ones used least
   recently are minimised. They are restored when room comes back. If that still isn't enough, the
   column scrolls.
 - **Lock.** Right-click the title bar to **Lock widget**, which keeps the widget minimised or open as it
-  is. Its button then looks pressed in. Right-click again to unlock it.
+  is. Its button then looks pressed in, showing the state it holds: **_** for minimised, **□** for
+  open. Right-click again to unlock it.
 - **Reorder.** Drag a title bar up or down to move the widget in the stack. A widget opened for the
-  first time goes to the bottom, and one opened again goes back to its place.
+  first time goes to the bottom, and one opened again goes back to its place. The widgets below
+  slide as one opens, closes or changes size.
 
 The order, and each widget's state and lock, are remembered for every model.
 
