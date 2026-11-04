@@ -96,6 +96,7 @@ if (prefs.drive) {
   if (P.cam >= 0 && P.cam < DRIVE_CAMS.length) D.cam = P.cam;
   D.headlights = P.headlights === true;
   D.sound = P.sound !== false;
+  D.music = P.music !== false;
 }
 // Walking or driving: the frame round the window, the thumb stick, drag to look.
 const moving = () => walker.active || driver.active;
@@ -3762,7 +3763,7 @@ function showDriveHelp() {
     <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · braking while steering pulls the handbrake, to slide round · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>M</kbd> sounds · <kbd>F</kbd> gets out · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
     <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
-    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine and crashes.</p>
+    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine, crashes and the horn · <b>Music</b>: the car radio, an 80s synthwave track, while you drive.</p>
     <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car, or press <kbd>F</kbd> within 5 m of it, to drive it again. Stopping walking takes the car away too.</p>` });
 }
 
@@ -3779,6 +3780,7 @@ function syncDrivePanel() {
   $('driveShadows').checked = S.shadows;
   $('driveHeadlights').checked = S.headlights;
   $('driveSound').checked = S.sound;
+  $('driveMusic').checked = S.music;
   syncDriveSpeed();
 }
 
@@ -3790,6 +3792,7 @@ function bindDrivePanel() {
   $('driveShadows').addEventListener('change', () => { S.shadows = $('driveShadows').checked; changed(); redraw(); canvas.focus(); });
   $('driveHeadlights').addEventListener('change', () => { S.headlights = $('driveHeadlights').checked; changed(); syncLightsPanel(); redraw(); canvas.focus(); });
   $('driveSound').addEventListener('change', () => { S.sound = $('driveSound').checked; changed(); canvas.focus(); });
+  $('driveMusic').addEventListener('change', () => { S.music = $('driveMusic').checked; changed(); canvas.focus(); });
   $('driveGetOut').addEventListener('click', exitVehicle);
   $('driveHelp').addEventListener('click', showDriveHelp);
   $('driveExit').addEventListener('click', () => { if (driver.active) leaveWalk(); });

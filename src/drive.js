@@ -261,8 +261,9 @@ class Driver {
     this.input = { gas: false, brake: false, left: false, right: false, horn: false };
     this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
     // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on, sounds.
-    this.settings = { shadows: true, cam: 0, headlights: false, sound: true };
+    this.settings = { shadows: true, cam: 0, headlights: false, sound: true, music: true };
     this.sound = new DriveSound();
+    this.music = new DriveMusic(() => this.sound.ensure()?.ac || null); // music.js: the car radio
     this.parked = false; // out of the car, which stays where it stopped
     this.lampsShown = '';
   }
@@ -318,6 +319,7 @@ class Driver {
     this.active = false;
     this.releaseAll();
     this.sound.silence();
+    this.music.set(false);
     const { camera, renderer } = this.ctx;
     renderer.setActorPose(null);
     if (this.fov0) camera.fov = this.fov0;
@@ -335,6 +337,7 @@ class Driver {
     this.parked = true;
     this.releaseAll();
     this.sound.silence();
+    this.music.set(false);
     Object.assign(this, { vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, braking: false, reversing: false, shake: 0 });
     if (this.fov0) this.ctx.camera.fov = this.fov0;
     this.place3d(true);
@@ -597,6 +600,7 @@ class Driver {
     this.syncLamps();
     this.sound.engine(Math.abs(this.vF) * 3.6, inp.gas, this.settings.sound);
     this.sound.horn(inp.horn && this.settings.sound);
+    this.music.set(this.settings.music);
     this.updateCamera(dt);
   }
 
