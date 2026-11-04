@@ -157,8 +157,8 @@ function carGeometry() {
 // low-pass filter for the engine, its pitch rising through five gears; filtered noise and a falling
 // thud for a crash. The audio starts with driving, which always follows a click or a key press.
 const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
-const WIND_FROM = 80;   // km/h: the wind starts above this...
-const WIND_LEVEL = 0.042; // ...and is this loud at the top speed: under the engine
+const WIND_FROM = 60;   // km/h: the wind starts above this...
+const WIND_LEVEL = 0.053; // ...and is this loud at the top speed: under the engine
 class DriveSound {
   constructor() { this.audio = null; this.failed = false; }
 
