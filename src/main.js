@@ -3671,7 +3671,10 @@ function syncComfortPanel() {
     return ColourScales.css(scale, mid);
   };
   $('comfortRead').style.setProperty('--cat', ColourScales.css(scale, r.value));
-  setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat">${cat.name}</span></div>
+  // Minimised, the sunlight state (without the radiation) takes the category's place.
+  const sunWord = sunHtml.match(/<b>(.*?)<\/b>/)?.[1];
+  const sunChip = sunWord ? `<span class="sun-state utci-sun ${sunCls}" data-min-only><span class="dot"></span><span>${sunWord}</span></span>` : '';
+  setHtml($('comfortRead'), `<div class="utci-top"><span class="utci-val">${f(r.value)}<small> °C</small></span><span class="utci-cat" data-full>${cat.name}</span>${sunChip}</div>
     <div class="utci-scale">${UTCI_CATEGORIES.map((c, i) => `<span style="background:${cellColour(c, i)}"${c === cat ? ' class="on"' : ''} title="${c.name}"></span>`).join('')}</div>
     ${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}
     ${comfortCloudNote(r)}`);

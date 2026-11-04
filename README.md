@@ -182,7 +182,8 @@ Widgets can be arranged within the column:
   - **Date** shows its date and time in the title bar.
   - **Weather** keeps one row of readings: temperature, humidity and wind, or the sun's without a
     weather file.
-  - **Thermal comfort** keeps its UTCI reading.
+  - **Thermal comfort** keeps its UTCI reading, with whether the camera is in sunlight or shade in
+    place of the stress category.
   - **Sun exposure** keeps its switch, progress and legend, with the button that picks the layer from the model in the title bar.
   - **CFD streamlines** and **CFD map** keep their switch and legends.
   - **Layers** and **Blocks** keep a list up to 300 px tall, without the filter.
