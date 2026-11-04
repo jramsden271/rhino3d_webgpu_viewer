@@ -158,7 +158,7 @@ function carGeometry() {
 // thud for a crash. The audio starts with driving, which always follows a click or a key press.
 const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
 const WIND_FROM = 80;   // km/h: the wind starts above this...
-const WIND_LEVEL = 0.06; // ...and is this loud at the top speed: under the engine
+const WIND_LEVEL = 0.042; // ...and is this loud at the top speed: under the engine
 class DriveSound {
   constructor() { this.audio = null; this.failed = false; }
 
@@ -175,18 +175,28 @@ class DriveSound {
       o1.start(); o2.start();
       const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), ch = noise.getChannelData(0);
       for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
-      // Wind: two seconds of white noise looping, through a low-pass that opens with speed, its
-      // level swelling and easing in slow gusts.
-      const wb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), wd = wb.getChannelData(0);
-      for (let i = 0; i < wd.length; i++) wd[i] = Math.random() * 2 - 1;
-      const ws = ac.createBufferSource(); ws.buffer = wb; ws.loop = true;
-      const wf = ac.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 500; wf.Q.value = 0.7;
+      // Wind: brown noise (white noise integrated, so mostly low rumble) through a low-pass that
+      // opens a little with speed, its level swelling and easing in slow gusts. Two long loops of
+      // different lengths play together, so the ear never hears a pattern repeat.
+      const wf = ac.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 180; wf.Q.value = 0.5;
+      for (const secs of [9.1, 13.3]) {
+        const wb = ac.createBuffer(1, Math.floor(ac.sampleRate * secs), ac.sampleRate), wd = wb.getChannelData(0);
+        let b = 0;
+        for (let i = 0; i < wd.length; i++) { b = (b + 0.02 * (Math.random() * 2 - 1)) / 1.02; wd[i] = b; }
+        // Seamless: take away the drift from the first sample to the last, so the loop joins.
+        const d0 = wd[0], d1 = wd[wd.length - 1];
+        let peak = 0;
+        for (let i = 0; i < wd.length; i++) { wd[i] -= d0 + ((d1 - d0) * i) / (wd.length - 1); peak = Math.max(peak, Math.abs(wd[i])); }
+        for (let i = 0; i < wd.length; i++) wd[i] /= peak;
+        const ws = ac.createBufferSource(); ws.buffer = wb; ws.loop = true; ws.connect(wf); ws.start(0, Math.random() * secs);
+      }
       const wg = ac.createGain(); wg.gain.value = 0;
       const gust = ac.createGain(); gust.gain.value = 1;
-      const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 0.23; lg.gain.value = 0.3;
-      lfo.connect(lg); lg.connect(gust.gain);
-      ws.connect(wf); wf.connect(wg); wg.connect(gust); gust.connect(ac.destination);
-      ws.start(); lfo.start();
+      const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 0.13; lg.gain.value = 0.3;
+      const lfo2 = ac.createOscillator(), lg2 = ac.createGain(); lfo2.frequency.value = 0.047; lg2.gain.value = 0.2;
+      lfo.connect(lg); lg.connect(gust.gain); lfo2.connect(lg2); lg2.connect(gust.gain);
+      wf.connect(wg); wg.connect(gust); gust.connect(ac.destination);
+      lfo.start(); lfo2.start();
       this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0, wind: { f: wf, g: wg } };
     } catch (_) { this.failed = true; }
     return this.audio;
@@ -203,7 +213,7 @@ class DriveSound {
     // The wind: nothing below WIND_FROM, then rising more and more steeply with the speed beyond it.
     const w = on ? Math.max(0, Math.min(1, (kmh - WIND_FROM) / (DRIVE.TOP - WIND_FROM))) : 0;
     A.wind.g.gain.setTargetAtTime(WIND_LEVEL * w ** 1.5, t, 0.3);
-    A.wind.f.frequency.setTargetAtTime(500 + 1300 * w, t, 0.3);
+    A.wind.f.frequency.setTargetAtTime(180 + 420 * w, t, 0.3);
     if (!on) { A.gn.gain.setTargetAtTime(0, t, 0.08); return; }
     let gi = 1;
     while (gi < GEARS.length - 1 && kmh >= GEARS[gi]) gi++;
