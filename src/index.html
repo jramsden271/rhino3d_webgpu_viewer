@@ -9,6 +9,7 @@
 <body>
 <div id="app">
   <canvas id="gfx" tabindex="0" aria-label="3D model view"></canvas>
+  <div id="walkStick" class="walk-stick" aria-hidden="true"><div></div></div>
 
   <header class="chrome top-left">
     <button class="brand" id="btnHome" title="Home: open another file or a recent one"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg><span>3DM Viewer</span></button>
@@ -47,22 +48,22 @@
       <g id="compassDial">
         <path class="compass-arrow" d="M0-12 6.5 11 0 7-6.5 11Z"/>
         <g class="compass-point" data-bearing="90">
-          <title>East: double-click to face east</title>
+          <title>East: click to face east</title>
           <circle cx="24" cy="0" r="9"/>
           <path class="compass-tick" d="M26 0h4"/>
         </g>
         <g class="compass-point" data-bearing="180">
-          <title>South: double-click to face south</title>
+          <title>South: click to face south</title>
           <circle cx="0" cy="24" r="9"/>
           <path class="compass-tick" d="M0 26v4"/>
         </g>
         <g class="compass-point" data-bearing="270">
-          <title>West: double-click to face west</title>
+          <title>West: click to face west</title>
           <circle cx="-24" cy="0" r="9"/>
           <path class="compass-tick" d="M-26 0h-4"/>
         </g>
         <g id="compassN" class="compass-point" data-bearing="0">
-          <title>North: double-click to face north</title>
+          <title>North: click to face north</title>
           <circle cx="0" cy="-21" r="11"/>
           <text x="0" y="-21">N</text>
         </g>
@@ -246,7 +247,7 @@
   </div>
 
   <div id="matDialog" class="chrome popover" hidden role="dialog" aria-labelledby="matTitle">
-    <div class="panel-head"><span id="matTitle">Layer material</span><button class="x" id="matClose" aria-label="Close">×</button></div>
+    <div class="panel-head"><span id="matTitle">Layer material</span><span class="panel-actions"><button class="x" id="matClose" aria-label="Close" title="Close">×</button></span></div>
     <div class="pop-body">
       <div class="fine" id="matPath"></div>
       <div class="fine" id="matSource"></div>
@@ -262,7 +263,7 @@
   </div>
 
   <div id="blockDialog" class="chrome popover" hidden role="dialog" aria-labelledby="blockTitle">
-    <div class="panel-head"><span id="blockTitle" class="popover-title"></span><button class="x" id="blockClose" aria-label="Close">×</button></div>
+    <div class="panel-head"><span id="blockTitle" class="popover-title"></span><span class="panel-actions"><button class="x" id="blockClose" aria-label="Close" title="Close">×</button></span></div>
     <div class="pop-body">
       <label class="stack-row">Magic block <select id="blockMagic"></select></label>
       <div class="fine" id="blockMagicHint"></div>
@@ -279,7 +280,7 @@
 
   <div id="inspectDot" class="inspect-dot" aria-hidden="true"></div>
   <div id="inspect" class="chrome inspect" hidden role="dialog" aria-labelledby="insTitle">
-    <div class="inspect-head"><span class="swatch" id="insSwatch"></span><b id="insTitle"></b><button class="x" id="insClose" aria-label="Close">×</button></div>
+    <div class="inspect-head"><span class="swatch" id="insSwatch"></span><b id="insTitle"></b><span class="panel-actions"><button class="x" id="insClose" aria-label="Close" title="Close">×</button></span></div>
     <dl id="insBody"></dl>
     <div class="inspect-actions">
       <span class="fine">Shift-click to add or remove objects</span>
@@ -292,7 +293,7 @@
   <div id="layerMenu" class="chrome menu" role="menu" hidden></div>
 
   <div id="fileDialog" class="chrome popover file-dialog" hidden role="dialog" aria-labelledby="fileTitle">
-    <div class="panel-head"><span id="fileTitle"></span><button class="x" id="fileClose" aria-label="Close">×</button></div>
+    <div class="panel-head"><span id="fileTitle"></span><span class="panel-actions"><button class="x" id="fileClose" aria-label="Close" title="Close">×</button></span></div>
     <div class="pop-body">
       <dl id="fileBody" class="props"></dl>
       <div class="north">
@@ -310,7 +311,7 @@
     </div>
   </div>
   <div id="notices" class="notices"></div>
-  <div id="walkHint" class="chrome walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</div>
+  <div id="walkHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to walk · drag on the right to look · Exit in the Walk panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</span></div>
   <div id="walkPlaceHint" class="chrome walk-hint" hidden>Click where to start walking · drag to move the view · <kbd>Esc</kbd> to cancel</div>
   <div class="walk-frame"></div>
   <div id="walkFade" class="walk-fade"></div>
@@ -356,7 +357,7 @@
         <dt>Blocks</dt><dd>The Blocks widget lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Results</dt><dd>The file icon at the top left adds results files to the model · once one is read, <b>Results</b> on the toolbar opens what it holds · <b>CFD streamlines</b> lists them, coloured by the Lawson comfort criteria · <b>CFD map</b> lists the maps with a choice of result for each · hold the mouse over a map to read its results</dd>
-        <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · double-click the <b>N</b> or a tick to face north, east, south or west</dd>
+        <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · click the <b>N</b> or a tick to face north, east, south or west</dd>
         <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> date · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>

@@ -277,11 +277,11 @@ const Widgets = (() => {
     menu = opts.showMenu;
     side = document.querySelector('.side');
     load();
+    // The ? and × in every title bar, widgets' and windows' alike, as drawn shapes.
+    for (const b of document.querySelectorAll(':is(.panel-head, .inspect-head) .panel-actions > .x')) b.innerHTML = b.classList.contains('q') ? HELP : CLOSE;
     for (const p of panels()) {
       if (!p.id) continue;
       const head = p.querySelector('.panel-head');
-      for (const b of head.querySelectorAll('.panel-actions .x.q')) b.innerHTML = HELP;
-      for (const b of head.querySelectorAll('.panel-actions .x[id$="Close"]')) b.innerHTML = CLOSE;
       p.dataset.name = p.getAttribute('aria-label') || head.firstElementChild.textContent.trim();
       p._moves = [...p.querySelectorAll('[data-min-move]')];
       for (const el of p._moves) { el._home = document.createComment(` ${el.id} `); el.before(el._home); }
@@ -343,5 +343,5 @@ const Widgets = (() => {
     bindDrag();
   }
 
-  return { init, NORMAL, MINIMISED };
+  return { init, NORMAL, MINIMISED, icons: { help: HELP, close: CLOSE } };
 })();

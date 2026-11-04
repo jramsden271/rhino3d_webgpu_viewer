@@ -32,6 +32,7 @@ const WALK = {
   MIN_FOV: 10,      // field of view range (degrees) for zooming with the mouse wheel
   MAX_FOV: 75,
   RUN: 3,           // Shift runs at this times the walking speed
+  STICK_RUN: 1.6,   // the thumb stick runs when pushed this far past its rim (1)
   ACCEL: 0.08,      // time constant for speeding up and slowing down
   LOOKAHEAD: 0.1,   // seconds of travel the probes look ahead (beyond REACH and GROUND_HALF)
   SUBSTEP: 0.1,     // longest single move, so thin walls cannot be stepped over
@@ -66,6 +67,7 @@ class Walker {
     this.ctx = ctx;
     this.active = false;
     this.keys = new Set();
+    this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
     // Set from the Walk panel: walking speed in m/s, walls block, no gravity.
     this.settings = { speed: 1.4, collide: true, fly: false };
   }
@@ -96,6 +98,7 @@ class Walker {
     this.active = true;
     this.pending = true;
     this.keys.clear();
+    this.stick = null;
     Object.assign(this, { pos: [eye[0], eye[1]], foot: eye[2] - WALK.EYE * u, vz: 0, air: 0, grounded: false, entryFall: false,
       lag: 0, lockUntil: 0, stable: [], lastStable: 0, map: null, vel: [0, 0], level: false, jerk: false, crouch: 0, bob: 0, bobHeight: 0, bobPhase: 0, fallFrom: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
     this.fov0 = camera.fov;
@@ -126,6 +129,7 @@ class Walker {
     if (!this.active) return;
     this.active = false;
     this.keys.clear();
+    this.stick = null;
     if (this.fov0) this.ctx.camera.fov = this.fov0;
     this.ctx.onExit();
   }
@@ -139,7 +143,7 @@ class Walker {
     else { this.keys.add(k); if (MOVE_KEYS[k]) this.skipFall(); }
     return true;
   }
-  blur() { this.keys.clear(); }
+  blur() { this.keys.clear(); this.stick = null; }
 
   // Jumps from the ground (not while flying, where E rises instead).
   jump() { if (!this.settings.fly) this.kick(WALK.JUMP); }
@@ -271,7 +275,15 @@ class Walker {
     const f = camera.forward, fl = Math.hypot(f[0], f[1]) || 1, fwd = [f[0] / fl, f[1] / fl], right = [fwd[1], -fwd[0]];
     let mf = 0, mr = 0;
     if (now >= this.lockUntil) for (const k of this.keys) if (MOVE_KEYS[k]) { mf += MOVE_KEYS[k][0]; mr += MOVE_KEYS[k][1]; }
-    const ml = Math.hypot(mf, mr), sp = ml > 0 ? this.speed() / ml : 0, k = 1 - Math.exp(-dt / WALK.ACCEL);
+    let ml = Math.hypot(mf, mr), sp = ml > 0 ? this.speed() / ml : 0;
+    // The thumb stick, when no key is held: slower near its middle, full speed at its rim, and a
+    // run when pushed well past it.
+    if (!ml && this.stick && now >= this.lockUntil) {
+      [mf, mr] = this.stick;
+      ml = Math.hypot(mf, mr);
+      sp = ml > 0 ? (this.settings.speed * (ml > WALK.STICK_RUN ? WALK.RUN : Math.min(1, ml))) / ml : 0;
+    }
+    const k = 1 - Math.exp(-dt / WALK.ACCEL);
     const want = [(fwd[0] * mf + right[0] * mr) * sp, (fwd[1] * mf + right[1] * mr) * sp];
     this.vel = now < this.lockUntil ? [0, 0] : [this.vel[0] + (want[0] - this.vel[0]) * k, this.vel[1] + (want[1] - this.vel[1]) * k];
     if (!ml && Math.hypot(...this.vel) < 0.02) this.vel = [0, 0];

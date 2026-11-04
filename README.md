@@ -39,8 +39,8 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Focus on a point | Double-click a surface | |
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |
-| Face north, east, south or west | Compass: double-click the N or a tick | |
-| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
+| Face north, east, south or west | Compass: click the N or a tick | |
+| Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
@@ -55,7 +55,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
-carries on outside the compass, where it is easier to control. Double-click its **N**, or the
+carries on outside the compass, where it is easier to control. Click its **N**, or the
 tick for east, south or west, to turn the view to face that way, keeping its tilt.
 
 The **camera button** on the toolbar shows the current view and opens a list of Top, Elevation, Perspective and Walk, with any views
@@ -103,6 +103,8 @@ view, from 10° to 75°; it goes back to normal when you stop walking.
 `Space` jumps (about 0.6 m, then gravity brings you down). Holding `E` rises and `Q` sinks
 at a steady 2 m/s (6 m/s with `Shift`), ignoring gravity while held; letting go of `E` drops
 you again, and `Q` stops on the ground.
+
+On a touch screen, a faint thumb stick sits at the left. Drag anywhere on the left half of the view to walk: the stick comes up under your finger, slow near its middle and full speed at its rim, and pushing well past the rim runs. Drag on the right half to look; both thumbs can work at once. A tap on either half still selects.
 
 Starting a walk opens the **Walk panel**. Closing it does not stop walking; pick Walk in the
 camera list again to bring it back. Its **Speed** slider sets the walking speed, 0.5 to 15 m/s

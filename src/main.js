@@ -63,7 +63,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
+  onExit: () => { if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -2709,6 +2709,9 @@ function openLocationDialog() {
 // Pointer / keyboard input
 
 const pointers = new Map();
+// Walking on a touch screen: the finger on the thumb stick, kept apart from the ones that look.
+let stick = null; // { id, x, y, moved }
+const STICK_R = 55;
 let drag = null, pivot = null, wheelZoom = null, clickTimer = 0;
 
 const toDevice = (e) => {
@@ -2990,9 +2993,14 @@ function bindExposurePanel() {
 function bindPointer() {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  window.addEventListener('pointerdown', (e) => document.body.classList.toggle('touch', e.pointerType === 'touch'), true);
   canvas.addEventListener('pointerdown', (e) => {
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
+    if (walker.active && e.pointerType === 'touch' && !stick) {
+      const r = canvas.getBoundingClientRect();
+      if (e.clientX < r.left + r.width / 2) { startStick(e); return; }
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1 && walker.active) {
       // Pedestrian mode: any button (or one finger) drags to look.
@@ -3019,6 +3027,7 @@ function bindPointer() {
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    if (stick && e.pointerId === stick.id) { moveStick(e); return; }
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
     if ((walker.placing || expo.picking) && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
@@ -3047,6 +3056,12 @@ function bindPointer() {
   });
 
   const end = (e) => {
+    if (stick && e.pointerId === stick.id) {
+      // A tap there, without moving, selects as a tap anywhere else does.
+      if (!stick.moved && e.type === 'pointerup') pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, false));
+      endStick();
+      return;
+    }
     pointers.delete(e.pointerId);
     // A left click or tap without dragging selects the object under the pointer.
     // While choosing where to start walking, it starts there instead.
@@ -3152,13 +3167,13 @@ function turnByDial(e) {
 }
 
 // Dragging the compass turns it like a dial, and the view with it. The drag only starts once the
-// pointer has moved, so double-clicks still reach the N and the ticks, and it carries on outside
-// the compass, where the angle is easier to control.
+// pointer has moved, so a click (a press and release without moving) on the N or a tick faces that
+// way, and it carries on outside the compass, where the angle is easier to control.
 function bindCompass() {
   const el = $('compass');
   let drag = null;
   el.addEventListener('pointerdown', (e) => {
-    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: dialAngle(el, e), moved: false };
+    if (model && e.button === 0) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, at: dialAngle(el, e), moved: false, point: e.target.closest('.compass-point') };
   });
   window.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -3175,11 +3190,39 @@ function bindCompass() {
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
+    if (e.type === 'pointerup' && !drag.moved && drag.point) faceBearing(+drag.point.dataset.bearing);
     drag = null;
     el.classList.remove('dragging');
   };
   window.addEventListener('pointerup', end);
   window.addEventListener('pointercancel', end);
+}
+
+function startStick(e) {
+  stick = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+  const el = $('walkStick'), r = el.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
+  el.style.left = e.clientX - r.left + 'px';
+  el.style.top = e.clientY - r.top + 'px';
+  el.classList.add('active');
+  walker.skipFall();
+}
+
+function moveStick(e) {
+  const dx = e.clientX - stick.x, dy = e.clientY - stick.y, d = Math.hypot(dx, dy);
+  if (d > 6) stick.moved = true;
+  if (!stick.moved) return;
+  walker.stick = [-dy / STICK_R, dx / STICK_R];
+  const k = d > STICK_R ? STICK_R / d : 1, el = $('walkStick');
+  el.firstElementChild.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+  el.classList.toggle('run', d / STICK_R > WALK.STICK_RUN);
+}
+
+function endStick() {
+  stick = null;
+  walker.stick = null;
+  const el = $('walkStick');
+  el.classList.remove('active', 'run');
+  el.style.left = el.style.top = el.firstElementChild.style.transform = '';
 }
 
 function pinchInfo() {
@@ -3519,6 +3562,7 @@ function startWalkAt(e) {
 
 function showWalkHelp() {
   Dialog.open({ title: 'Walking', html: true, width: 420, body: `<p><b>Walk</b> in the camera list, or <kbd>4</kbd>, starts walking. The figure then follows the cursor, with a yellow circle on the spot below it: click to stand there, with your eyes 1.5 m above the ground (on a wall, you stand at its foot, on your side). Until you click you can still move the view; <kbd>Esc</kbd> cancels. With a perspective camera already within 3 m of the ground, you start walking where you are. Closing this panel does not stop you: pick Walk again to bring it back.</p>
+    <p>On a touch screen, drag on the left half of the view to walk: a thumb stick comes up under your finger, slow near its middle and full speed at its rim, and pushing well past the rim runs. Drag on the right half to look, with both thumbs at once if you like. <b>Exit</b> in this panel stops walking.</p>
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> to jump · hold <kbd>E</kbd> to rise and <kbd>Q</kbd> to sink · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> or another camera to stop</p>
     <p>You climb steps and anything up to 1 m high; higher obstacles block the way and you slide along them. Over a drop you pause for a moment, then fall; a fall with nothing below takes you back to where you last stood. Hidden layers and vegetation are walked through.</p>
     <p><b>Speed</b>: Shift runs at three times it · <b>Collision detection</b> off walks through walls (you still follow the ground) · <b>Fly</b> turns gravity off, lifting you a few metres if you are standing: you hover where <kbd>E</kbd> and <kbd>Q</kbd> leave you, stay level off edges, and <kbd>Space</kbd> does not jump. Whether you are standing in sunlight shows in the Thermal comfort panel (<b>UTCI</b> on the toolbar).</p>` });
@@ -3900,7 +3944,6 @@ function bindUi() {
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
-  document.querySelectorAll('.compass-point').forEach((p) => p.addEventListener('dblclick', () => faceBearing(+p.dataset.bearing)));
   bindCompass();
   $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));

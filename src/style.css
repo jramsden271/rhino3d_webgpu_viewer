@@ -211,6 +211,7 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 
 .inspect { position: absolute; top: 0; left: 0; width: max-content; min-width: 300px; max-width: min(800px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; z-index: 4; padding: 0 0 8px; }
 .inspect-head { position: sticky; top: 0; cursor: move; user-select: none; touch-action: none; display: flex; align-items: center; gap: 8px; padding: 9px 8px 8px 12px; background: var(--surface-solid); border-bottom: 1px solid var(--border); }
+.inspect-head .panel-actions { margin: -9px -8px -8px 0; }
 .inspect-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspect dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; padding: 8px 12px 0; font-size: 12px; }
 .inspect dt { color: var(--muted); white-space: nowrap; }
@@ -320,6 +321,15 @@ input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] 
 /* Pedestrian mode */
 .walk-hint { left: 50%; bottom: 64px; transform: translateX(-50%); padding: 6px 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .walk-hint kbd { margin-right: 2px; color: var(--text); }
+body:not(.touch) .touch-only, body.touch .keys-only { display: none; }
+/* The thumb stick on touch screens: a faint ring at rest; a touch on the left half of the view
+   brings it under the thumb, and the knob follows the thumb to its rim. */
+.walk-stick { position: absolute; left: 70px; top: 42%; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; pointer-events: none; display: none;
+  border: 2px solid rgba(255, 255, 255, 0.5); background: rgba(20, 24, 31, 0.12); opacity: 0.45; transition: opacity 0.2s; }
+.walk-stick > div { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255, 255, 255, 0.75); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.walk-stick.active { opacity: 1; transition: none; }
+.walk-stick.run > div { background: var(--accent); }
+body.walking.touch .walk-stick { display: block; }
 .walk-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
 .walk-fade.on { opacity: 0.6; transition: none; }
 .walk-fade.dark { opacity: 1; transition: opacity 0.25s; }
@@ -386,8 +396,8 @@ body.walking .walk-frame { display: block; }
 .fatal { background: linear-gradient(#eef0f3, #c8ced6); }
 
 @media (max-width: 720px) {
-  .side { width: auto; left: 12px; top: auto; height: 55vh; }
-  .side.over { width: auto; left: 0; right: 0; padding: 0 12px 24px; height: calc(55vh + 24px); }
+  .side { width: auto; left: 12px; top: auto; height: 55vh; justify-content: flex-end; } /* widgets sit low, near the thumb */
+  .side.over { justify-content: flex-start; width: auto; left: 0; right: 0; padding: 0 12px 24px; height: calc(55vh + 24px); }
   .stats { display: none; }
   .brand span { display: none; }
 }

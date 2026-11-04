@@ -14,7 +14,7 @@ class Dialog {
     const back = (this.back = document.createElement('div'));
     back.className = 'dlg-backdrop';
     back.innerHTML = `<div class="dlg chrome" role="dialog" aria-modal="true">
-      <div class="panel-head"><span class="dlg-title"></span><button class="x" aria-label="Close">×</button></div>
+      <div class="panel-head"><span class="dlg-title"></span><span class="panel-actions"><button class="x" aria-label="Close" title="Close">${Widgets.icons.close}</button></span></div>
       <div class="dlg-body"></div><div class="dlg-actions"></div></div>`;
     const box = (this.box = back.firstElementChild);
     box.style.width = `min(${width}px, calc(100vw - 32px))`;
@@ -36,13 +36,11 @@ class Dialog {
     const x = box.querySelector('.x');
     x.addEventListener('click', () => this.close(null));
     if (help) {
-      const acts = document.createElement('span'), q = document.createElement('button');
-      acts.className = 'panel-actions';
-      Object.assign(q, { className: 'x q', textContent: '?', title: `About ${title}` });
+      const q = document.createElement('button');
+      Object.assign(q, { className: 'x q', innerHTML: Widgets.icons.help, title: `About ${title}` });
       q.setAttribute('aria-label', `About ${title}`);
       q.addEventListener('click', help);
-      x.replaceWith(acts);
-      acts.append(q, x);
+      x.before(q);
     }
     back.addEventListener('pointerdown', (e) => { if (e.target === back) this.close(null); });
     this.onKey = (e) => {
