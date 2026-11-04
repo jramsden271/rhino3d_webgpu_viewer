@@ -157,6 +157,8 @@ function carGeometry() {
 // low-pass filter for the engine, its pitch rising through five gears; filtered noise and a falling
 // thud for a crash. The audio starts with driving, which always follows a click or a key press.
 const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
+const WIND_FROM = 80;   // km/h: the wind starts above this...
+const WIND_LEVEL = 0.06; // ...and is this loud at the top speed: under the engine
 class DriveSound {
   constructor() { this.audio = null; this.failed = false; }
 
@@ -173,7 +175,19 @@ class DriveSound {
       o1.start(); o2.start();
       const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), ch = noise.getChannelData(0);
       for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
-      this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0 };
+      // Wind: two seconds of white noise looping, through a low-pass that opens with speed, its
+      // level swelling and easing in slow gusts.
+      const wb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), wd = wb.getChannelData(0);
+      for (let i = 0; i < wd.length; i++) wd[i] = Math.random() * 2 - 1;
+      const ws = ac.createBufferSource(); ws.buffer = wb; ws.loop = true;
+      const wf = ac.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 500; wf.Q.value = 0.7;
+      const wg = ac.createGain(); wg.gain.value = 0;
+      const gust = ac.createGain(); gust.gain.value = 1;
+      const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 0.23; lg.gain.value = 0.3;
+      lfo.connect(lg); lg.connect(gust.gain);
+      ws.connect(wf); wf.connect(wg); wg.connect(gust); gust.connect(ac.destination);
+      ws.start(); lfo.start();
+      this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0, wind: { f: wf, g: wg } };
     } catch (_) { this.failed = true; }
     return this.audio;
   }
@@ -186,6 +200,10 @@ class DriveSound {
     const A = this.audio;
     if (!A) return;
     const t = A.ac.currentTime;
+    // The wind: nothing below WIND_FROM, then rising more and more steeply with the speed beyond it.
+    const w = on ? Math.max(0, Math.min(1, (kmh - WIND_FROM) / (DRIVE.TOP - WIND_FROM))) : 0;
+    A.wind.g.gain.setTargetAtTime(WIND_LEVEL * w ** 1.5, t, 0.3);
+    A.wind.f.frequency.setTargetAtTime(500 + 1300 * w, t, 0.3);
     if (!on) { A.gn.gain.setTargetAtTime(0, t, 0.08); return; }
     let gi = 1;
     while (gi < GEARS.length - 1 && kmh >= GEARS[gi]) gi++;
@@ -197,7 +215,13 @@ class DriveSound {
     A.gn.gain.setTargetAtTime(0.05, t, 0.08);
   }
 
-  silence() { if (this.audio) this.audio.gn.gain.setTargetAtTime(0, this.audio.ac.currentTime, 0.05); this.horn(false); }
+  silence() {
+    if (!this.audio) return;
+    const t = this.audio.ac.currentTime;
+    this.audio.gn.gain.setTargetAtTime(0, t, 0.05);
+    this.audio.wind.g.gain.setTargetAtTime(0, t, 0.2);
+    this.horn(false);
+  }
 
   // The horn, sounding while held: the Proving Ground's two square waves a major third apart.
   horn(on) {
