@@ -245,6 +245,26 @@
       </div>
     </div>
   </section>
+  <section id="drivePanel" class="chrome panel sun-panel" hidden aria-label="Drive" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M5 11l1.6-4.2A2 2 0 0 1 8.5 5.5h7a2 2 0 0 1 1.9 1.3L19 11M4 11h16v5H4zM6.5 16v2.5M17.5 16v2.5"/><circle cx="7.5" cy="13.5" r="0.6"/><circle cx="16.5" cy="13.5" r="0.6"/></svg>Drive <span class="drive-speed" id="driveSpeedNow">0 km/h</span></span>
+      <span class="panel-actions"><button class="link" id="driveExit" title="Stop driving and go back to the camera you had (Esc)">Exit</button><button class="x q" id="driveHelp" aria-label="About driving" title="About driving">?</button><button class="x" id="driveClose" aria-label="Close drive panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body" data-full>
+      <div class="field">
+        <div class="field-label"><span>Top speed</span><output id="driveTopOut"></output></div>
+        <input type="range" id="driveTop" min="20" max="160" step="5" title="The car's top speed">
+      </div>
+      <div class="field">
+        <div class="field-label"><span>Camera</span></div>
+        <select id="driveCam" title="Where the camera follows the car from (C)"></select>
+      </div>
+      <div class="check-row">
+        <label class="check" title="Off: drive through walls and objects; the car still follows the ground"><input type="checkbox" id="driveCollide" checked> Collision detection</label>
+        <label class="check" title="The car casts the sun's shadows. That redraws them every frame, which can be slow on big models"><input type="checkbox" id="driveShadows" checked> Shadows</label>
+      </div>
+    </div>
+  </section>
   </div>
 
   <div id="matDialog" class="chrome popover" hidden role="dialog" aria-labelledby="matTitle">
@@ -313,6 +333,7 @@
   </div>
   <div id="notices" class="notices"></div>
   <div id="walkHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to walk · drag on the right to look · Exit in the Walk panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</span></div>
+  <div id="driveHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to drive · drag on the right to look · Exit in the Drive panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>S</kbd> accelerate and brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>C</kbd> camera · <kbd>R</kbd> reset · drag to look · <kbd>Esc</kbd> to stop</span></div>
   <div id="walkPlaceHint" class="chrome walk-hint" hidden>Click where to start walking · drag to move the view · <kbd>Esc</kbd> to cancel</div>
   <div class="walk-frame"></div>
   <div id="walkFade" class="walk-fade"></div>
@@ -391,6 +412,7 @@
 <script src="toolmenu.js"></script>
 <script src="listselect.js"></script>
 <script src="walk.js"></script>
+<script src="drive.js"></script>
 <script src="renderer.js"></script>
 <script src="demo.js"></script>
 <script src="widgets.js"></script>

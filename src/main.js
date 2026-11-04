@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -68,6 +68,26 @@ const walker = new Walker({
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
+// Drive mode: a car and a chase camera (drive.js). It shares the walker's ways in and out: the
+// spot picker, the fade, and going back to the camera it started from (walkFrom).
+const driver = new Driver({
+  camera, get renderer() { return renderer; }, bounds: () => visibleBounds(),
+  mpu: () => METRES_PER_UNIT[model.units] || 1,
+  onExit: () => { if (stick) endStick(); $('driveHint').hidden = true; $('drivePanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncDrivePanel(); redraw(); },
+  notice: (text, ms = 0) => notice(text, false, ms),
+  fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
+});
+driver.settings.collide = true;
+if (prefs.drive) {
+  const D = driver.settings, P = prefs.drive;
+  if (P.top > 0) D.top = Math.min(DRIVE.MAX_TOP, Math.max(DRIVE.MIN_TOP, P.top));
+  D.shadows = P.shadows !== false;
+  D.collide = P.collide !== false;
+  if (P.cam >= 0 && P.cam < DRIVE_CAMS.length) D.cam = P.cam;
+}
+// Walking or driving: the frame round the window, the thumb stick, drag to look.
+const moving = () => walker.active || driver.active;
+const choosingStart = () => walker.placing || driver.placing;
 if (prefs.walk) {
   walker.settings.collide = prefs.walk.collide !== false;
   walker.settings.fly = prefs.walk.fly === true;
@@ -304,6 +324,11 @@ function loop() {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
   }
+  if (driver.active) {
+    driver.update(performance.now());
+    renderer.dirty = true; lastInput = performance.now();
+    syncDriveSpeed();
+  }
   diag.ticks++;
   if (renderer.dirty) {
     anim.drawn = now;
@@ -370,6 +395,7 @@ async function readModel(kind, name, bytes) {
 async function openBytes(name, bytes, handle = null) {
   const t0 = performance.now();
   walker.exit();
+  driver.exit();
   saveViewState();
   clearNotices();
   try {
@@ -489,6 +515,7 @@ function zoomExtents() {
 
 function setView(name, extents = true) {
   walker.exit();
+  driver.exit();
   camera.setView(name);
   if (extents) zoomExtents();
   syncToolbar();
@@ -499,7 +526,8 @@ function syncToolbar() {
   syncViewChecks();
   syncCameraMenu();
   syncModeMenu();
-  document.body.classList.toggle('walking', walker.active);
+  document.body.classList.toggle('walking', moving());
+  document.body.classList.toggle('driving', driver.active);
   document.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!state[b.dataset.toggle])));
 }
 
@@ -2548,7 +2576,7 @@ function hideMapHover() { mapHoverAt = null; $('mapHover').hidden = true; }
 
 function mapHoverMove(e) {
   const shown = model && state.maps.on && state.maps.list.some((m) => !state.maps.off.has(m.key));
-  if (!shown || walker.active || drag || pointers.size) { hideMapHover(); return; }
+  if (!shown || moving() || drag || pointers.size) { hideMapHover(); return; }
   mapHoverAt = { clientX: e.clientX, clientY: e.clientY };
   placeMapHover();
   if (!mapHoverBusy) readMapHover();
@@ -2877,7 +2905,7 @@ function setExposurePicking(on) {
   canvas.classList.toggle('picking', expo.picking);
   $('exposurePick').setAttribute('aria-pressed', String(expo.picking));
   if (expo.picking && hoverAt) showWalkMarker(hoverAt);
-  if (!expo.picking && !walker.placing && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
+  if (!expo.picking && !choosingStart() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
 }
 
 // The picker's click on the model: the layer of the object under it.
@@ -3003,15 +3031,16 @@ function bindPointer() {
   canvas.addEventListener('pointerdown', (e) => {
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
-    if (walker.active && e.pointerType === 'touch' && !stick) {
+    if (moving() && e.pointerType === 'touch' && !stick) {
       const r = canvas.getBoundingClientRect();
       if (e.clientX < r.left + r.width / 2) { startStick(e); return; }
     }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 1 && walker.active) {
-      // Pedestrian mode: any button (or one finger) drags to look.
+    if (pointers.size === 1 && moving()) {
+      // Pedestrian and drive modes: any button (or one finger) drags to look.
       drag = { mode: 'look', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
-      walker.skipFall();
+      if (walker.active) walker.skipFall();
+      else driver.dragging = true;
       canvas.classList.add('dragging');
     } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
@@ -3025,7 +3054,7 @@ function bindPointer() {
       if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       else if (mode === 'pan') pickDepth(e, drag);
       canvas.classList.add('dragging');
-    } else if (pointers.size === 2 && !walker.active) {
+    } else if (pointers.size === 2 && !moving()) {
       drag = { mode: 'pinch', ...pinchInfo() };
       pickDepth({ clientX: drag.cx, clientY: drag.cy }, drag);
     }
@@ -3035,7 +3064,7 @@ function bindPointer() {
   canvas.addEventListener('pointermove', (e) => {
     if (stick && e.pointerId === stick.id) { moveStick(e); return; }
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
-    if ((walker.placing || expo.picking) && !drag) showWalkMarker(hoverAt);
+    if ((choosingStart() || expo.picking) && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -3053,7 +3082,7 @@ function bindPointer() {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
     drag.x = e.clientX; drag.y = e.clientY;
-    if (drag.mode === 'look') walker.turn(dx, dy);
+    if (drag.mode === 'look') (driver.active ? driver : walker).turn(dx, dy);
     else if (drag.mode === 'orbit') camera.orbit(dx, dy, pivot);
     else if (drag.mode === 'top') turnByDial(e);
     else if (drag.mode === 'elevation') camera.yaw -= dx * 0.006;
@@ -3072,25 +3101,25 @@ function bindPointer() {
     // A left click or tap without dragging selects the object under the pointer.
     // While choosing where to start walking, it starts there instead.
     if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
-      if (walker.placing) startWalkAt(e);
+      if (choosingStart()) startWalkAt(e);
       else if (expo.picking) pickExposureLayer(e);
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
-    if (pointers.size === 0) { drag = null; canvas.classList.remove('dragging'); }
+    if (pointers.size === 0) { drag = null; driver.dragging = false; canvas.classList.remove('dragging'); }
     else if (pointers.size === 1) {
       const [p] = pointers.values();
-      drag = { mode: walker.active ? 'look' : viewRules() === 'orbit' ? 'orbit' : 'pan', x: p.x, y: p.y, moved: true };
+      drag = { mode: moving() ? 'look' : viewRules() === 'orbit' ? 'orbit' : 'pan', x: p.x, y: p.y, moved: true };
     }
     syncCompassOverlay();
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('pointerleave', () => { if ((walker.placing || expo.picking) && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
+  canvas.addEventListener('pointerleave', () => { if ((choosingStart() || expo.picking) && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (!model) return;
-    if (walker.active) { walker.zoom(e.deltaY); redraw(); return; }
+    if (moving()) { (driver.active ? driver : walker).zoom(e.deltaY); redraw(); return; }
     const unit = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0015;
     const factor = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * unit)));
     const now = performance.now();
@@ -3210,22 +3239,23 @@ function startStick(e) {
   el.style.left = e.clientX - r.left + 'px';
   el.style.top = e.clientY - r.top + 'px';
   el.classList.add('active');
-  walker.skipFall();
+  if (walker.active) walker.skipFall();
 }
 
 function moveStick(e) {
   const dx = e.clientX - stick.x, dy = e.clientY - stick.y, d = Math.hypot(dx, dy);
   if (d > 6) stick.moved = true;
   if (!stick.moved) return;
-  walker.stick = [-dy / STICK_R, dx / STICK_R];
+  (driver.active ? driver : walker).stick = [-dy / STICK_R, dx / STICK_R];
   const k = d > STICK_R ? STICK_R / d : 1, el = $('walkStick');
   el.firstElementChild.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
-  el.classList.toggle('run', d / STICK_R > WALK.STICK_RUN);
+  el.classList.toggle('run', walker.active && d / STICK_R > WALK.STICK_RUN);
 }
 
 function endStick() {
   stick = null;
   walker.stick = null;
+  driver.stick = null;
   const el = $('walkStick');
   el.classList.remove('active', 'run');
   el.style.left = el.style.top = el.firstElementChild.style.transform = '';
@@ -3427,10 +3457,15 @@ function onKey(e) {
     if (walker.key(e, true)) { e.preventDefault(); return; }
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
+  if (driver.active) {
+    if (driver.key(e, true)) { e.preventDefault(); if (k === 'c') { syncDrivePanel(); savePrefs(); } return; }
+    if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
+  }
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
+  if (driver.placing && k === 'escape') { e.preventDefault(); driver.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'),
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'), 5: () => pickView('drive'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
@@ -3457,9 +3492,13 @@ let viewNow = 'perspective', viewCams = {};
 // orbiting one up to straight down or through level doesn't catch it there.
 const viewRules = () => { const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
 function pickView(id) {
-  if (id === 'walk') { startWalk(); return; }
-  if (walker.active) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
+  // From walking to driving or back: out of one, then into the other.
+  if ((id === 'walk' && driver.active) || (id === 'drive' && walker.active)) { leaveWalk(() => pickView(id)); return; }
+  if (id === 'walk') { driver.exit(); startWalk(); return; }
+  if (id === 'drive') { walker.exit(); startDrive(); return; }
+  if (moving()) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
+  driver.exit();
   if (viewNow !== id) viewCams[viewNow] = camera.snapshot();
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
   viewNow = id;
@@ -3492,13 +3531,13 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }] }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }, { id: 'drive', label: 'Drive', hint: '5' }] }]);
 }
 
 function syncCameraMenu() {
-  const walking = walker.active || walker.placing;
-  cameraList?.setActive(walking ? 'walk' : viewNow);
-  const name = walking ? 'Walk' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
+  const walking = walker.active || walker.placing, driving = driver.active || driver.placing;
+  cameraList?.setActive(walking ? 'walk' : driving ? 'drive' : viewNow);
+  const name = walking ? 'Walk' : driving ? 'Drive' : namedViewOf(viewNow)?.name || CAMERAS.find(([id]) => id === viewNow)?.[1];
   $('cameraName').textContent = name;
   $('btnCamera').title = `Camera: ${name}`;
 }
@@ -3535,6 +3574,7 @@ function leaveWalk(then = null) {
     const next = leaving;
     leaving = null;
     walker.exit();
+    driver.exit();
     next();
     f.classList.remove('dark');
   }, 250);
@@ -3564,9 +3604,11 @@ function heightAboveGround() {
   return renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.01 * u, far), view), frameState())
     .then((h) => (h ? (eye[2] - h.p[2]) * mpu : null));
 }
-function startPlacing() {
-  walker.place();
+function startPlacing(who = walker) {
+  who.place();
   canvas.classList.add('placing');
+  canvas.classList.toggle('placing-car', who === driver);
+  $('walkPlaceHint').innerHTML = `Click where to start ${who === driver ? 'driving' : 'walking'} · drag to move the view · <kbd>Esc</kbd> to cancel`;
   $('walkPlaceHint').hidden = false;
   if (hoverAt) showWalkMarker(hoverAt);
   syncToolbar();
@@ -3574,7 +3616,7 @@ function startPlacing() {
   canvas.focus();
 }
 function endPlacing() {
-  canvas.classList.remove('placing');
+  canvas.classList.remove('placing', 'placing-car');
   $('walkPlaceHint').hidden = true;
   placing.next = null;
   if (state.walkMarker) { state.walkMarker = null; redraw(); }
@@ -3585,21 +3627,22 @@ function showWalkMarker(at) {
   if (placing.busy) { placing.next = at; return; }
   placing.busy = true;
   pickAt(at).then((h) => {
-    if (walker.placing || expo.picking) {
-      // At least about 12 pixels across, so it shows from far off too.
+    if (choosingStart() || expo.picking) {
+      // At least about 12 pixels across, so it shows from far off too. The car's is its length across.
       const px = h && (2 * V3.len(V3.sub(h.p, camera.eye)) * Math.tan(camera.fov / 2)) / canvas.clientHeight;
-      state.walkMarker = h ? { p: h.p, r: Math.max(WALK_MARKER / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
+      state.walkMarker = h ? { p: h.p, r: Math.max((driver.placing ? DRIVE_MARKER : WALK_MARKER) / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
       redraw();
     }
   }).finally(() => {
     placing.busy = false;
     const next = placing.next;
     placing.next = null;
-    if (next && (walker.placing || expo.picking)) showWalkMarker(next);
+    if (next && (choosingStart() || expo.picking)) showWalkMarker(next);
   });
 }
-// A click while choosing: start walking there.
+// A click while choosing: start walking (or driving) there.
 function startWalkAt(e) {
+  if (driver.placing) { startDriveAt(e); return; }
   pickAt(e).then((h) => {
     if (!h || !walker.placing) return;
     const mpu = METRES_PER_UNIT[model.units] || 1, back = camera.ortho ? camera.dir : V3.norm(V3.sub(camera.eye, h.p));
@@ -3608,6 +3651,85 @@ function startWalkAt(e) {
     fadeIntoWalk(V3.add(h.p, V3.scale(back, 0.4 / mpu)));
   });
 }
+// Driving starts from Drive in the camera list (or 5), always by choosing where to start, with the
+// car's footprint following the cursor. It faces the way the camera looks. Esc or another camera
+// stops it; the Drive panel's Exit too.
+const DRIVE_MARKER = 2.2; // marker radius (m): about the car's half length
+function startDrive() {
+  cameraMenu.close();
+  if (driver.active) { $('drivePanel').hidden = false; canvas.focus(); return; }
+  if (!model || driver.placing || placing.checking) return;
+  startPlacing(driver);
+}
+function startDriveAt(e) {
+  pickAt(e).then((h) => {
+    if (!h || !driver.placing) return;
+    const mpu = METRES_PER_UNIT[model.units] || 1;
+    // Facing away from the camera; straight down, the top of the view is ahead.
+    const f = camera.forward, flat = Math.hypot(f[0], f[1]) > 0.05 ? f : camera.up;
+    const heading = Math.atan2(flat[1], flat[0]);
+    // A little towards the eye, so a spot on a wall's foot is in front of it.
+    const back = V3.norm([camera.eye[0] - h.p[0], camera.eye[1] - h.p[1], 0]);
+    driver.placing = false;
+    endPlacing();
+    fadeIntoDrive(V3.add(h.p, V3.scale(back, 0.05 / mpu)), heading);
+  });
+}
+function fadeIntoDrive(start, heading) {
+  const f = $('walkFade');
+  placing.checking = true;
+  f.classList.add('dark');
+  canvas.focus();
+  setTimeout(() => {
+    placing.checking = false;
+    walkFrom = camera.snapshot();
+    driver.enter(start, heading).then((ok) => {
+      if (ok) { $('drivePanel').hidden = false; $('driveHint').hidden = false; }
+      f.classList.remove('dark'); syncToolbar(); syncDrivePanel(); redraw();
+    });
+    syncToolbar();
+  }, 250);
+}
+
+// The Drive panel -----------------------------------------------------------------------------
+
+function showDriveHelp() {
+  Dialog.open({ title: 'Driving', html: true, width: 420, body: `<p><b>Drive</b> in the camera list, or <kbd>5</kbd>, starts driving: click where the car should start. It faces the way the camera looks. Until you click you can still move the view; <kbd>Esc</kbd> cancels. Closing this panel does not stop you: pick Drive again to bring it back.</p>
+    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
+    <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
+    <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
+    <p><b>Top speed</b> limits how fast the car goes · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models.</p>` });
+}
+
+let driveShown = '';
+function syncDriveSpeed() {
+  const t = `${Math.round(driver.speed * 3.6)} km/h`;
+  if (t !== driveShown) { driveShown = t; $('driveSpeedNow').textContent = t; }
+}
+
+function syncDrivePanel() {
+  const S = driver.settings;
+  $('driveTop').value = S.top;
+  $('driveTopOut').value = `${S.top} km/h`;
+  $('driveCam').value = String(S.cam);
+  $('driveCollide').checked = S.collide;
+  $('driveShadows').checked = S.shadows;
+  syncDriveSpeed();
+}
+
+function bindDrivePanel() {
+  const S = driver.settings, changed = () => { syncDrivePanel(); savePrefs(); };
+  $('driveCam').innerHTML = DRIVE_CAMS.map((c, i) => `<option value="${i}">${c.label}</option>`).join('');
+  $('driveTop').addEventListener('input', () => { S.top = +$('driveTop').value; changed(); });
+  $('driveCam').addEventListener('change', () => { S.cam = +$('driveCam').value; driver.camPos = null; changed(); canvas.focus(); });
+  $('driveCollide').addEventListener('change', () => { S.collide = $('driveCollide').checked; changed(); canvas.focus(); });
+  $('driveShadows').addEventListener('change', () => { S.shadows = $('driveShadows').checked; changed(); redraw(); canvas.focus(); });
+  $('driveHelp').addEventListener('click', showDriveHelp);
+  $('driveExit').addEventListener('click', () => { if (driver.active) leaveWalk(); });
+  $('driveClose').addEventListener('click', () => { $('drivePanel').hidden = true; canvas.focus(); });
+  syncDrivePanel();
+}
+
 // The Walk panel ------------------------------------------------------------------------------
 
 function showWalkHelp() {
@@ -4039,9 +4161,10 @@ function bindUi() {
   window.addEventListener('keydown', onKey);
   const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
-  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); });
-  window.addEventListener('blur', () => { setShift(false); walker.blur(); });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') setShift(false); walker.key(e, false); driver.key(e, false); });
+  window.addEventListener('blur', () => { setShift(false); walker.blur(); driver.blur(); });
   bindWalkPanel();
+  bindDrivePanel();
   bindPointer();
   window.addEventListener('pagehide', saveViewState);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewState(); });
