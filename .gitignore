@@ -3,8 +3,8 @@ samples/
 *.3dm
 *.3dmbak
 
-# Development builds (dist/ is the live site, and is committed)
-dist-dev/
+# The built viewer: Cloudflare Pages builds it from the sources, so it is not committed
+dist/
 
 # rhino3dm, downloaded by build.js on first build
 vendor/

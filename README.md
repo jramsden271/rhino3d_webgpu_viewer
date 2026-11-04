@@ -6,13 +6,14 @@ compiled to WebAssembly) is embedded in the page, and the model never leaves you
 
 ## Installation
 
-To use the viewer, there is nothing to install: download
-[`dist/index.html`](dist/index.html) and follow [Using it](#using-it) below. To work
+To use the viewer, there is nothing to install: open the live site, or save its page to use
+offline, and follow [Using it](#using-it) below. To build `dist/index.html` yourself, or to work
 on the code, see [Development](#development).
 
 ## Using it
 
-1. Open `dist/index.html` in a current **Chrome** or **Microsoft Edge** (double-click it).
+1. Open the viewer in a current **Chrome** or **Microsoft Edge**: the live site, or a saved or
+   built `index.html` (double-click it).
 2. Drag a `.3dm` file onto the page, or click **browse for one**.
 
 The welcome screen lists the last five files opened (in this browser); click one to open it
@@ -647,29 +648,31 @@ The server is only for development; the built viewer does not need it.
 
 - http://localhost:8123/src/index.html runs the sources unbuilt, so a reload shows an edit straight
   away. It needs `vendor/`, so run `node build.js` once first.
-- http://localhost:8123/dist-dev/index.html is the built viewer. Rebuild to see an edit.
+- http://localhost:8123/dist/index.html is the built viewer. Rebuild to see an edit.
 - Adding `?model=/samples/x.3dm` to either opens a model straight away. No models come with the
   repository: create a `samples/` folder and put your own there (it and `*.3dm` files are git-ignored).
 
 ### Making a change
 
 `main` is the live site, so work on the `develop` branch. Edit `src/`, then run `node build.js`,
-which writes `dist-dev/index.html` (git-ignored). Commit only the sources.
+which writes `dist/index.html` (git-ignored). Commit only the sources.
 
 To update rhino3dm, change `RHINO3DM_VERSION` in `build.js` and rebuild.
 
 ### Releasing
 
-`dist/index.html` is what people use. It is committed, and changes only in a release:
+`main` is the live site. To release:
 
 1. Merge `develop` into `main`.
-2. On `main`, run `node build.js --release`, which writes `dist/index.html`.
-3. Commit that file and push `main`. Cloudflare Pages then deploys it.
+2. Build and run the tests on `main`.
+3. Push `main`. Cloudflare Pages then builds and deploys it.
 
 ### Hosting
 
-Cloudflare Pages serves the `dist/` folder as static files (build output directory `dist`, no build
-command) and deploys each push to `main`. It runs no build, so what is committed in `dist/` is what goes live. Models
+Cloudflare Pages runs `node build.js` (build output directory `dist`) on each push and serves the
+result as static files: `main` is the live site, and `develop` is a preview at
+develop.<project>.pages.dev. No other branch is deployed. The build downloads rhino3dm from the npm
+registry. If a build fails, the last good deployment stays live. Models
 still stay on the computer of whoever opens them: the site only delivers the page.
 
 ### Tests and tools
@@ -692,9 +695,8 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 ## Layout
 
 ```
-dist/index.html          the released viewer (the only file anyone needs)
-dist-dev/index.html      development build (git-ignored)
-build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist-dev/, or dist/ with --release
+dist/index.html          the built viewer, the only file anyone needs (git-ignored; built by build.js)
+build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist/
 src/index.html, style.css  page and UI
 src/magicblocks.js       magic block library and how an instance is placed
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see

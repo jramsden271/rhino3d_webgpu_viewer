@@ -1,4 +1,2 @@
-# Keep LF line endings as written; the built viewer is a single generated file, stored as is
-# without line-by-line diffs.
+# Keep LF line endings as written.
 * text=auto eol=lf
-dist/index.html binary

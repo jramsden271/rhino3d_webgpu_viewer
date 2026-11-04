@@ -1,6 +1,6 @@
 // Builds one self-contained file with the viewer, rhino3dm.js and its WebAssembly binary inlined.
-//   node build.js             dist-dev/index.html, for development (git-ignored)
-//   node build.js --release   dist/index.html, the live site: only when releasing on main
+//   node build.js   writes dist/index.html (git-ignored). Cloudflare Pages runs this same command
+//                   to build the live site from main and the preview site from develop.
 // Downloads rhino3dm from the npm registry the first time only; afterwards it works offline.
 
 const fs = require('fs');
@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const RHINO3DM_VERSION = '8.35.0';
 const root = __dirname;
 const vendor = path.join(root, 'vendor', 'package');
-const out = path.join(root, process.argv.includes('--release') ? 'dist' : 'dist-dev', 'index.html');
+const out = path.join(root, 'dist', 'index.html');
 
 async function ensureRhino3dm() {
   const pkg = path.join(vendor, 'package.json');

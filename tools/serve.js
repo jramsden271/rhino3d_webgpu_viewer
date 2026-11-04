@@ -1,5 +1,5 @@
 // Dev-only static server for testing (the built viewer itself needs no server).
-// usage: node tools/serve.js [port]   then open http://localhost:8123/dist-dev/index.html?model=/samples/x.3dm
+// usage: node tools/serve.js [port]   then open http://localhost:8123/dist/index.html?model=/samples/x.3dm
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
