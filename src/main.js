@@ -1973,7 +1973,7 @@ function syncWeatherPanel() {
   $('weatherViewToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherViewOpen);
   $('weatherView').hidden = !state.weatherViewOpen;
   $('cloudSpeed').value = clouds.speed;
-  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind` : 'Still';
+  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind speed` : 'Still';
   const cells = [...(loc ? sunCells() : []), ...(loc && e ? ['<span class="rule"></span>'] : []), ...(e ? weatherCells() : [])];
   $('weatherRead').hidden = !cells.length;
   $('weatherRead').innerHTML = cells.join('');
@@ -1995,7 +1995,7 @@ function sunCells() {
   const alt = cell(up ? `Sun altitude: ${p.altitude.toFixed(1)}° above the horizon` : `Sun altitude: ${(-p.altitude).toFixed(1)}° below the horizon`, altIcon, `<b>${p.altitude.toFixed(0)}°</b>`);
   // Azimuth: the sun round a compass, north up.
   const z = (p.azimuth * Math.PI) / 180, zx = (12 + 7.5 * Math.sin(z)).toFixed(2), zy = (12 - 7.5 * Math.cos(z)).toFixed(2), dir = COMPASS[Math.round(p.azimuth / 22.5) % 16];
-  const azIcon = `<svg viewBox="0 0 24 24" aria-hidden="true" class="${up ? '' : 'down'}"><circle cx="12" cy="12" r="10"/><path d="M12 2v3.2M12 12L${zx} ${zy}"/><circle class="sun-dot" cx="${zx}" cy="${zy}" r="2.6"/></svg>`;
+  const azIcon = `<svg viewBox="0 0 24 24" aria-hidden="true" class="${up ? '' : 'down'}"><circle cx="12" cy="12" r="10"/><path d="M12 12L${zx} ${zy}"/><circle class="sun-dot" cx="${zx}" cy="${zy}" r="2.6"/></svg>`;
   const az = cell(`Sun azimuth: ${p.azimuth.toFixed(1)}° from north (${dir}). The dot is the sun, with north up.`, azIcon, `<b>${p.azimuth.toFixed(0)}°</b> <span class="unit">${dir}</span>`);
   return [days, alt, az];
 }

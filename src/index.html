@@ -147,14 +147,18 @@
       <div class="field">
         <div class="field-label"><button class="field-toggle" id="weatherViewToggle" aria-controls="weatherView"><span class="caret"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>View</button></div>
         <div id="weatherView" class="field-details view-checks">
-          <label class="check"><input type="checkbox" data-view="sun"> Sun</label>
-          <label class="check"><input type="checkbox" data-view="sky"> Sky</label>
-          <label class="check"><input type="checkbox" data-view="clouds"> Clouds</label>
-          <div class="field view-sub" id="cloudSpeedField">
-            <div class="field-label"><span>Cloud speed</span><output id="cloudSpeedOut"></output></div>
-            <input type="range" id="cloudSpeed" min="0" max="100" step="1" title="The clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+          <div class="check-row">
+            <label class="check"><input type="checkbox" data-view="sun"> Sun</label>
+            <label class="check"><input type="checkbox" data-view="sky"> Sky</label>
+            <label class="check"><input type="checkbox" data-view="haze"> Haze</label>
           </div>
-          <label class="check"><input type="checkbox" data-view="haze"> Haze</label>
+          <div class="view-clouds">
+            <label class="check"><input type="checkbox" data-view="clouds"> Clouds</label>
+            <span class="view-speed" id="cloudSpeedField" title="Cloud speed: the clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+              <input type="range" id="cloudSpeed" min="0" max="100" step="1" aria-label="Cloud speed">
+              <output id="cloudSpeedOut"></output>
+            </span>
+          </div>
           <label class="check"><input type="checkbox" data-view="path"> Sun path diagram</label>
         </div>
       </div>

@@ -452,7 +452,7 @@ body.walking .walk-frame { display: block; }
 .wx-now svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linejoin: round; }
 .wx-now .needle { fill: var(--accent); stroke: none; }
 /* The Weather widget's readings: three columns, the sun's row over the weather's two. */
-.wx-grid { display: grid; grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 6px 8px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 8px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .wx-grid[hidden] { display: none; }
 .wx-grid > span { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
 .wx-grid > .rule { grid-column: 1 / -1; min-height: 0; border-top: 1px solid var(--border); }
@@ -466,8 +466,12 @@ body.walking .walk-frame { display: block; }
 .view-checks { gap: 8px; }
 .view-checks .check:has(input:disabled) { color: var(--muted); cursor: default; }
 .view-checks .check:has(input:disabled) input { opacity: 0.5; cursor: default; }
-.view-sub { margin: -2px 0 2px 20px; }
-.view-sub[hidden] { display: none; }
+.view-clouds { display: flex; align-items: center; gap: 10px; }
+.view-clouds .check { flex: none; }
+.view-speed { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.view-speed[hidden] { display: none; }
+.view-speed input { flex: 1; min-width: 0; }
+.view-speed output { flex: none; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 7.8em; text-align: right; }
 #sunWeatherSrc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 /* North angle in the file panel */
 .north { border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }

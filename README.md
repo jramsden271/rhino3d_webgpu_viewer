@@ -396,7 +396,7 @@ greyed out, and its tooltip says why:
   the model is the same either way. With the Sun off the model keeps its usual light, so the sky
   is never darker than dusk.
 - **Clouds** (needs a weather file): the file's clouds, in the sky and, with the Sun on, as
-  shadows on the model. **Cloud speed** shows under it while they are on.
+  shadows on the model. A cloud speed slider shows beside it while they are on.
 - **Haze** (needs a weather file): the file's radiation, beyond what the clouds account for. It
   dims the sun and sets how bright the sky's light is (see below).
 - **Sun path diagram** (needs a location, in perspective views).
@@ -433,7 +433,7 @@ Without them, the sky and the light are a clear day's, as without a file.
   moonlit at night, and hide the stars. The sun is hidden when a cloud is in front of it, which
   is exactly when the camera stands in that cloud's shadow.
 - **The clouds drift with the wind**, from the file's wind direction at its speed times the
-  **Cloud speed** slider under **Clouds** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
+  cloud speed slider beside **Clouds** (0-100, 10 to start with; 0 stops them). The wind is measured 10 m
   up, while clouds sit higher where it blows harder, and a larger multiplier also makes the
   drift easier to see. Like the water ripples, they stop after 15 s without input, or at once
   with **Animations** off in the render mode menu, which saves the graphics card work on large
