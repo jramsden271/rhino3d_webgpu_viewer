@@ -93,6 +93,23 @@ function carGeometry() {
     fan(ring(y + out * (w / 2 + 0.005), r * 0.62), capRgb);
   };
 
+  // The part of a disc about the y axis above zMin: a wheel arch on the body's side, which
+  // stops at the sill rather than hanging below it.
+  const arch = (x, y, z, r, zMin, rgb, segs = 20) => {
+    const a0 = Math.asin(Math.max(-1, Math.min(1, (zMin - z) / r))), pts = [];
+    for (let k = 0; k <= segs; k++) {
+      const t = a0 + ((Math.PI - 2 * a0) * k) / segs;
+      pts.push([x + r * Math.cos(t), y, z + r * Math.sin(t)]);
+    }
+    fan(pts, rgb);
+  };
+  // A short tube along the x axis, from x0 to x1: the exhaust.
+  const tube = (x0, x1, y, z, r, rgb, segs = 10) => {
+    const ring = (x) => Array.from({ length: segs }, (_, k) => [x, y + r * Math.cos((k / segs) * 2 * Math.PI), z + r * Math.sin((k / segs) * 2 * Math.PI)]);
+    const a = ring(x0), b = ring(x1);
+    for (let k = 0; k < segs; k++) quad(a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k], rgb);
+    fan(b, [10, 10, 11]);
+  };
   const PAINT = [196, 38, 30], GLASS = [34, 44, 56], TYRE = [26, 27, 29], RIM = [176, 180, 186], TRIM = [40, 42, 46], ARCH = [18, 18, 20];
   // The body: a wedge from the nose to the boot, a little narrower at the top.
   loft([[2.15, 0.32], [2.2, 0.55], [2.06, 0.78], [0.95, 0.97], [-1.55, 1.02], [-2.12, 0.96], [-2.2, 0.6], [-2.15, 0.32]],
@@ -102,16 +119,18 @@ function carGeometry() {
   // Bumpers, grille and lights.
   box(2.1, 2.26, -0.93, 0.93, 0.3, 0.47, TRIM);
   box(-2.27, -2.1, -0.93, 0.93, 0.3, 0.47, TRIM);
+  box(-2.205, -2.17, -0.26, 0.26, 0.5, 0.61, [236, 196, 44]); // number plate
+  tube(-2.34, -2.0, -0.55, 0.27, 0.045, [120, 122, 126]);     // exhaust
   box(2.15, 2.215, -0.38, 0.38, 0.5, 0.64, TRIM);
   for (const s of [1, -1]) {
     box(2.1, 2.2, s > 0 ? 0.5 : -0.86, s > 0 ? 0.86 : -0.5, 0.6, 0.71, [255, 246, 220]);
     box(-2.225, -2.16, s > 0 ? 0.46 : -0.88, s > 0 ? 0.88 : -0.46, 0.72, 0.84, [210, 24, 30]);
     box(0.62, 0.8, s * 0.95, s * 1.07, 1.0, 1.1, PAINT);  // door mirrors
   }
-  // Wheels, with dark arches behind them.
+  // Wheels, with dark arches behind them down to the sill.
   for (const x of [DRIVE.AXLE, -DRIVE.AXLE])
     for (const s of [1, -1]) {
-      wheel(x, s * 0.952, 0.34, 0.45, 0.004, ARCH, ARCH, 20);
+      arch(x, s * 0.953, 0.34, 0.45, 0.32, ARCH);
       wheel(x, s * 0.86, 0.34, 0.34, 0.24, TYRE, RIM);
     }
   return { pos: Float32Array.from(pos), nrm: Float32Array.from(nrm), col: Uint8Array.from(col), idx: Uint32Array.from(idx), gloss: 0.55 };
