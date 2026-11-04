@@ -1,7 +1,8 @@
 // Drive mode: a car to drive around the model, with WASD / arrow keys, and a chase camera.
 //
 // The handling is an arcade one, after the Proving Ground: the car accelerates and brakes along
-// its heading, its sideways speed bleeds away with the tyres' grip (Space, the handbrake, lets it
+// its heading, its sideways speed bleeds away with the tyres' grip (the handbrake, braking while
+// steering at speed, lets it
 // slide), and it turns as a bicycle with a 2.7 m wheelbase would. Slopes slow it going up and
 // speed it going down; off a ramp or an edge it flies under gravity and lands.
 //
@@ -60,7 +61,8 @@ const DRIVE_CAMS = [
   { id: 'driver', label: 'Driver', eye: [0.15, 0.35, 1.2] }, // on the left: mirrored by Driver.side
 ];
 
-const DRIVE_KEYS = { w: 'gas', arrowup: 'gas', s: 'brake', arrowdown: 'brake', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', ' ': 'hand' };
+const DRIVE_KEYS = { w: 'gas', arrowup: 'gas', s: 'brake', arrowdown: 'brake', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', ' ': 'horn' };
+const HAND_SPEED = 2; // braking while steering above this (m/s, going forwards) is the handbrake
 
 // The car's lamps: their colours unlit and lit. Lit, they glow (Renderer.setActor).
 const LAMPS = {
@@ -195,7 +197,26 @@ class DriveSound {
     A.gn.gain.setTargetAtTime(0.05, t, 0.08);
   }
 
-  silence() { if (this.audio) this.audio.gn.gain.setTargetAtTime(0, this.audio.ac.currentTime, 0.05); }
+  silence() { if (this.audio) this.audio.gn.gain.setTargetAtTime(0, this.audio.ac.currentTime, 0.05); this.horn(false); }
+
+  // The horn, sounding while held: the Proving Ground's two square waves a major third apart.
+  horn(on) {
+    if (!!this.hornNode === on) return;
+    if (!on) {
+      const H = this.hornNode, t = this.audio.ac.currentTime;
+      this.hornNode = null;
+      H.g.gain.cancelScheduledValues(t); H.g.gain.setTargetAtTime(0.0001, t, 0.02);
+      for (const o of H.o) o.stop(t + 0.15);
+      return;
+    }
+    if (!this.ready) return;
+    const ac = this.audio.ac, t = ac.currentTime;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
+    const o = [400, 400 * 1.26].map((fq) => { const x = ac.createOscillator(); x.type = 'square'; x.frequency.value = fq; x.connect(lp); x.start(t); return x; });
+    lp.connect(g); g.connect(ac.destination);
+    this.hornNode = { g, o };
+  }
 
   env(peak, attack, decay, t) {
     const g = this.audio.ac.createGain();
@@ -237,7 +258,7 @@ class Driver {
     this.ctx = ctx;
     this.active = false;
     this.placing = false;
-    this.input = { gas: false, brake: false, left: false, right: false, hand: false };
+    this.input = { gas: false, brake: false, left: false, right: false, horn: false };
     this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
     // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on, sounds.
     this.settings = { shadows: true, cam: 0, headlights: false, sound: true };
@@ -462,12 +483,15 @@ class Driver {
   // What the controls ask for: pedals and steering from the keys, else from the thumb stick
   // (forward is the accelerator, back the brake and then reverse, sideways steers).
   controls(now) {
-    const I = this.input, out = { gas: I.gas, brake: I.brake, steer: (I.left ? 1 : 0) - (I.right ? 1 : 0), hand: I.hand, throttle: 1 };
+    const I = this.input, out = { gas: I.gas, brake: I.brake, steer: (I.left ? 1 : 0) - (I.right ? 1 : 0), hand: false, horn: I.horn, throttle: 1 };
     if (!I.gas && !I.brake && !I.left && !I.right && this.stick) {
       const [f, r] = this.stick;
       out.gas = f > 0.15; out.brake = f < -0.15; out.throttle = Math.min(1, Math.abs(f));
       out.steer = -Math.max(-1, Math.min(1, r));
     }
+    // Braking while steering, going forwards, pulls the handbrake: the car slides round. At a crawl
+    // or in reverse, it brakes (and reverses) as usual.
+    if (out.brake && out.steer && this.vF > HAND_SPEED) { out.hand = true; out.brake = false; }
     if (now < this.lockUntil) Object.assign(out, { gas: false, brake: false, steer: 0, hand: false });
     return out;
   }
@@ -484,7 +508,7 @@ class Driver {
 
     // Along the heading and sideways (to the left), in m/s.
     let vF = this.vF, vL = this.vL;
-    const speed = Math.abs(vF);
+    const speed = Math.abs(vF), a0 = this.a;
     this.steer += ((inp.steer * DRIVE.STEER) / (1 + speed * 0.05) - this.steer) * Math.min(1, dt * 9);
     if (this.grounded) {
       if (inp.gas) { if (vF < -0.5) vF += DRIVE.BRAKE * dt; else vF += DRIVE.ACC * inp.throttle * Math.max(0, 1 - Math.max(0, vF) / top) * dt; }
@@ -499,9 +523,11 @@ class Driver {
     } else {
       this.a += this.yaw * dt * 0.4;
     }
-    // Back to x and y, then the move in short steps, pushed out of obstacles.
-    const f = [Math.cos(this.a), Math.sin(this.a)], l = [-f[1], f[0]];
-    let v = [f[0] * vF + l[0] * vL, f[1] * vF + l[1] * vL];
+    // Back to x and y along the heading before the turn, then the move in short steps, pushed out
+    // of obstacles. The car turns under its momentum: what is left of it across the new heading is
+    // the sideways slide, which the tyres' grip then wears away.
+    const f0 = [Math.cos(a0), Math.sin(a0)], f = [Math.cos(this.a), Math.sin(this.a)], l = [-f[1], f[0]];
+    let v = [f0[0] * vF - f0[1] * vL, f0[1] * vF + f0[0] * vL];
     v = this.move(v, dt);
     this.vF = v[0] * f[0] + v[1] * f[1];
     this.vL = v[0] * l[0] + v[1] * l[1];
@@ -566,10 +592,11 @@ class Driver {
     this.place3d();
     // Brake lights while braking, and in reverse as the accelerator stops the car; reversing lights
     // while going backwards; the rear lights glow faintly with the headlights on.
-    this.braking = this.grounded && ((inp.brake && this.vF > 0.5) || (inp.gas && this.vF < -0.5));
+    this.braking = this.grounded && ((inp.brake && this.vF > 0.5) || (inp.gas && this.vF < -0.5) || (inp.hand && this.vF > 0.5));
     this.reversing = this.vF < -0.2;
     this.syncLamps();
     this.sound.engine(Math.abs(this.vF) * 3.6, inp.gas, this.settings.sound);
+    this.sound.horn(inp.horn && this.settings.sound);
     this.updateCamera(dt);
   }
 
