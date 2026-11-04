@@ -40,7 +40,6 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: click the N or a tick | |
-| Drive mode (developer mode) | Camera button: Drive · drag to look round · wheel zooms · touch: drag on the left half to drive, on the right to look | `5` · `W` `S` or arrows to accelerate and brake · `A` `D` to steer · `Space` handbrake · `T` headlights · `C` camera · `R` reset · `Esc` to stop |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
@@ -118,26 +117,6 @@ while flying). Whether you are standing in sunlight shows in the
 fade, and goes to that camera; `Esc` goes back to the camera you started from. Press `T` while
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
-
-**Drive mode**, an easter egg of developer mode (five quick clicks on the home screen's logo),
-puts a car in the model. Pick **Drive** in the camera list (or press `5`), then
-click where it should start: it faces the way the camera looks. `W` and `S` (or the up and down
-arrows) accelerate and brake, then reverse; `A` and `D` steer, and `Space` is the handbrake, for
-sliding round corners. The handling is an arcade one: grippy, quick to turn, and forgiving. The
-car follows the ground under each of its wheels, so it pitches and rolls on slopes, slows going
-uphill and speeds up downhill, and flies off ramps and edges. It mounts kerbs up to 30 cm and
-drives onto ramps up to 30°; anything higher or steeper, and lower than its roof, it bounces off.
-Driving off the model, or `R`, puts it back where it last stood firmly. On a touch screen, drag
-on the left half of the view: forward accelerates, back brakes and reverses, sideways steers.
-
-The **Drive panel** shows the speed (up to 160 km/h), and sets the **Camera**
-(Chase, High or Driver; `C` cycles them; drag to look round, and the view swings back behind the
-car when you let go), **Collision detection**, and **Shadows**: whether the car casts the sun's
-shadows, which redraws them every frame and can be slow on big models; and **Headlights** (`T`):
-two beams that light the model, best at night, as the walker's torch does. The brake lights come
-on as you brake and the reversing lights as you reverse. As with walking, closing
-the panel does not stop driving, another camera or `Esc` does, and the settings are remembered.
-The car is the viewer's own: it is not part of the model, and is never picked, analysed or saved.
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
 materials, object colour and material sources, the north angle and Revert.
@@ -801,7 +780,6 @@ src/materials.js         magic materials: keyword rules and default colours
 src/camera.js            Z-up orbit / pan / zoom camera, matching Rhino's named views
 src/toolmenu.js          toolbar menus: a button with a popup that takes any content (ToolbarMenu), a list of choices (ChoiceList)
 src/walk.js              pedestrian mode: walking, ground following, steps, falls
-src/drive.js             drive mode: the car's shape, its handling, ground and obstacles, chase camera
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)
 ```
