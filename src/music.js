@@ -225,7 +225,79 @@ const FURNACE = (() => {
   };
 })();
 
-const TRACKS = [NEON, BOULEVARD, FURNACE];
+// "Hydraulic Sunday" --------------------------------------------------------------------------
+// Old-school hip hop in C minor at 96 bpm, lightly swung, a sunnier cousin of Boulevard After
+// Dark: an 808 kick with a long boom, a rimshot and finger snap, a shaker, an 808 cowbell on the
+// hook, a squelchy funk bass popping octaves, a wah-wah guitar scratching the off-beats, a
+// glockenspiel motif, piano stabs and strings on the hook, a talkbox lead (a saw through moving
+// vowel formants), and turntable scratches into each section. Intro, verse, hook, verse, a
+// breakbeat, and a double hook, then from the verse.
+
+const HYDRAULIC = (() => {
+  const CHORDS = {
+    Cm9: { keys: [51, 55, 58, 62], root: 36 },
+    Fm9: { keys: [56, 63, 67, 72], root: 41 },
+    Abmaj7: { keys: [55, 60, 63, 68], root: 44 },
+    G7b9: { keys: [53, 59, 62, 68], root: 43 },
+  };
+  const VERSE = ['Cm9', 'Fm9', 'Cm9', 'G7b9', 'Cm9', 'Fm9', 'Cm9', 'G7b9'];
+  const HOOK = ['Abmaj7', 'G7b9', 'Cm9', 'Cm9', 'Abmaj7', 'G7b9', 'Cm9', 'G7b9'];
+  const TALK = [
+    [[0, 75, 3], [3, 72, 3], [6, 75, 2], [8, 79, 6], [14, 77, 2]],
+    [[0, 74, 4], [4, 71, 2], [6, 74, 2], [8, 77, 4], [12, 75, 4]],
+    [[0, 72, 6], [6, 70, 2], [8, 72, 2], [10, 75, 6]],
+    [[0, 74, 8], [8, 72, 4], [12, 70, 2], [14, 67, 2]],
+    [[0, 75, 3], [3, 72, 3], [6, 75, 2], [8, 79, 6], [14, 77, 2]],
+    [[0, 74, 4], [4, 77, 2], [6, 79, 2], [8, 80, 4], [12, 79, 4]],
+    [[0, 84, 6], [6, 82, 2], [8, 79, 4], [12, 75, 4]],
+    [[0, 74, 4], [4, 71, 4], [8, 67, 8]],
+  ];
+  // The glockenspiel's two-bar motif.
+  const BELL = [[[0, 79], [3, 82], [6, 84], [12, 82]], [[0, 79], [6, 75], [8, 77], [14, 74]]];
+  // The bass, [step, semitones above the root, length]: short, syncopated, popping octaves;
+  // every fourth bar it walks up to the fifth.
+  const BASS = [[0, 0, 2], [3, 12, 1], [4, 0, 1], [6, 0, 2], [9, 7, 1], [10, 10, 2], [13, 12, 1], [14, 0, 2]];
+  const BASS_WALK = [[0, 0, 2], [3, 12, 1], [4, 0, 1], [6, 0, 1], [8, 3, 2], [10, 5, 2], [12, 6, 2], [14, 7, 2]];
+  const KICK = [0, 3, 8, 11], KICK_BREAK = [0, 3, 6, 10, 11];
+  // Parts: bell, bass, drums (or 'break': the drums alone, scratching), guitar, hook (piano,
+  // strings, cowbell and the talkbox), scratch (into the next section).
+  const SONG = [
+    { name: 'intro', chords: ['Cm9', 'Fm9', 'Cm9', 'G7b9'], bell: true, shaker: true, scratch: true },
+    { name: 'verse', chords: VERSE, bell: true, bass: true, drums: true, guitar: true },
+    { name: 'hook', chords: HOOK, bass: true, drums: true, hook: true, scratch: true },
+    { name: 'verse', chords: VERSE, bell: true, bass: true, drums: true, guitar: true },
+    { name: 'break', chords: ['Cm9', 'Cm9', 'Cm9', 'Cm9'], drums: 'break', scratch: true },
+    { name: 'hook', chords: HOOK, bass: true, drums: true, hook: true, guitar: true },
+    { name: 'hook', chords: HOOK, bass: true, drums: true, hook: true, bell: true, scratch: true },
+  ];
+
+  return {
+    title: 'Hydraulic Sunday', bpm: 96, swing: 0.16, volume: 0.37, song: SONG, loopTo: 1,
+    play(m, t, S, bar, step) {
+      const ch = CHORDS[S.chords[bar]], st = m.step, lastBar = bar === S.chords.length - 1, walk = bar % 4 === 3;
+      const scratching = S.scratch && lastBar && step >= 8;
+      if (scratching && step === 8) m.scratch(t, st * 8);
+      if (S.drums === 'break' && bar % 2 === 1 && step === 8) m.scratch(t, st * 4);
+      if (S.bell) for (const [s, n] of BELL[bar % 2]) if (s === step) m.bell(t, n);
+      if (S.bass) for (const [s, o, len] of walk ? BASS_WALK : BASS) if (s === step) m.funkBass(t, ch.root + o, len * st);
+      if (S.drums) {
+        if ((S.drums === 'break' ? KICK_BREAK : KICK).includes(step) && !(scratching && step > 8)) m.kick808(t);
+        if (step === 4 || step === 12) { m.rim(t); m.snap(t + 0.012); }
+        if (S.drums === 'break' && (step === 7 || step === 15)) m.rim(t, 0.4);
+      }
+      if (S.drums || S.shaker) m.shaker(t, step % 4 === 2 ? 0.08 : step % 2 ? 0.035 : 0.055);
+      if (S.guitar && step % 4 === 2) m.wah(t, ch.keys.map((n) => n + 12));
+      if (S.hook) {
+        if (step === 0 || step === 10) m.piano(t, ch.keys.map((n) => n + 12));
+        if (step === 0) for (const n of ch.keys) m.pad(t, n + 12, st * 16);
+        if (step === 14) m.cowbell(t);
+        for (const [s, n, len] of TALK[bar]) if (s === step) m.talk(t, n - 12, len * st);
+      }
+    },
+  };
+})();
+
+const TRACKS = [NEON, BOULEVARD, FURNACE, HYDRAULIC];
 
 class DriveMusic {
   // ctx(): the AudioContext to play through (shared with the car's sounds), or null.
@@ -607,5 +679,141 @@ class DriveMusic {
     lfo.frequency.value = 6.5; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(dur > 0.3 ? 30 : 0, t + Math.min(dur, 0.3));
     lfo.connect(depth); lfo.start(t); lfo.stop(end + 0.05);
     for (const det of [-5, 5]) depth.connect(this.osc('sawtooth', f, t, end, pre, det).detune);
+  }
+  // Hydraulic Sunday's instruments -----------------------------------------------------------
+
+  // An 808 kick: a quick pitch drop into a long, deep boom.
+  kick808(t) {
+    const ac = this.out.ac, g = ac.createGain();
+    g.connect(this.out.comp);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.95, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    const o = this.osc('sine', 110, t, t + 0.85, g);
+    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(46, t + 0.07);
+  }
+
+  // A rimshot: a hard, woody click.
+  rim(t, level = 1) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 3200; bp.Q.value = 2;
+    bp.connect(g); g.connect(this.out.comp); g.connect(this.out.rev);
+    this.noiseSrc(t, this.env(g, t, 0.3 * level, 0.0005, 0, 0.035), bp);
+    const tg = ac.createGain(); tg.connect(this.out.comp);
+    this.osc('triangle', 1700, t, this.env(tg, t, 0.12 * level, 0.0005, 0, 0.03), tg);
+    const wg = ac.createGain(); wg.connect(this.out.comp);
+    this.osc('sine', 420, t, this.env(wg, t, 0.25 * level, 0.0005, 0, 0.05), wg);
+  }
+
+  // A finger snap: a short, bright burst, with room on it.
+  snap(t) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 1.5;
+    bp.connect(g); g.connect(this.out.comp); g.connect(this.out.rev);
+    this.noiseSrc(t, this.env(g, t, 0.35, 0.001, 0.004, 0.07), bp);
+  }
+
+  // A shaker: noise swishing in and out.
+  shaker(t, level) {
+    const ac = this.out.ac, g = ac.createGain(), hp = ac.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 6000;
+    hp.connect(g); g.connect(this.out.comp);
+    this.noiseSrc(t, this.env(g, t, level, 0.012, 0, 0.045), hp);
+  }
+
+  // The 808 cowbell: two square waves a little apart, through a band-pass.
+  cowbell(t) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 1.2;
+    bp.connect(g); g.connect(this.out.comp);
+    const end = this.env(g, t, 0.2, 0.001, 0.01, 0.28);
+    this.osc('square', 587, t, end, bp); this.osc('square', 845, t, end, bp);
+  }
+
+  // A turntable scratch: a tone pushed back and forth, its pitch swinging, cut by the fader.
+  scratch(t, dur) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter(), n = Math.max(2, Math.round(dur / 0.11));
+    bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 1.4;
+    bp.connect(g); g.connect(this.out.comp);
+    g.gain.setValueAtTime(0, t);
+    const o = this.osc('sawtooth', 300, t, t + dur, bp);
+    for (let i = 0; i < n; i++) {
+      const a = t + (i * dur) / n, b = t + ((i + 1) * dur) / n, up = i % 2 === 0;
+      o.frequency.setValueAtTime(up ? 220 : 1100, a); o.frequency.exponentialRampToValueAtTime(up ? 1100 : 260, b);
+      g.gain.setValueAtTime(0.35, a); g.gain.setValueAtTime(0.35, a + (b - a) * 0.7); g.gain.linearRampToValueAtTime(0, a + (b - a) * 0.8);
+    }
+  }
+
+  // A squelchy funk bass: a square and a saw through a resonant low-pass that snaps shut.
+  funkBass(t, m, dur) {
+    const ac = this.out.ac, g = ac.createGain(), lp = ac.createBiquadFilter(), f = mtof(m);
+    lp.type = 'lowpass'; lp.Q.value = 7;
+    lp.frequency.setValueAtTime(1700, t); lp.frequency.exponentialRampToValueAtTime(320, t + 0.09);
+    lp.connect(g); g.connect(this.out.comp);
+    const end = this.env(g, t, 0.1, 0.003, Math.max(0, dur - 0.04), 0.05);
+    this.osc('square', f, t, end, lp); this.osc('sawtooth', f, t, end, lp, 5);
+    const sg = ac.createGain(); sg.gain.value = 0.7; sg.connect(g);
+    this.osc('sine', f, t, end, sg);
+  }
+
+  // A wah-wah guitar scratching a muted chord: a quick strum through a sweeping band-pass.
+  wah(t, notes) {
+    const ac = this.out.ac, g = ac.createGain(), bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 4;
+    bp.frequency.setValueAtTime(450, t); bp.frequency.exponentialRampToValueAtTime(2200, t + 0.07);
+    let out = g;
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = 0.45; g.connect(p); out = p; }
+    bp.connect(g); out.connect(this.out.comp);
+    const end = this.env(g, t, 0.9, 0.002, 0.03, 0.06);
+    notes.forEach((n, i) => this.osc('sawtooth', mtof(n), t + i * 0.006, end, bp));
+    this.noiseSrc(t, end, bp);
+  }
+
+  // A glockenspiel: a sine and its bright, quickly fading overtone, off to the left with echo.
+  bell(t, m) {
+    const ac = this.out.ac, f = mtof(m), g = ac.createGain(), og = ac.createGain();
+    let out = g;
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = -0.35; g.connect(p); out = p; }
+    out.connect(this.out.comp); out.connect(this.out.del); out.connect(this.out.rev);
+    const end = this.env(g, t, 0.2, 0.001, 0, 1);
+    this.osc('sine', f, t, end, g);
+    og.connect(g); this.env(og, t, 0.5, 0.001, 0, 0.25);
+    this.osc('sine', f * 4.2, t, t + 0.3, og);
+  }
+
+  // Piano stabs: each note a few harmonics decaying, the higher ones faster.
+  piano(t, notes) {
+    const ac = this.out.ac;
+    for (const n of notes) {
+      const f = mtof(n);
+      for (const [k, peak, decay] of [[1, 0.075, 1.1], [2, 0.033, 0.6], [3, 0.015, 0.35]]) {
+        const g = ac.createGain();
+        g.connect(this.out.comp); g.connect(this.out.rev);
+        this.osc('sine', f * k, t, this.env(g, t, peak, 0.002, 0, decay), g);
+      }
+    }
+  }
+
+  // The talkbox: a saw through two band-passes at a vowel's formants, opening from "oo" to "ah"
+  // on each note and closing towards "oh", gliding from the note before.
+  talk(t, m, dur) {
+    const ac = this.out.ac, f = mtof(m), g = ac.createGain(), src = ac.createGain();
+    g.connect(this.out.comp);
+    const send = ac.createGain(); send.gain.value = 0.3; g.connect(send); send.connect(this.out.del); send.connect(this.out.rev);
+    const end = this.env(g, t, 1.1, 0.015, Math.max(0, dur - 0.04), 0.12);
+    for (const [f0, f1, f2, q, k] of [[300, 730, 570, 7, 1], [870, 1090, 840, 9, 0.7]]) {
+      const bp = ac.createBiquadFilter(), kg = ac.createGain();
+      bp.type = 'bandpass'; bp.Q.value = q; kg.gain.value = k;
+      bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + 0.12);
+      bp.frequency.setValueAtTime(f1, t + Math.max(0.12, dur * 0.6)); bp.frequency.exponentialRampToValueAtTime(f2, t + Math.max(0.15, dur));
+      src.connect(bp); bp.connect(kg); kg.connect(g);
+    }
+    const from = this.lastTalk && this.lastTalk.until > t - 0.4 ? this.lastTalk.f : f;
+    const lfo = ac.createOscillator(), depth = ac.createGain();
+    lfo.frequency.value = 5; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(dur > 0.3 ? 14 : 0, t + Math.min(dur, 0.3));
+    lfo.connect(depth); lfo.start(t); lfo.stop(end + 0.05);
+    const o = this.osc('sawtooth', from, t, end, src);
+    o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+    depth.connect(o.detune);
+    this.lastTalk = { f, until: t + dur };
   }
 }
