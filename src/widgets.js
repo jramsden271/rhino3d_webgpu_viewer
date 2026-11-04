@@ -2,7 +2,8 @@
 //
 // A widget with a minimised state (data-min on its panel) gets a minimise/restore button beside
 // its close button. Each widget's minimised design is its own, set in index.html and style.css:
-// [data-full] parts show only in the normal state, [data-min-only] parts only when minimised.
+// [data-full] parts show only in the normal state, [data-min-only] parts only when minimised, and
+// a [data-min-move] part moves into the title bar when minimised, before the element with that id.
 // Double-clicking the title bar switches between the two; right-clicking it locks the state.
 //
 // When the widgets need more height than the column has, the least recently used ones are
@@ -31,7 +32,7 @@ const Widgets = (() => {
   };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* storage unavailable */ } };
 
-  const panels = () => [...side.children].filter((p) => p.classList.contains('panel'));
+  const panels = () => [...side.children].filter((p) => p.classList.contains('panel') && !p.classList.contains('ghost'));
   const shown = () => panels().filter((p) => !p.hidden);
   const hasMin = (p) => p.hasAttribute('data-min');
   const blank = () => ({ state: NORMAL, lock: false, auto: false });
@@ -49,6 +50,12 @@ const Widgets = (() => {
   function draw(p) {
     const s = stateOf(p), { lock } = info(p), min = s === MINIMISED;
     p.classList.toggle('min', min);
+    for (const el of p._moves || []) {
+      const to = min ? document.getElementById(el.dataset.minMove) : el._home;
+      if (min && to && to.previousSibling !== el) to.before(el);
+      else if (!min && to && to.nextSibling !== el) to.after(el);
+      el.classList.toggle('in-head', min);
+    }
     const b = p.querySelector('.panel-head .win');
     if (!b) return;
     // Unlocked, the button shows what it does; locked, the state it holds.
@@ -92,12 +99,18 @@ const Widgets = (() => {
       if (total() <= room) info(p).auto = false;
       else set(p, MINIMISED);
     }
-    // Not enough room: minimise the least recently used.
-    while (total() > room) {
-      const p = list.filter((q) => q !== keep && hasMin(q) && !info(q).lock && stateOf(q) === NORMAL).sort((a, b) => lastUsed(a) - lastUsed(b))[0];
+    // Not enough room: minimise the least recently used, where that saves height (a list that
+    // stretches can be shorter than its minimised design).
+    const tried = new Set();
+    for (let need = total(); need > room;) {
+      const p = list.filter((q) => q !== keep && !tried.has(q) && hasMin(q) && !info(q).lock && stateOf(q) === NORMAL).sort((a, b) => lastUsed(a) - lastUsed(b))[0];
       if (!p) break;
+      tried.add(p);
       set(p, MINIMISED);
+      const now = total();
+      if (now >= need - 0.5) { set(p, NORMAL); continue; }
       info(p).auto = true;
+      need = now;
     }
     side.classList.toggle('over', total() > room + 0.5);
     save();
@@ -128,17 +141,26 @@ const Widgets = (() => {
     }
   }
 
-  // A widget closing: a gap of its height takes its place and closes up, so the rest slide.
+  // A widget closing: main.js has hidden it already, so a copy takes its place, shrinking and
+  // fading out, and the rest slide up. The copy comes after the widget, so its ids still find
+  // the widget itself.
   function closeUp(p) {
     const h = lastHeight.get(p);
-    if (!motion() || !h || !shown().length) return;
-    const gapEl = document.createElement('div');
-    gapEl.className = 'panel-gap';
-    side.insertBefore(gapEl, p);
-    const below = shown().some((q) => gapEl.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (!motion() || !h) return;
+    const g = p.cloneNode(true);
+    g.hidden = false;
+    g.classList.add('ghost');
+    g.inert = true;
+    g.setAttribute('aria-hidden', 'true');
+    const from = p.querySelectorAll('input, select'), to = g.querySelectorAll('input, select');
+    from.forEach((el, i) => { to[i].value = el.value; if ('checked' in el) to[i].checked = el.checked; });
+    p.after(g);
+    const below = shown().some((q) => g.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING);
     const margin = below ? 'marginBottom' : 'marginTop';
-    gapEl.animate([{ height: h + 'px', [margin]: '0px' }, { height: '0px', [margin]: -gap() + 'px' }], { duration: ANIM_MS, easing: EASE })
-      .onfinish = () => gapEl.remove();
+    g.animate([{ minHeight: h + 'px', maxHeight: h + 'px', opacity: 1, [margin]: '0px' },
+      { minHeight: '0px', maxHeight: '0px', opacity: 0, [margin]: -gap() + 'px' }], { duration: ANIM_MS, easing: EASE })
+      .onfinish = () => g.remove();
+    setTimeout(() => g.remove(), ANIM_MS * 4); // in case no frame is drawn to finish it (a hidden window)
   }
 
   // Sizes change (content, the window, the column width): fit again, once the animations end.
@@ -255,6 +277,8 @@ const Widgets = (() => {
       if (!p.id) continue;
       const head = p.querySelector('.panel-head');
       p.dataset.name = p.getAttribute('aria-label') || head.firstElementChild.textContent.trim();
+      p._moves = [...p.querySelectorAll('[data-min-move]')];
+      for (const el of p._moves) { el._home = document.createComment(` ${el.id} `); el.before(el._home); }
       if (hasMin(p)) {
         const b = document.createElement('button');
         b.className = 'x win';

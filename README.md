@@ -118,6 +118,10 @@ View changes, date and time, hiding objects, turning layers on or off and the si
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
 
+The filter box at the top of the Layers and Block definitions panels narrows the list to names
+containing what you type. In Layers, a matching layer shows with the layers above it, even inside
+a collapsed one.
+
 In the Layers and Block definitions panels, click a row to select it, Ctrl-click to add or remove a row, and
 Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
 selected rows.
@@ -179,9 +183,11 @@ Widgets can be arranged within the column:
   - **Weather** keeps one row of readings: temperature, humidity and wind, or the sun's without a
     weather file.
   - **Thermal comfort** keeps its UTCI reading.
-  - **Sun exposure** keeps its switch, progress, status and legend.
+  - **Sun exposure** keeps its switch, progress and legend, with the layer picker in the title bar.
   - **CFD streamlines** and **CFD map** keep their switch and legends.
-  - **Layers**, **Block definitions**, **Lights** and **Walk** keep their title bar.
+  - **Layers** and **Block definitions** keep a list up to 300 px tall, without the filter.
+  - **Walk** keeps the speed slider, in the title bar.
+  - **Lights** keeps its title bar.
 - **Making room.** When the open widgets need more height than the column has, the ones used least
   recently are minimised. They are restored when room comes back. If that still isn't enough, the
   column scrolls.
@@ -189,8 +195,8 @@ Widgets can be arranged within the column:
   is. Its button then looks pressed in, showing the state it holds: **_** for minimised, **□** for
   open. Right-click again to unlock it.
 - **Reorder.** Drag a title bar up or down to move the widget in the stack. A widget opened for the
-  first time goes to the bottom, and one opened again goes back to its place. The widgets below
-  slide as one opens, closes or changes size.
+  first time goes to the bottom, and one opened again goes back to its place. A widget grows as it
+  opens and shrinks and fades as it closes, and the widgets below slide with it.
 
 The order, and each widget's state and lock, are remembered for every model.
 

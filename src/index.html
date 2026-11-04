@@ -87,7 +87,8 @@
       <span>Layers</span>
       <span class="panel-actions"><button class="link" data-layers="all">Show all</button><button class="link" data-layers="none">Hide all</button><button class="x q" id="layersHelp" aria-label="About layers" title="About layers">?</button><button class="x" id="layersClose" aria-label="Close layers" title="Close (L)">×</button></span>
     </div>
-    <div id="layerTree" class="layer-tree" role="tree" data-full></div>
+    <div class="panel-filter" data-full><input type="search" id="layerFilter" placeholder="Filter layers" aria-label="Filter layers"></div>
+    <div id="layerTree" class="layer-tree" role="tree"></div>
   </aside>
   <aside id="blocksPanel" class="chrome panel layers-panel" hidden data-min>
     <div class="panel-head">
@@ -95,7 +96,7 @@
       <span class="panel-actions"><button class="link" data-blocks="all">Show all</button><button class="link" data-blocks="none">Hide all</button><button class="x q" id="blocksHelp" aria-label="About block definitions" title="About block definitions">?</button><button class="x" id="blocksClose" aria-label="Close block definitions" title="Close (K)">×</button></span>
     </div>
     <div class="panel-filter" data-full><input type="search" id="blockFilter" placeholder="Filter blocks" aria-label="Filter blocks"></div>
-    <div id="blockList" class="layer-tree" data-full></div>
+    <div id="blockList" class="layer-tree"></div>
   </aside>
 
   <aside id="streamlinesPanel" class="chrome panel layers-panel" hidden aria-label="CFD streamlines" data-min>
@@ -188,13 +189,13 @@
   <section id="exposurePanel" class="chrome panel sun-panel" hidden aria-label="Sun exposure" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="15" cy="6.5" r="3"/><path d="M15 1.5v1M20 6.5h1M18.5 3l.7-.7M2.5 20l5-7h14l-5 7z"/></svg>Sun exposure</span>
-      <span class="panel-actions"><label class="switch" title="Show the results on the model"><input type="checkbox" id="exposureOn"><span></span></label><button class="x q" id="exposureHelp" aria-label="About sun exposure" title="About sun exposure">?</button><button class="x" id="exposureClose" aria-label="Close sun exposure panel" title="Close">×</button></span>
+      <span class="panel-actions"><label class="switch" id="exposureSwitch" title="Show the results on the model"><input type="checkbox" id="exposureOn"><span></span></label><button class="x q" id="exposureHelp" aria-label="About sun exposure" title="About sun exposure">?</button><button class="x" id="exposureClose" aria-label="Close sun exposure panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div class="sun-read" id="exposureRead" hidden></div>
       <div class="field" data-full>
         <div class="field-label"><span>Surfaces</span></div>
-        <div class="exposure-layer"><select id="exposureLayer" aria-label="Layer to analyse" title="The layer whose objects are analysed"></select><button class="btn icon" id="exposurePick" aria-pressed="false" title="Pick the layer from the model: click this, then an object (Esc to cancel)" aria-label="Pick from the model"><svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7"/></svg></button></div>
+        <div class="exposure-layer"><select id="exposureLayer" data-min-move="exposureSwitch" aria-label="Layer to analyse" title="The layer whose objects are analysed"></select><button class="btn icon" id="exposurePick" aria-pressed="false" title="Pick the layer from the model: click this, then an object (Esc to cancel)" aria-label="Pick from the model"><svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M16 4l1.6-1.6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L20 8M17 11 7 21H3v-4L13 7"/></svg></button></div>
         <div class="check-row">
           <label class="check" title="Only the parts of the surfaces facing within 45° of straight up, such as the ground and roofs: leaves out walls and the like"><input type="checkbox" id="exposureUp"> Ground/roof only</label>
           <label class="check" title="By default, the upwards-facing side is analysed."><input type="checkbox" id="exposureFlip"> Flip sides</label>
@@ -213,7 +214,7 @@
       <div class="field">
         <label class="check" data-full title="Recalculate as soon as anything changes. Off: the results stay as they are; tick it again to bring them up to date"><input type="checkbox" id="exposureAuto"> Update automatically</label>
         <div class="exposure-run"><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>
-        <div id="exposureStatus" class="sun-read"></div>
+        <div id="exposureStatus" class="sun-read" data-full></div>
       </div>
       <div id="exposureStats" class="sun-weather" hidden data-full></div>
       <div id="exposureLegend"></div>
@@ -234,7 +235,7 @@
     <div class="sun-body" data-full>
       <div class="field">
         <div class="field-label"><span>Speed</span><output id="walkSpeedOut"></output></div>
-        <input type="range" id="walkSpeed" min="0.5" max="15" step="0.1" title="Shift runs at three times this speed">
+        <input type="range" id="walkSpeed" data-min-move="walkHelp" min="0.5" max="15" step="0.1" title="Walking speed. Shift runs at three times this speed">
       </div>
       <div class="check-row">
         <label class="check" title="Off: walk through walls and objects; you still follow the ground and climb steps"><input type="checkbox" id="walkCollide" checked> Collision detection</label>

@@ -414,6 +414,7 @@ async function openBytes(name, bytes, handle = null) {
     $('matDialog').hidden = true;
     $('blockDialog').hidden = true;
     applyLayerVisibility();
+    $('layerFilter').value = '';
     buildLayerTree();
     buildBlockList();
     if (nestedBlockOff()) await rebuildModel();
@@ -569,11 +570,13 @@ function buildLayerTree() {
   roots.forEach((r) => add(r, 0));
   const hiddenByCollapse = (i) => { for (let p = L[i].parent; p >= 0; p = L[p].parent) if (collapsed.has(p)) return true; return false; };
   function refreshRows() {
+    const filter = $('layerFilter').value.trim().toLowerCase(), match = new Set();
+    if (filter) for (const { i } of rows) if (L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
     for (const { i, row, cb } of rows) {
       cb.checked = layerOn[i];
       row.classList.toggle('off', !layerOn[i]);
       row.classList.toggle('inherited-off', layerOn[i] && !layerEffective(i));
-      row.hidden = hiddenByCollapse(i);
+      row.hidden = filter ? !match.has(i) : hiddenByCollapse(i);
       row.querySelector('.caret').classList.toggle('collapsed', collapsed.has(i));
       const sw = row.querySelector('.swatch'), isMat = showsMaterial(), id = model.layers[i].id;
       sw.style.background = isMat ? lookBackground(layerLook(i)) : rgbHex(layerDisplayRgb(i));
@@ -594,6 +597,7 @@ function buildLayerTree() {
   buildLayerTree.refresh = refreshRows;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
+    $('layerFilter').value = ''; // the layer might not match it
     for (let p = L[i].parent; p >= 0; p = L[p].parent) collapsed.delete(p);
     refreshRows();
     const r = rows.find((x) => x.i === i);
@@ -860,6 +864,7 @@ function afterBlockChange() {
 function bindBlocksPanel() {
   blockRows.bind($('blockList'));
   $('blockFilter').addEventListener('input', refreshBlockList);
+  $('layerFilter').addEventListener('input', () => { buildLayerTree.refresh?.(); layerRows.keepShown(); });
   $('blockList').addEventListener('scroll', closeLayerMenu);
   $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
   $('blocksHelp').addEventListener('click', showBlocksHelp);
