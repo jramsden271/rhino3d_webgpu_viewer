@@ -40,7 +40,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Zoom extents | Double-click empty space | `F` |
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: click the N or a tick | |
-| Drive mode | Camera button: Drive · drag to look round · wheel zooms · touch: drag on the left half to drive, on the right to look | `5` · `W` `S` or arrows to accelerate and brake · `A` `D` to steer · `Space` handbrake · `T` headlights · `C` camera · `R` reset · `Esc` to stop |
+| Drive mode (developer mode) | Camera button: Drive · drag to look round · wheel zooms · touch: drag on the left half to drive, on the right to look | `5` · `W` `S` or arrows to accelerate and brake · `A` `D` to steer · `Space` handbrake · `T` headlights · `C` camera · `R` reset · `Esc` to stop |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
 | Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
@@ -119,7 +119,8 @@ fade, and goes to that camera; `Esc` goes back to the camera you started from. P
 walking for a torch: a spot light held at chest height that points where you look and casts
 shadows (see [Lights](#lights)).
 
-**Drive mode** puts a car in the model. Pick **Drive** in the camera list (or press `5`), then
+**Drive mode**, an easter egg of developer mode (five quick clicks on the home screen's logo),
+puts a car in the model. Pick **Drive** in the camera list (or press `5`), then
 click where it should start: it faces the way the camera looks. `W` and `S` (or the up and down
 arrows) accelerate and brake, then reverse; `A` and `D` steer, and `Space` is the handbrake, for
 sliding round corners. The handling is an arcade one: grippy, quick to turn, and forgiving. The

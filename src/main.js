@@ -3267,6 +3267,8 @@ function setDevMode(on) {
   window.devMode = on;
   $('devLabel').hidden = !on;
   document.body.classList.toggle('dev', on);
+  if (cameraList) fillCameraMenu(); // Drive is listed in developer mode only
+  if (!on) driver.exit();
   clearInterval(diag.timer);
   if (on) { diagReset(); diag.timer = setInterval(showDiag, 500); }
   showDiag();
@@ -3466,7 +3468,7 @@ function onKey(e) {
   if (driver.placing && k === 'escape') { e.preventDefault(); driver.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'), 5: () => pickView('drive'),
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'), 5: () => { if (state.devMode) pickView('drive'); },
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
@@ -3496,7 +3498,7 @@ function pickView(id) {
   // From walking to driving or back: out of one, then into the other.
   if ((id === 'walk' && driver.active) || (id === 'drive' && walker.active)) { leaveWalk(() => pickView(id)); return; }
   if (id === 'walk') { driver.exit(); startWalk(); return; }
-  if (id === 'drive') { walker.exit(); startDrive(); return; }
+  if (id === 'drive') { if (state.devMode) { walker.exit(); startDrive(); } return; }
   if (moving()) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
   driver.exit();
@@ -3532,7 +3534,7 @@ function showNamedViewsHelp() {
 function fillCameraMenu() {
   const named = (model?.views || []).map((v, i) => ({ id: `named:${i}`, label: v.name }));
   cameraList.setGroups([...(named.length ? [{ heading: 'From this file', help: { title: 'About named views', run: showNamedViewsHelp }, items: named }] : []),
-    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }, { id: 'drive', label: 'Drive', hint: '5' }] }]);
+    { items: [...CAMERAS.map(([id, label, hint]) => ({ id, label, hint })), { id: 'walk', label: 'Walk', hint: '4' }, ...(state.devMode ? [{ id: 'drive', label: 'Drive', hint: '5' }] : [])] }]);
 }
 
 function syncCameraMenu() {
@@ -3652,7 +3654,8 @@ function startWalkAt(e) {
     fadeIntoWalk(V3.add(h.p, V3.scale(back, 0.4 / mpu)));
   });
 }
-// Driving starts from Drive in the camera list (or 5), always by choosing where to start, with the
+// An easter egg of developer mode: driving starts from Drive in the camera list (or 5), listed only
+// in developer mode, always by choosing where to start, with the
 // car's footprint following the cursor. It faces the way the camera looks. Esc or another camera
 // stops it; the Drive panel's Exit too.
 const DRIVE_MARKER = 2.2; // marker radius (m): about the car's half length
@@ -4015,6 +4018,7 @@ function toggleHelp() {
 let atHome = false;
 function goHome() {
   walker.exit();
+  driver.exit();
   if (model) { atHome = true; $('dropBackName').textContent = model.name; }
   $('dropBack').hidden = !model;
   $('drop').hidden = false;
