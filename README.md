@@ -488,9 +488,14 @@ always in sun (magma), and are not kept: they last until the settings change or 
   up, such as a closed solid or a wall, keeps its own sides); **Flip sides** tests the other side.
   **Ground/roof only** keeps just the faces within 45° of straight up (turned up, before any flip),
   leaving out walls and the like. While picking, a marker follows the surface under the cursor.
-- **Dates** and **Times** each have two grips, in either order: every day from the earlier date to
-  the later is tested at the times from the earlier to the later, both ends included, every
-  **Interval** (5 to 60 minutes). Right-click either for the usual choices.
+- **Dates** and **Times** are periods round the Date widget's date and time, shown beside each,
+  both ends included. Every day in the dates is tested at the times, every **Interval** (5 to 60
+  minutes), and the results follow the Date widget.
+  - Dates: Single day; 1 week (±3 days: 15 August gives 12-18 August); 1 month (±15 days);
+    3 months (±45 days); Calendar month (the whole month of the date); All year. The rolling
+    periods run on round the end of the year, so 1 week round 2 January starts on 30 December.
+  - Times: Current time; 1 hour (±30 minutes: 17:00 gives 16:30-17:30); 3 hours; 6 hours; All
+    day. They stop at midnight rather than running into the next day.
 - **Grid spacing** (0.1 to 10 m) is the most distance between the points tested. The objects'
   render meshes are joined and their long edges split until none is longer, so no meshing is
   needed in Rhino. Edges sharper than 40° keep a normal for each side. A new layer starts at the
@@ -499,8 +504,9 @@ always in sun (magma), and are not kept: they last until the settings change or 
   it. Materials more than 40% transparent do not cast shadows, as for the sun.
 - Under the results: the area analysed, and how much of it is in sun and shaded on average over
   the period (in m² and %, weighted by area).
-- **Update automatically** recalculates soon after any change; off, nothing runs until
-  **Update**, for long periods. A run can be stopped.
+- **Update automatically** recalculates soon after any change. Off, the results stay as they are
+  while the settings change (quicker for long periods), and ticking it again calculates. A run
+  can be stopped.
 
 Each sun position draws the shown model's depth as seen from the sun into a 4096² map (or up to
 4 × 4 of them for a large area, so that a texel is at most 0.25 m, or half the grid spacing if
@@ -736,7 +742,6 @@ src/recent.js            recent files list (file handles in IndexedDB)
 src/materials.js         magic materials: keyword rules and default colours
 src/camera.js            Z-up orbit / pan / zoom camera, matching Rhino's named views
 src/toolmenu.js          toolbar menus: a button with a popup that takes any content (ToolbarMenu), a list of choices (ChoiceList)
-src/rangepair.js         a slider with two grips, for a range
 src/walk.js              pedestrian mode: walking, ground following, steps, falls
 src/main.js              file loading, input, layer panel, toolbar
 tools/                   development helpers (local server, Node test scripts)

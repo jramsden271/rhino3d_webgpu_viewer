@@ -17,13 +17,51 @@ const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front o
 const EXPOSURE_TEXEL = 0.25;
 const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
 
-// The times in a period, as [{ doy, hour }]: each day from the first to the last of days, at
-// hours from the first to the last of hours every step minutes, both ends included. Either pair
-// can be in either order.
+// The periods offered round the Date widget's date and time, both ends included. A date span
+// runs on round the end of the year (the sun's path repeats), so 1 January ±3 days starts on
+// 29 December; a time span stops at the ends of the day.
+const EXPOSURE_DATE_SPANS = [
+  { id: 'day', label: 'Single day', half: 0 },
+  { id: 'week', label: '1 week (±3 days)', half: 3 },
+  { id: 'month', label: '1 month (±15 days)', half: 15 },
+  { id: 'quarter', label: '3 months (±45 days)', half: 45 },
+  { id: 'calendar', label: 'Calendar month' },
+  { id: 'year', label: 'All year' },
+];
+const EXPOSURE_TIME_SPANS = [
+  { id: 'now', label: 'Current time', half: 0 },
+  { id: 'hour', label: '1 hour (±30 min)', half: 0.5 },
+  { id: 'hours3', label: '3 hours (±1.5 h)', half: 1.5 },
+  { id: 'hours6', label: '6 hours (±3 h)', half: 3 },
+  { id: 'day', label: 'All day' },
+];
+
+// The days of a date span round doy, in order from the first: [doy, ...] (1-based).
+function exposureDays(span, doy, year) {
+  const n = daysInYear(year), wrap = (d) => ((d - 1 + n) % n) + 1;
+  if (span === 'year') return Array.from({ length: n }, (_, i) => i + 1);
+  if (span === 'calendar') {
+    const { month } = dateFromDayOfYear(year, doy), first = dayOfYear(year, month, 1);
+    const last = month === 12 ? n : dayOfYear(year, month + 1, 1) - 1;
+    return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+  }
+  const half = EXPOSURE_DATE_SPANS.find((s) => s.id === span)?.half ?? 0;
+  return Array.from({ length: 2 * half + 1 }, (_, i) => wrap(doy - half + i));
+}
+
+// The hours of a time span round hour: [from, to], within the day.
+function exposureHours(span, hour) {
+  if (span === 'day') return [0, 24];
+  const half = EXPOSURE_TIME_SPANS.find((s) => s.id === span)?.half ?? 0;
+  return [Math.max(0, hour - half), Math.min(24, hour + half)];
+}
+
+// The times in a period, as [{ doy, hour }]: each of days (a list), at hours from the first to the
+// last of hours every step minutes, both ends included.
 function exposureTimes({ days, hours, step }) {
-  const [d0, d1] = [Math.min(...days), Math.max(...days)], [h0, h1] = [Math.min(...hours), Math.max(...hours)];
+  const [h0, h1] = [Math.min(...hours), Math.max(...hours)];
   const m0 = Math.round(h0 * 60), m1 = Math.round(h1 * 60), out = [];
-  for (let doy = d0; doy <= d1; doy++) for (let m = m0; m <= m1; m += step) out.push({ doy, hour: m / 60 });
+  for (const doy of days) for (let m = m0; m <= m1; m += step) out.push({ doy, hour: m / 60 });
   return out;
 }
 

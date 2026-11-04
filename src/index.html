@@ -202,11 +202,11 @@
       </div>
       <div class="field">
         <div class="field-label"><span>Dates</span><output id="exposureDaysOut"></output></div>
-        <div id="exposureDays" title="Drag either grip; both on one day for a single day. Right-click for the solstices, equinoxes and the whole year"></div>
+        <select class="exposure-span" id="exposureDateSpan" aria-label="Dates" title="The days tested, round the Date widget's date (S). Both ends are included"></select>
       </div>
       <div class="field">
         <div class="field-label"><span>Times</span><output id="exposureHoursOut"></output></div>
-        <div id="exposureHours" title="Drag either grip; both together for a single time. Both ends are included. Right-click for the usual periods"></div>
+        <select class="exposure-span" id="exposureTimeSpan" aria-label="Times" title="The times tested each day, round the Date widget's time (S). Both ends are included"></select>
       </div>
       <div class="field">
         <div class="field-label"><span>Interval</span><output id="exposureStepOut"></output></div>
@@ -217,8 +217,8 @@
         <input type="range" id="exposureSpacing" min="0" max="7" step="1" title="Most distance between the points tested on the surfaces. Closer is finer, and slower">
       </div>
       <div class="field">
-        <label class="check" title="Recalculate as soon as anything changes. Off: only when you press Update"><input type="checkbox" id="exposureAuto"> Update automatically</label>
-        <div class="exposure-run"><button class="btn" id="exposureUpdate">Update</button><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>
+        <label class="check" title="Recalculate as soon as anything changes. Off: the results stay as they are; tick it again to bring them up to date"><input type="checkbox" id="exposureAuto"> Update automatically</label>
+        <div class="exposure-run"><span class="exposure-bar" id="exposureBarBox" hidden><span id="exposureBar"></span></span><button class="link" id="exposureStop" hidden>Stop</button></div>
         <div id="exposureStatus" class="sun-read"></div>
       </div>
       <div id="exposureStats" class="sun-weather" hidden></div>
@@ -390,7 +390,6 @@
 <script src="exposure.js"></script>
 <script src="camera.js"></script>
 <script src="toolmenu.js"></script>
-<script src="rangepair.js"></script>
 <script src="listselect.js"></script>
 <script src="walk.js"></script>
 <script src="renderer.js"></script>

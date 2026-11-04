@@ -2723,31 +2723,37 @@ const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.de
 // results are drawn on the model until the settings change; nothing is kept.
 
 const expo = {
-  panel: false, on: true, layer: -1, flip: false, upOnly: false, summary: null, days: [80, 80], hours: [10, 12], step: 10, spacing: 1, auto: true, picking: false,
+  panel: false, on: true, layer: -1, flip: false, upOnly: false, summary: null, dateSpan: 'day', timeSpan: 'hours3', step: 10, spacing: 1, auto: true, picking: false,
   // Working state: the surface tested (for surfaceKey), the run going on (runKey, token), the
   // settings of the results shown (doneKey), and of a run stopped or waiting for Update.
   surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', token: 0, timer: 0,
   progress: null, status: '', shown: false, stale: false,
 };
-let toolsMenu = null, toolsList = null, exposureDays = null, exposureHours = null;
+let toolsMenu = null, toolsList = null, exposureBound = false;
 
 const fmtDay = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
 const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
 const fmtMetres = (m) => `${m} m`;
 const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
 
+// The days and hours tested: the chosen spans round the Date widget's date and time.
+const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy, EPW_YEAR), hours: exposureHours(expo.timeSpan, state.sun.hour) });
+
 // The settings a surface and a run depend on, or null when there is nothing to work out.
 function exposureKeys() {
   if (!model || expo.layer < 0 || !activeLocation()) return null;
-  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.');
+  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.'), { days, hours } = exposurePeriod();
   const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden].join('|');
-  return { surface, run: [surface, expo.days, expo.hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
+  return { surface, run: [surface, days[0], days.length, hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
 }
 
 // Each frame, and on a change in the panel: whether the results still match the settings, and if not, a new run (after a
-// pause, so that dragging a slider runs once) or, without Update automatically, a note to update.
+// pause, so that dragging a slider runs once) or, without Update automatically, a note that the
+// results are out of date.
 function checkExposure() {
   const k = expo.on ? exposureKeys() : null;
+  // Settings changed and changed back: the results shown are up to date again.
+  if (k && k.run === expo.doneKey && expo.stale && !expo.runKey) { expo.stale = false; syncExposurePanel(); }
   if (!k || k.run === expo.doneKey || k.run === expo.runKey || k.run === expo.pendingKey) return;
   if (!expo.auto || k.run === expo.stoppedKey) {
     if (!expo.stale) { expo.stale = true; syncExposurePanel(); }
@@ -2774,7 +2780,7 @@ async function runExposure() {
     renderer.setExposurePoints(surface.error ? null : surface);
   }
   const surface = expo.surface, S = state.sun;
-  const times = exposureTimes(expo), dirs = surface.error ? [] : exposureSunDirs(times, { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north });
+  const times = exposureTimes({ ...exposurePeriod(), step: expo.step }), dirs = surface.error ? [] : exposureSunDirs(times, { lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north });
   const done = (status) => {
     Object.assign(expo, { status, progress: null, runKey: '', doneKey: k.run });
     syncExposurePanel();
@@ -2885,7 +2891,7 @@ function syncExposureProgress() {
 }
 
 function syncExposurePanel() {
-  if (!exposureDays) return;
+  if (!exposureBound) return;
   $('btnTools').setAttribute('aria-pressed', String(expo.panel));
   if (!expo.panel) return;
   const located = !!activeLocation();
@@ -2901,23 +2907,21 @@ function syncExposurePanel() {
   sel.value = String(expo.layer);
   $('exposureFlip').checked = expo.flip;
   $('exposureUp').checked = expo.upOnly;
-  exposureDays.max = daysInYear(EPW_YEAR);
-  for (const r of exposureDays.inputs) r.max = exposureDays.max;
-  exposureDays.value = expo.days;
-  exposureHours.value = expo.hours;
-  $('exposureDaysOut').textContent = fmtRange(expo.days, fmtDay);
-  $('exposureHoursOut').textContent = fmtRange(expo.hours, fmtClock);
+  const { days, hours } = exposurePeriod();
+  $('exposureDateSpan').value = expo.dateSpan;
+  $('exposureTimeSpan').value = expo.timeSpan;
+  $('exposureDaysOut').textContent = fmtRange([days[0], days[days.length - 1]], fmtDay);
+  $('exposureHoursOut').textContent = fmtRange(hours, fmtClock);
   $('exposureStep').value = EXPOSURE_STEPS.indexOf(expo.step);
   $('exposureStepOut').textContent = `every ${expo.step} min`;
   $('exposureSpacing').value = EXPOSURE_SPACINGS.indexOf(expo.spacing);
   $('exposureSpacingOut').textContent = fmtMetres(expo.spacing);
   $('exposureAuto').checked = expo.auto;
   const going = expo.progress != null, ready = located && expo.layer >= 0 && expo.on;
-  $('exposureUpdate').hidden = expo.auto && !expo.stale;
-  $('exposureUpdate').disabled = !ready || going || (!expo.stale && !!expo.doneKey);
   syncExposureProgress();
   const status = !ready ? (expo.layer < 0 ? 'Choose the layer to analyse, or pick it from the model.' : located && !expo.on ? 'Results are hidden.' : '')
-    : expo.stale && !going ? `${expo.status && expo.status !== 'Stopped.' && expo.shown ? 'Settings changed since these results. ' : expo.status === 'Stopped.' ? 'Stopped. ' : ''}Press Update to calculate.` : expo.status;
+    : expo.stale && !going ? (expo.status === 'Stopped.' ? `Stopped. ${expo.auto ? 'Change a setting, or untick and tick Update automatically' : 'Tick Update automatically'} to calculate.`
+      : `${expo.shown ? 'Settings changed since these results. ' : ''}Tick Update automatically to calculate.`) : expo.status;
   $('exposureStatus').textContent = status;
   const m2 = (a) => `${Math.round(a).toLocaleString()} m²`, pc = (a) => `${Math.round((a / sum.area) * 100)}%`, sum = expo.summary;
   const stats = expo.shown && expo.on && sum && sum.area > 0;
@@ -2933,16 +2937,14 @@ function showExposureHelp() {
   Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
     <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
-    <p><b>Dates</b> and <b>Times:</b> drag either grip. The period runs from the earlier grip to the later, both included, and both grips together give a single day or time. Every day in the dates is tested at the times, every <b>Interval</b>. Right-click either slider for the usual choices.</p>
+    <p><b>Dates</b> and <b>Times</b> are periods round the date and time in the Date widget (press S), shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
     <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
     <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Date widget.</p>
-    <p>With <b>Update automatically</b> off, nothing is calculated until you press <b>Update</b>: for long periods, so that changing the settings stays quick.</p>
+    <p>With <b>Update automatically</b> off, the results stay as they are while you change the settings, which keeps long periods quick to set up. Tick it again to calculate.</p>
     <p>The results are not kept: they go when the model is closed.</p>` });
 }
 
 function bindExposurePanel() {
-  const equinox = dayOfYear(EPW_YEAR, 3, 21);
-  expo.days = [equinox, equinox];
   toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
   toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
@@ -2958,28 +2960,21 @@ function bindExposurePanel() {
   $('exposurePick').addEventListener('click', () => setExposurePicking(!expo.picking));
   $('exposureFlip').addEventListener('change', (e) => setExposure({ flip: e.target.checked }));
   $('exposureUp').addEventListener('change', (e) => setExposure({ upOnly: e.target.checked }));
-  exposureDays = new RangePair($('exposureDays'), { min: 1, max: 365, step: 1, label: 'Dates', onInput: (days) => setExposure({ days }) });
-  exposureHours = new RangePair($('exposureHours'), { min: 0, max: 24, step: 1 / 12, label: 'Times', onInput: (hours) => setExposure({ hours: hours.map((h) => Math.round(h * 12) / 12) }) });
-  $('exposureDays').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const at = (label, m, d) => { const doy = dayOfYear(EPW_YEAR, m, d); return { label, run: () => setExposure({ days: [doy, doy] }) }; };
-    showMenu('Dates', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23), at('21 December · solstice', 12, 21), '-',
-      { label: 'Whole year', run: () => setExposure({ days: [1, daysInYear(EPW_YEAR)] }) }], [e.clientX, e.clientY]);
-  });
-  $('exposureHours').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const at = (a, b) => ({ label: `${fmtClock(a)} – ${fmtClock(b)}`, run: () => setExposure({ hours: [a, b] }) });
-    showMenu('Times', [at(10, 12), at(9, 15), at(12, 16), at(8, 18), '-', { label: 'All day', run: () => setExposure({ hours: [0, 24] }) }], [e.clientX, e.clientY]);
-  });
+  const options = (spans) => spans.map((sp) => `<option value="${sp.id}">${escapeHtml(sp.label)}</option>`).join('');
+  $('exposureDateSpan').innerHTML = options(EXPOSURE_DATE_SPANS);
+  $('exposureTimeSpan').innerHTML = options(EXPOSURE_TIME_SPANS);
+  $('exposureDateSpan').addEventListener('change', (e) => setExposure({ dateSpan: e.target.value }));
+  $('exposureTimeSpan').addEventListener('change', (e) => setExposure({ timeSpan: e.target.value }));
   $('exposureStep').addEventListener('input', (e) => setExposure({ step: EXPOSURE_STEPS[+e.target.value] }));
   $('exposureSpacing').addEventListener('input', (e) => setExposure({ spacing: EXPOSURE_SPACINGS[+e.target.value] }));
-  $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked }));
-  $('exposureUpdate').addEventListener('click', () => { clearTimeout(expo.timer); runExposure(); });
+  // Ticking it again also restarts a stopped run.
+  $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked, ...(e.target.checked ? { stoppedKey: '' } : {}) }));
   $('exposureStop').addEventListener('click', stopExposure);
   // Esc puts the picker down.
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expo.picking) { e.preventDefault(); e.stopPropagation(); setExposurePicking(false); }
   }, true);
+  exposureBound = true;
   syncExposurePanel();
 }
 

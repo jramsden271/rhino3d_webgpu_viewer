@@ -9,8 +9,8 @@ const mulRM = (a, b) => {
   for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { let s = 0; for (let k = 0; k < 4; k++) s += a[r * 4 + k] * b[k * 4 + c]; o[r * 4 + c] = s; }
   return o;
 };
-const { Meshes, exposureTimes, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear } = new Function('mulRM',
-  `${read('sun.js')}\n${read('mesh.js')}\n${read('exposure.js')}\nreturn { Meshes, exposureTimes, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear };`)(mulRM);
+const { Meshes, exposureTimes, exposureDays, exposureHours, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear } = new Function('mulRM',
+  `${read('sun.js')}\n${read('mesh.js')}\n${read('exposure.js')}\nreturn { Meshes, exposureTimes, exposureDays, exposureHours, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear };`)(mulRM);
 
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
 // Each edge of a mesh, with how many triangles use it.
@@ -67,10 +67,29 @@ assert.strictEqual(sn.pos.length / 3, 4, 'a flat mesh keeps its vertices');
 for (let v = 0; v < sn.nrm.length; v += 3) assert.ok(near(sn.nrm[v + 2], 1, 1e-6), 'normals up');
 
 // Periods: both ends included, grips in either order.
-const t = exposureTimes({ days: [80, 80], hours: [16, 14], step: 60 });
+const t = exposureTimes({ days: [80], hours: [16, 14], step: 60 });
 assert.deepStrictEqual(t.map((x) => x.hour), [14, 15, 16]);
-assert.strictEqual(exposureTimes({ days: [81, 80], hours: [10, 12], step: 10 }).length, 2 * 13);
-assert.strictEqual(exposureTimes({ days: [80, 80], hours: [12, 12], step: 5 }).length, 1, 'a single time');
+assert.strictEqual(exposureTimes({ days: [80, 81], hours: [10, 12], step: 10 }).length, 2 * 13);
+assert.strictEqual(exposureTimes({ days: [80], hours: [12, 12], step: 5 }).length, 1, 'a single time');
+
+// The spans round the Date widget's date and time, both ends included.
+const aug15 = dayOfYear(2017, 8, 15);
+assert.deepStrictEqual(exposureDays('day', aug15, 2017), [aug15]);
+assert.deepStrictEqual(exposureDays('week', aug15, 2017), [12, 13, 14, 15, 16, 17, 18].map((d) => dayOfYear(2017, 8, d)), '15 Aug ±3 days is 12-18 Aug');
+assert.strictEqual(exposureDays('month', aug15, 2017).length, 31);
+assert.strictEqual(exposureDays('quarter', aug15, 2017).length, 91);
+assert.deepStrictEqual(exposureDays('week', 2, 2017), [364, 365, 1, 2, 3, 4, 5], 'round the end of the year');
+const feb = exposureDays('calendar', dayOfYear(2017, 2, 10), 2017);
+assert.deepStrictEqual([feb[0], feb[feb.length - 1], feb.length], [32, 59, 28], 'February');
+const dec = exposureDays('calendar', 360, 2017);
+assert.deepStrictEqual([dec[0], dec[dec.length - 1]], [335, 365], 'December');
+assert.strictEqual(exposureDays('year', aug15, 2017).length, 365);
+assert.deepStrictEqual(exposureHours('now', 17), [17, 17]);
+assert.deepStrictEqual(exposureHours('hour', 17), [16.5, 17.5], '17:00 ±30 min is 16:30-17:30');
+assert.deepStrictEqual(exposureHours('hours3', 17), [15.5, 18.5]);
+assert.deepStrictEqual(exposureHours('hours6', 22.5), [19.5, 24], 'stops at the end of the day');
+assert.deepStrictEqual(exposureHours('hours6', 1), [0, 4], 'and at the start');
+assert.deepStrictEqual(exposureHours('day', 9), [0, 24]);
 const london = { lat: 51.5, lon: -0.13, utcOffset: 0, year: 2017, north: 90 };
 const dirs = exposureSunDirs(exposureTimes({ days: [dayOfYear(2017, 3, 21)], hours: [0, 24], step: 60 }), london);
 assert.ok(dirs.length >= 11 && dirs.length <= 13, `the sun is up about 12 hours at the equinox (${dirs.length})`);
