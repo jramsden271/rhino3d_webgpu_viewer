@@ -488,13 +488,13 @@ always in sun (magma), and are not kept: they last until the settings change or 
   up, such as a closed solid or a wall, keeps its own sides); **Flip sides** tests the other side.
   **Ground/roof only** keeps just the faces within 45° of straight up (turned up, before any flip),
   leaving out walls and the like. While picking, a marker follows the surface under the cursor.
-- **Dates** and **Times** are periods round the Date widget's date and time, shown beside each,
+- **Date span** and **Time span** are periods round the Date widget's date and time, shown beside each,
   both ends included. Every day in the dates is tested at the times, every **Interval** (5 to 60
   minutes), and the results follow the Date widget.
-  - Dates: Single day; 1 week (±3 days: 15 August gives 12-18 August); 1 month (±15 days);
+  - Date span: Single day; 1 week (±3 days: 15 August gives 12-18 August); 1 month (±15 days);
     3 months (±45 days); Calendar month (the whole month of the date); All year. The rolling
     periods run on round the end of the year, so 1 week round 2 January starts on 30 December.
-  - Times: Current time; 1 hour (±30 minutes: 17:00 gives 16:30-17:30); 3 hours; 6 hours; All
+  - Time span: Current time; 1 hour (±30 minutes: 17:00 gives 16:30-17:30); 3 hours; 6 hours; All
     day. They stop at midnight rather than running into the next day.
 - **Grid spacing** (0.1 to 10 m) is the most distance between the points tested. The objects'
   render meshes are joined and their long edges split until none is longer, so no meshing is
