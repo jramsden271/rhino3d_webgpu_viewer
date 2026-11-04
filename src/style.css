@@ -104,7 +104,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
-.side.over { overflow-y: auto; scrollbar-width: thin; }
+.side.over { overflow-y: auto; scrollbar-width: none; } /* scrolls with the wheel; no scrollbar, as it could not be dragged */
+.side.over::-webkit-scrollbar { display: none; }
 .side.over > .panel { flex-shrink: 0; }
 .panel.ghost { flex: none !important; pointer-events: none; overflow: hidden; }
 /* Minimised: Layers and Blocks keep a short list; the parts moved to the title bar. */
