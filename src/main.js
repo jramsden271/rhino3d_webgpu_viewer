@@ -64,7 +64,7 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
+  onExit: () => { if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (driver.parked) driver.exit(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -76,14 +76,26 @@ const driver = new Driver({
   onExit: () => { if (stick) endStick(); $('driveHint').hidden = true; $('drivePanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncDrivePanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
+  side: () => (drivesOnLeft() ? -1 : 1),
 });
 driver.settings.collide = true;
+// Whether traffic keeps left in the site's country, so the car is right-hand drive. The country
+// is the last part of the location's name ("Tokyo, Japan": a listed city, or a weather file's);
+// with only a latitude and longitude, the car is left-hand drive.
+const LEFT_DRIVING = new Set(['United Kingdom', 'Ireland', 'Japan', 'Australia', 'New Zealand', 'India', 'Indonesia', 'Malaysia', 'Singapore',
+  'South Africa', 'Kenya', 'Thailand', 'Hong Kong', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Cyprus', 'Malta', 'Jamaica', 'Tanzania', 'Uganda',
+  'Zambia', 'Zimbabwe', 'Botswana', 'Namibia', 'Mozambique', 'Mauritius', 'Nepal', 'Brunei', 'Macau', 'Fiji', 'Trinidad and Tobago', 'Bahamas', 'Barbados', 'Guyana']);
+function drivesOnLeft() {
+  const name = activeLocation()?.name;
+  return !!name && name.includes(',') && LEFT_DRIVING.has(name.split(',').pop().trim());
+}
 if (prefs.drive) {
   const D = driver.settings, P = prefs.drive;
   D.shadows = P.shadows !== false;
   D.collide = P.collide !== false;
   if (P.cam >= 0 && P.cam < DRIVE_CAMS.length) D.cam = P.cam;
   D.headlights = P.headlights === true;
+  D.sound = P.sound !== false;
 }
 // Walking or driving: the frame round the window, the thumb stick, drag to look.
 const moving = () => walker.active || driver.active;
@@ -323,6 +335,7 @@ function loop() {
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
+    if (!walker.pending && driver.touches(walker.pos, walker.foot, 0.3)) enterVehicle();
   }
   if (driver.active) {
     driver.update(performance.now());
@@ -3369,8 +3382,9 @@ function litLamps() {
 // the right, pointing where the walker looks), then the lights that shine. The renderer uses the
 // first MAX_LAMPS; lampShadowPlan decides which of those cast shadows.
 function shownLamps() {
-  const on = litLamps();
-  if (driver.active && model) return [...driver.headlamps(), ...on];
+  let on = litLamps();
+  if ((driver.active || driver.parked) && model) on = [...driver.headlamps(), ...on];
+  if (driver.active && model) return on;
   if (!state.torch || !walker.active || !model) return on;
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const hand = V3.add(camera.eye, V3.add(V3.scale(camera.right, 0.2 * u), V3.scale(camera.up, -0.3 * u)));
@@ -3461,7 +3475,8 @@ function onKey(e) {
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (driver.active) {
-    if (driver.key(e, true)) { e.preventDefault(); if (k === 'c' || k === 't') { syncDrivePanel(); savePrefs(); syncLightsPanel(); } return; }
+    if (driver.key(e, true)) { e.preventDefault(); if (k === 'c' || k === 't' || k === 'm') { syncDrivePanel(); savePrefs(); syncLightsPanel(); } return; }
+    if (k === 'f' && !e.repeat) { e.preventDefault(); exitVehicle(); return; }
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
@@ -3695,14 +3710,58 @@ function fadeIntoDrive(start, heading) {
   }, 250);
 }
 
+// Exit vehicle (the Drive panel, or F): the car stays parked where it stopped, and walking starts
+// just outside its driver's door, facing the way it faces. Walking into the car gets back in (the
+// loop, Driver.touches); stopping walking takes the car away too, back to the camera from before.
+let swapping = false;
+function exitVehicle() {
+  if (!driver.active || driver.pending || swapping) return;
+  swapping = true;
+  const f = $('walkFade');
+  f.classList.add('dark');
+  setTimeout(() => {
+    const out = driver.park();
+    $('drivePanel').hidden = true; $('driveHint').hidden = true;
+    if (stick) endStick();
+    // Walker.enter keeps the camera's heading: face the way the car does.
+    camera.yaw = out.heading + Math.PI;
+    walker.enter(out.p).then((ok) => {
+      swapping = false;
+      if (ok) { $('walkPanel').hidden = false; notice('Walk into the car to drive it again.', false, 4000); }
+      else driver.exit();
+      f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw();
+    });
+    syncToolbar();
+  }, 250);
+}
+function enterVehicle() {
+  if (!driver.parked || swapping) return;
+  swapping = true;
+  walker.keys.clear(); walker.stick = null;
+  const f = $('walkFade');
+  f.classList.add('dark');
+  setTimeout(() => {
+    swapping = false;
+    // Walking stops without going back to the camera from before, which driving keeps.
+    const from = walkFrom;
+    walkFrom = null;
+    driver.resume();
+    walker.exit();
+    walkFrom = from;
+    $('drivePanel').hidden = false;
+    f.classList.remove('dark'); syncToolbar(); syncDrivePanel(); syncLightsPanel(); redraw();
+  }, 250);
+}
+
 // The Drive panel -----------------------------------------------------------------------------
 
 function showDriveHelp() {
   Dialog.open({ title: 'Driving', html: true, width: 420, body: `<p><b>Drive</b> in the camera list, or <kbd>5</kbd>, starts driving: click where the car should start. It faces the way the camera looks. Until you click you can still move the view; <kbd>Esc</kbd> cancels. Closing this panel does not stop you: pick Drive again to bring it back.</p>
-    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>T</kbd> headlights · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
+    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>T</kbd> headlights · <kbd>M</kbd> sounds · <kbd>F</kbd> gets out · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
     <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
-    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves.</p>` });
+    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine and crashes.</p>
+    <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car to drive it again. Stopping walking takes the car away too.</p>` });
 }
 
 let driveShown = '';
@@ -3717,6 +3776,7 @@ function syncDrivePanel() {
   $('driveCollide').checked = S.collide;
   $('driveShadows').checked = S.shadows;
   $('driveHeadlights').checked = S.headlights;
+  $('driveSound').checked = S.sound;
   syncDriveSpeed();
 }
 
@@ -3727,6 +3787,8 @@ function bindDrivePanel() {
   $('driveCollide').addEventListener('change', () => { S.collide = $('driveCollide').checked; changed(); canvas.focus(); });
   $('driveShadows').addEventListener('change', () => { S.shadows = $('driveShadows').checked; changed(); redraw(); canvas.focus(); });
   $('driveHeadlights').addEventListener('change', () => { S.headlights = $('driveHeadlights').checked; changed(); syncLightsPanel(); redraw(); canvas.focus(); });
+  $('driveSound').addEventListener('change', () => { S.sound = $('driveSound').checked; changed(); canvas.focus(); });
+  $('driveGetOut').addEventListener('click', exitVehicle);
   $('driveHelp').addEventListener('click', showDriveHelp);
   $('driveExit').addEventListener('click', () => { if (driver.active) leaveWalk(); });
   $('driveClose').addEventListener('click', () => { $('drivePanel').hidden = true; canvas.focus(); });

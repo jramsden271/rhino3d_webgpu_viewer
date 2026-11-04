@@ -259,7 +259,9 @@
         <label class="check" title="Off: drive through walls and objects; the car still follows the ground"><input type="checkbox" id="driveCollide" checked> Collision detection</label>
         <label class="check" title="The car casts the sun's shadows. That redraws them every frame, which can be slow on big models"><input type="checkbox" id="driveShadows" checked> Shadows</label>
         <label class="check" title="Headlights: two beams that light the model, best at night (T)"><input type="checkbox" id="driveHeadlights"> Headlights</label>
+        <label class="check" title="The engine and crashes (M)"><input type="checkbox" id="driveSound" checked> Sounds</label>
       </div>
+      <button class="btn small" id="driveGetOut" title="Get out and walk; walk into the car to drive again (F)">Exit vehicle</button>
     </div>
   </section>
   </div>
@@ -330,7 +332,7 @@
   </div>
   <div id="notices" class="notices"></div>
   <div id="walkHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to walk · drag on the right to look · Exit in the Walk panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</span></div>
-  <div id="driveHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to drive · drag on the right to look · Exit in the Drive panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>S</kbd> accelerate and brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>T</kbd> headlights · <kbd>C</kbd> camera · <kbd>R</kbd> reset · drag to look · <kbd>Esc</kbd> to stop</span></div>
+  <div id="driveHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to drive · drag on the right to look · Exit in the Drive panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>S</kbd> accelerate and brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>T</kbd> headlights · <kbd>F</kbd> get out · <kbd>C</kbd> camera · <kbd>R</kbd> reset · drag to look · <kbd>Esc</kbd> to stop</span></div>
   <div id="walkPlaceHint" class="chrome walk-hint" hidden>Click where to start walking · drag to move the view · <kbd>Esc</kbd> to cancel</div>
   <div class="walk-frame"></div>
   <div id="walkFade" class="walk-fade"></div>

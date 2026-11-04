@@ -15,6 +15,9 @@
 // The car is drawn by the renderer as its actor (Renderer.setActor), placed each frame. Its own
 // geometry is in metres, x forward, y to the left and z up, with the ground at z = 0.
 //
+// Out of the car (Exit vehicle) it stays parked where it stopped, and the person walks from its
+// driver's door; walking into it again gets back in (main.js, park, resume and touches below).
+//
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
 const DRIVE = {
@@ -53,7 +56,7 @@ const DRIVE = {
 const DRIVE_CAMS = [
   { id: 'chase', label: 'Chase', back: 7.5, up: 2.6, ahead: 3, at: 1.1, ease: 5 },
   { id: 'far', label: 'High', back: 16, up: 8, ahead: 4, at: 0.8, ease: 3 },
-  { id: 'driver', label: 'Driver', eye: [0.15, 0.35, 1.2] },
+  { id: 'driver', label: 'Driver', eye: [0.15, 0.35, 1.2] }, // on the left: mirrored by Driver.side
 ];
 
 const DRIVE_KEYS = { w: 'gas', arrowup: 'gas', s: 'brake', arrowdown: 'brake', a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', ' ': 'hand' };
@@ -147,17 +150,98 @@ function carGeometry() {
   return { pos: Float32Array.from(pos), nrm: Float32Array.from(nrm), col: Uint8Array.from(col), idx: Uint32Array.from(idx), gloss: 0.55, lamps };
 }
 
+// The engine and crashes, synthesised as the Proving Ground's are: two oscillators through a
+// low-pass filter for the engine, its pitch rising through five gears; filtered noise and a falling
+// thud for a crash. The audio starts with driving, which always follows a click or a key press.
+const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
+class DriveSound {
+  constructor() { this.audio = null; this.failed = false; }
+
+  ensure() {
+    if (this.audio || this.failed) return this.audio;
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const o1 = ac.createOscillator(); o1.type = 'sawtooth';
+      const o2 = ac.createOscillator(); o2.type = 'square';
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600; f.Q.value = 4;
+      const gn = ac.createGain(); gn.gain.value = 0;
+      const g2 = ac.createGain(); g2.gain.value = 0.5;
+      o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(gn); gn.connect(ac.destination);
+      o1.start(); o2.start();
+      const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), ch = noise.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+      this.audio = { ac, o1, o2, f, gn, noise, lastCrash: 0 };
+    } catch (_) { this.failed = true; }
+    return this.audio;
+  }
+
+  get ready() { return this.audio && this.audio.ac.state === 'running'; }
+
+  // Each frame: the engine's note for the speed (km/h) and the accelerator, or quiet.
+  engine(kmh, gas, on) {
+    if (on) { const A = this.ensure(); if (A && A.ac.state !== 'running') A.ac.resume().catch(() => {}); }
+    const A = this.audio;
+    if (!A) return;
+    const t = A.ac.currentTime;
+    if (!on) { A.gn.gain.setTargetAtTime(0, t, 0.08); return; }
+    let gi = 1;
+    while (gi < GEARS.length - 1 && kmh >= GEARS[gi]) gi++;
+    const lo = GEARS[gi - 1], hi = Math.min(GEARS[gi], 180);
+    const rpm = 0.15 + 0.85 * Math.min(1, (kmh - lo) / (hi - lo));
+    const fq = 38 + rpm * 95 * (1 + gi * 0.06) + (gas ? 6 : 0);
+    A.o1.frequency.setTargetAtTime(fq, t, 0.05); A.o2.frequency.setTargetAtTime(fq / 2, t, 0.05);
+    A.f.frequency.setTargetAtTime(380 + (gas ? 1100 : 300) * rpm, t, 0.08);
+    A.gn.gain.setTargetAtTime(0.05, t, 0.08);
+  }
+
+  silence() { if (this.audio) this.audio.gn.gain.setTargetAtTime(0, this.audio.ac.currentTime, 0.05); }
+
+  env(peak, attack, decay, t) {
+    const g = this.audio.ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    return g;
+  }
+
+  // A crash of strength 0 to 1: a burst of noise, rattling debris and a thud.
+  crash(str) {
+    str = Math.max(0, Math.min(1, str));
+    if (!this.ready || str < 0.06) return;
+    const A = this.audio, ac = A.ac, t = ac.currentTime;
+    if (t - A.lastCrash < 0.12) return;
+    A.lastCrash = t;
+    const src = ac.createBufferSource(); src.buffer = A.noise;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500 + str * 2600;
+    const g = this.env(0.2 + 0.5 * str, 0.006, 0.18 + 0.4 * str, t);
+    src.connect(f); f.connect(g); g.connect(ac.destination);
+    src.start(t, Math.random() * 0.4); src.stop(t + 0.8);
+    const src2 = ac.createBufferSource(); src2.buffer = A.noise;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 3;
+    const g2 = this.env(0.06 + 0.12 * str, 0.02, 0.35 + 0.3 * str, t + 0.03);
+    src2.connect(bp); bp.connect(g2); g2.connect(ac.destination);
+    src2.start(t + 0.03, Math.random() * 0.4); src2.stop(t + 1);
+    const o = ac.createOscillator();
+    o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.25);
+    const g3 = this.env(0.15 + 0.4 * str, 0.005, 0.3, t);
+    o.connect(g3); g3.connect(ac.destination); o.start(t); o.stop(t + 0.4);
+  }
+}
+
 class Driver {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
-  //        onExit(), notice(text, ms), fade(), onCrash(strength) }
+  //        onExit(), notice(text, ms), fade(), onCrash(strength),
+  //        side(): 1 where the driver sits on the left, -1 on the right (countries driving on the left) }
   constructor(ctx) {
     this.ctx = ctx;
     this.active = false;
     this.placing = false;
     this.input = { gas: false, brake: false, left: false, right: false, hand: false };
     this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
-    // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on.
-    this.settings = { shadows: true, cam: 0, headlights: false };
+    // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on, sounds.
+    this.settings = { shadows: true, cam: 0, headlights: false, sound: true };
+    this.sound = new DriveSound();
+    this.parked = false; // out of the car, which stays where it stopped
     this.lampsShown = '';
   }
 
@@ -172,6 +256,8 @@ class Driver {
     const { camera, renderer } = this.ctx, u = this.u;
     if (!renderer.actor) renderer.setActor(carGeometry());
     this.placing = false;
+    this.parked = false;
+    this.side = this.ctx.side?.() === -1 ? -1 : 1;
     this.active = true;
     this.pending = true;
     this.releaseAll();
@@ -205,14 +291,59 @@ class Driver {
 
   exit() {
     if (this.placing) { this.placing = false; this.ctx.onExit(); return; }
+    if (this.parked) { this.parked = false; this.ctx.renderer.setActorPose(null); return; }
     if (!this.active) return;
     this.active = false;
     this.releaseAll();
+    this.sound.silence();
     const { camera, renderer } = this.ctx;
     renderer.setActorPose(null);
     if (this.fov0) camera.fov = this.fov0;
     camera.ortho = this.ortho0;
     this.ctx.onExit();
+  }
+
+  // Gets out: the car stops and stays where it is, shown from outside. Returns where to stand,
+  // just outside the driver's door (model units; the left door, or the right where the car is
+  // right-hand drive), and the way the car faces.
+  park() {
+    if (!this.active) return null;
+    const u = this.u, f = [Math.cos(this.a), Math.sin(this.a)], l = [-f[1], f[0]];
+    this.active = false;
+    this.parked = true;
+    this.releaseAll();
+    this.sound.silence();
+    Object.assign(this, { vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, braking: false, reversing: false, shake: 0 });
+    if (this.fov0) this.ctx.camera.fov = this.fov0;
+    this.place3d(true);
+    this.syncLamps();
+    const s = this.side * 1.6 * u;
+    return { p: [this.x + f[0] * 0.2 * u + l[0] * s, this.y + f[1] * 0.2 * u + l[1] * s, this.z + 0.3 * u], heading: this.a };
+  }
+
+  // Back in the parked car, driving again.
+  resume() {
+    if (!this.parked) return false;
+    const { camera } = this.ctx;
+    this.parked = false;
+    this.active = true;
+    this.releaseAll();
+    this.fov0 = camera.fov;
+    camera.ortho = false;
+    Object.assign(this, { map: null, camPos: null, orbit: 0, tilt: 0, lockUntil: 0, last: performance.now(), gen: this.gen + 1, lampsShown: '' });
+    this.place3d();
+    this.syncLamps();
+    this.updateCamera(0);
+    return true;
+  }
+
+  // Whether someone standing at p (x, y, with their feet at height foot) is within r (metres)
+  // of the parked car's sides: walking into it.
+  touches(p, foot, r) {
+    if (!this.parked) return false;
+    const u = this.u, dx = p[0] - this.x, dy = p[1] - this.y, f = [Math.cos(this.a), Math.sin(this.a)];
+    const along = Math.abs(dx * f[0] + dy * f[1]) / u, side = Math.abs(-dx * f[1] + dy * f[0]) / u, up = (foot - this.z) / u;
+    return along < 2.27 + r && side < 0.95 + r && up > -1 && up < 1.4;
   }
 
   releaseAll() { for (const k in this.input) this.input[k] = false; this.stick = null; }
@@ -225,6 +356,7 @@ class Driver {
     if (k === 'c') { this.settings.cam = (this.settings.cam + 1) % DRIVE_CAMS.length; this.camPos = null; return true; }
     if (k === 'r') { this.reset(); return true; }
     if (k === 't') { this.settings.headlights = !this.settings.headlights; return true; }
+    if (k === 'm') { this.settings.sound = !this.settings.sound; return true; }
     return false;
   }
   blur() { this.releaseAll(); }
@@ -418,6 +550,7 @@ class Driver {
     this.braking = this.grounded && ((inp.brake && this.vF > 0.5) || (inp.gas && this.vF < -0.5));
     this.reversing = this.vF < -0.2;
     this.syncLamps();
+    this.sound.engine(Math.abs(this.vF) * 3.6, inp.gas, this.settings.sound);
     this.updateCamera(dt);
   }
 
@@ -439,7 +572,7 @@ class Driver {
 
   // The headlights' beams as the renderer's spot lights (in model units), or none.
   headlamps() {
-    if (!this.active || !this.settings.headlights || !this.basis) return [];
+    if (!(this.active || this.parked) || !this.settings.headlights || !this.basis) return [];
     const u = this.u, { f, l, up } = this.basis, H = HEADLIGHT;
     const dir = V3.norm(V3.sub(f, V3.scale(up, H.dip)));
     return [1, -1].map((s) => ({ name: 'Headlight', p: V3.add([this.x, this.y, this.z], V3.add(V3.add(V3.scale(f, H.at[0] * u), V3.scale(l, s * H.at[1] * u)), V3.scale(up, H.at[2] * u))),
@@ -482,6 +615,7 @@ class Driver {
 
   bump(strength) {
     this.shake = Math.max(this.shake, strength);
+    if (this.settings.sound) this.sound.crash(strength);
     this.ctx.onCrash?.(strength);
   }
 
@@ -499,7 +633,7 @@ class Driver {
   }
 
   // The car's transform, its metres to the model, for the renderer.
-  place3d() {
+  place3d(outside = false) {
     const u = this.u, ca = Math.cos(this.a), sa = Math.sin(this.a), cp = Math.cos(this.pitch), sp = Math.sin(this.pitch), cr = Math.cos(this.roll), sr = Math.sin(this.roll);
     // Heading about z, then pitch (nose up), then roll (left side up) about the car's length.
     const fx = [ca * cp, sa * cp, sp];
@@ -507,7 +641,7 @@ class Driver {
     const left = V3.add(V3.scale(left0, cr), V3.scale(up0, sr)), up = V3.cross(fx, left);
     this.basis = { f: fx, l: left, up };
     // From the driver's seat the car itself is left out: the glass is solid.
-    if (DRIVE_CAMS[this.settings.cam].eye) { this.ctx.renderer.setActorPose(null); return; }
+    if (DRIVE_CAMS[this.settings.cam].eye && !outside) { this.ctx.renderer.setActorPose(null); return; }
     this.ctx.renderer.setActorPose([fx[0] * u, fx[1] * u, fx[2] * u, 0, left[0] * u, left[1] * u, left[2] * u, 0, up[0] * u, up[1] * u, up[2] * u, 0, this.x, this.y, this.z, 1], this.settings.shadows);
   }
 
@@ -522,7 +656,7 @@ class Driver {
     }
     let eye, look;
     if (C.eye) {
-      eye = V3.add(at, V3.add(V3.add(V3.scale(b.f, C.eye[0] * u), V3.scale(b.l, C.eye[1] * u)), V3.scale(b.up, C.eye[2] * u)));
+      eye = V3.add(at, V3.add(V3.add(V3.scale(b.f, C.eye[0] * u), V3.scale(b.l, C.eye[1] * this.side * u)), V3.scale(b.up, C.eye[2] * u)));
       const dir = V3.rotate(V3.rotate(b.f, b.up, this.orbit), b.l, -this.tilt);
       look = V3.add(eye, V3.scale(dir, 20 * u));
     } else {
