@@ -112,12 +112,10 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .side.over::-webkit-scrollbar { display: none; }
 .side.over > .panel { flex-shrink: 0; }
 .panel.ghost { flex: none !important; pointer-events: none; overflow: hidden; }
-/* Minimised: Layers and Blocks keep a short list; the parts moved to the title bar. */
-:is(#layersPanel, #blocksPanel).min .layer-tree { flex: none; max-height: 300px; }
 .panel-actions .btn.icon.in-head { padding: 3px; margin: -3px 0; }
 .panel-actions .btn.icon.in-head svg { width: 16px; height: 16px; }
 .panel-actions input[type="range"].in-head { width: 96px; accent-color: var(--accent); margin: 0; }
-.layers-panel.min { flex: none; min-height: 0; }
+.layers-panel.min:not(#layersPanel, #blocksPanel) { flex: none; min-height: 0; }
 /* Minimised to the title bar alone. */
 :is(#datePanel, #lightsPanel, #walkPanel).min .panel-head,
 #streamlinesPanel.min:has(#streamlineLegend:empty) .panel-head { border-bottom: 0; }
@@ -131,6 +129,9 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 #weatherPanel.min:has(#weatherRead[hidden]) .sun-body { display: none; }
 #weatherPanel.min:has(#weatherRead[hidden]) .panel-head { border-bottom: 0; }
 .layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
+/* Minimised, Layers and Blocks only hide their filter: they still share the height, down to a lower least height. */
+#layersPanel, #blocksPanel { min-height: 150px; }
+:is(#layersPanel, #blocksPanel).min { min-height: 100px; }
 .sun-panel { flex: none; max-height: 100%; overflow-y: auto; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; flex: none; align-items: center; gap: 10px; font-weight: 400; font-size: 12px; white-space: nowrap; }
