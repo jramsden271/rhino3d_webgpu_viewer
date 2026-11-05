@@ -3063,7 +3063,10 @@ function bindPointer() {
       const rules = viewRules(), rightDrag = e.pointerType !== 'touch' && e.button === 2 && !e.shiftKey;
       const orbit = rules === 'orbit' && (e.pointerType === 'touch' || rightDrag || (e.button === 0 && e.altKey));
       const mode = orbit ? 'orbit' : rightDrag ? rules : 'pan';
-      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
+      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      // Top views turn about a dial whose middle is a fixed distance left of where the drag starts,
+      // so the turn feels the same wherever it starts.
+      if (mode === 'top') Object.assign(drag, { cx: e.clientX - innerWidth * DIAL_OFFSET, cy: e.clientY, at: 0 });
       pivot = null;
       if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       else if (mode === 'pan') pickDepth(e, drag);
@@ -3172,7 +3175,9 @@ function syncCompass() {
 
 // While the window is a dial, a large see-through compass shows where the dial's middle is.
 function syncCompassOverlay() {
-  $('compassOverlay').hidden = drag?.mode !== 'top';
+  const el = $('compassOverlay'), on = drag?.mode === 'top';
+  el.hidden = !on;
+  if (on) { el.style.left = `${drag.cx}px`; el.style.top = `${drag.cy}px`; }
 }
 
 // Turns the view the short way round to face a compass bearing (degrees clockwise from north),
@@ -3207,11 +3212,16 @@ function dialAngle(el, e) {
   return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
 }
 
-// Right-drag in a view looking straight down: the whole window is a dial, like the compass.
+// Right-drag in a view looking straight down: the whole window is a dial, like the compass, its
+// middle at (drag.cx, drag.cy). The view turns about the point under that middle, which stays put.
+const DIAL_OFFSET = 0.1; // of the window's width, left of where the drag starts
 function turnByDial(e) {
-  const a = dialAngle(canvas, e);
-  if (a === null) return;
-  if (drag.at !== null) camera.yaw += wrapAngle(a - drag.at);
+  const x = e.clientX - drag.cx, y = e.clientY - drag.cy;
+  if (Math.hypot(x, y) < 8) return;
+  const a = Math.atan2(y, x), mid = toNdc({ clientX: drag.cx, clientY: drag.cy });
+  const before = camera.planePoint(...mid);
+  camera.yaw += wrapAngle(a - drag.at);
+  camera.target = V3.add(camera.target, V3.sub(before, camera.planePoint(...mid)));
   drag.at = a;
 }
 
