@@ -75,7 +75,7 @@ struct Frame {
   // z = tan of the shadow view's half angle, w = number of views (1 along the spot, 6 cube faces).
   lamps: array<vec4f, ${MAX_LAMPS * 4}>,
 };
-// flags.x vertex colours, flags.y edge, flags.z material type (see materials.js), resolved on the
+// flags.x vertex colours, flags.y edge (2: the actor, whose vertex colour alpha below 1 glows), flags.z material type (see materials.js), resolved on the
 // CPU from the rule mode and any layer settings made in the viewer; flags.w gloss (0..1).
 struct Batch { color: vec4f, mat: vec4f, flags: vec4f };
 
@@ -762,6 +762,8 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   // Vertex colours keep an even, readable shading under the headlight; with the sun on they take
   // the scene's light like any other surface (so they darken at dusk and night).
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
+  // The actor's lamps glow (the car's lights): the less its vertex colour's alpha, the brighter.
+  if (B.flags.y > 1.5) { lit += toLinear(in.c.rgb) * (1.0 - in.c.a) * 2.5; }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
   if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
   var col = highlight(finish(lit, in.wp), in.oid);
@@ -1341,6 +1343,13 @@ class Renderer {
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
       this.drawCells(pass, b);
     }
+    const A = this.actor?.pose ? this.actor : null;
+    if (A) {
+      pass.setBindGroup(1, A.bg, [0]);
+      pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.nrm); pass.setVertexBuffer(2, A.gpu.oid);
+      pass.setIndexBuffer(A.gpu.idx, 'uint32');
+      pass.drawIndexed(A.count);
+    }
     pass.end();
     for (const [pipe, bg, target] of [[this.aoPipe, this.aoBG, this.aoRawTex], [this.blurPipe, this.blurBG, this.aoTex]]) {
       pass = enc.beginRenderPass({ colorAttachments: [{ view: target.createView(), clearValue: { r: 1, g: 1, b: 1, a: 1 }, loadOp: 'clear', storeOp: 'store' }] });
@@ -1388,6 +1397,63 @@ class Renderer {
       first = r[i]; n = r[i + 1];
     }
     if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
+  }
+
+  // A moving object drawn with the model: the car in Drive mode. It is not part of the model, so it
+  // is never picked, probed, analysed or shadowed by lamps. geo, in its own metres: pos (xyz),
+  // nrm (unit xyz), col (sRGB rgba bytes), idx; gloss 0..1. null removes it.
+  setActor(geo) {
+    if (this.actor) for (const k in this.actor.gpu) this.actor.gpu[k].destroy();
+    this.actor = null;
+    this.dirty = true;
+    if (!geo) return;
+    const dev = this.device, U = GPUBufferUsage, n = geo.pos.length / 3;
+    const make = (arr, usage) => {
+      const b = dev.createBuffer({ size: Math.ceil(arr.byteLength / 4) * 4, usage: usage | U.COPY_DST });
+      dev.queue.writeBuffer(b, 0, arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4) * 4);
+      return b;
+    };
+    const col = new Uint8Array(Math.ceil(geo.col.length / 4) * 4); col.set(geo.col);
+    const gpu = { pos: make(new Float32Array(n * 3), U.VERTEX), nrm: make(new Int16Array(n * 4), U.VERTEX), col: make(col, U.VERTEX),
+      oid: make(new Uint32Array(n).fill(0xffffffff), U.VERTEX), idx: make(geo.idx, U.INDEX), uni: dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST }) };
+    // Vertex colours, no surface priority, opaque, with the gloss a car's paint has.
+    dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 0, geo.gloss || 0]));
+    const bg = dev.createBindGroup({ layout: this.batchLayout, entries: [{ binding: 0, resource: { buffer: gpu.uni, size: 48 } }] });
+    this.actor = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
+  }
+
+  // New vertex colours for the actor (as many as it has): its lamps going on and off.
+  setActorColours(col) {
+    const A = this.actor;
+    if (!A) return;
+    const c = new Uint8Array(Math.ceil(col.length / 4) * 4); c.set(col);
+    this.device.queue.writeBuffer(A.gpu.col, 0, c);
+    this.dirty = true;
+  }
+
+  // Places the actor: m (column-major 4 × 4, its metres to model units, rotation and uniform scale
+  // only), or null to hide it. shadows: it casts the sun's shadows, which redraws them every frame.
+  setActorPose(m, shadows = false) {
+    const A = this.actor;
+    if (!A) return;
+    this.dirty = true;
+    A.shadows = shadows;
+    if (!m) { A.pose = null; return; }
+    A.pose = m;
+    A.version++;
+    const p = A.geo.pos, q = A.geo.nrm, po = A.posOut, no = A.nrmOut, s = Math.hypot(m[0], m[1], m[2]) || 1;
+    for (let i = 0, n = p.length / 3; i < n; i++) {
+      const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
+      po[i * 3] = m[0] * x + m[4] * y + m[8] * z + m[12];
+      po[i * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+      po[i * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+      const a = q[i * 3], b = q[i * 3 + 1], c = q[i * 3 + 2];
+      no[i * 4] = Math.round(((m[0] * a + m[4] * b + m[8] * c) / s) * 32767);
+      no[i * 4 + 1] = Math.round(((m[1] * a + m[5] * b + m[9] * c) / s) * 32767);
+      no[i * 4 + 2] = Math.round(((m[2] * a + m[6] * b + m[10] * c) / s) * 32767);
+    }
+    this.device.queue.writeBuffer(A.gpu.pos, 0, po);
+    this.device.queue.writeBuffer(A.gpu.nrm, 0, no);
   }
 
   clearModel() {
@@ -1546,6 +1612,12 @@ class Renderer {
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
         this.drawCells(pass, b);
       }
+      const A = this.actor;
+      if (A?.pose && A.shadows) {
+        pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.oid);
+        pass.setIndexBuffer(A.gpu.idx, 'uint32');
+        pass.drawIndexed(A.count);
+      }
       pass.end();
     }
   }
@@ -1603,9 +1675,11 @@ class Renderer {
     // What is shown: the geometry version and which batches are visible.
     let geom = this.geomVersion;
     for (const b of this.batches) if (b.visible) geom = (geom * 31 + b.offset + 1) | 0;
-    if (s.shadows) this.renderShadows(enc, s.shadows, geom);
+    // The actor moves every frame: the ambient occlusion sees it, and the sun's shadows too if asked.
+    const A = this.actor?.pose ? this.actor : null, withActor = A ? `${geom}|${A.version}` : geom;
+    if (s.shadows) this.renderShadows(enc, s.shadows, A?.shadows ? withActor : geom);
     this.renderLampShadows(enc, s);
-    if (s.aoActive) this.renderAO(enc, s, geom);
+    if (s.aoActive) this.renderAO(enc, s, withActor);
     else this.aoKey = null;
     const pass = enc.beginRenderPass({
       colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(),
@@ -1633,6 +1707,13 @@ class Renderer {
       this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
+    if (A) {
+      pass.setPipeline(s.xray ? P.meshVCT : P.meshVC);
+      pass.setBindGroup(1, A.bg, [0]);
+      pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.nrm); pass.setVertexBuffer(2, A.gpu.col); pass.setVertexBuffer(3, A.gpu.oid);
+      pass.setIndexBuffer(A.gpu.idx, 'uint32');
+      pass.drawIndexed(A.count);
+    }
     for (const b of vis) {
       // Edges on water and foliage are noise, so they are hidden when those materials apply.
       const softEdge = b.kind === 'edge' && ((s.mode === 1 && (b.effCls === MAT_WATER || b.effCls === MAT_VEGETATION)) || (s.mode === 2 && b.effCls === MAT_WATER));
