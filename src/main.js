@@ -2026,7 +2026,8 @@ function syncDatePanel() {
   $('dateHour').value = S.hour;
   $('dateDayOut').textContent = dayName(S.doy);
   $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
-  $('dateSum').textContent = `${dayName(S.doy)} · ${fmtHour(S.hour)}`; // the minimised widget's reading
+  $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
+  $('dateSumHour').textContent = fmtHour(S.hour);
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -2162,8 +2163,11 @@ function bindDateWeather() {
   };
   const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
-  $('dateDay').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
+  // The same menus on the minimised widget's reading in the title bar, in place of its lock menu.
+  const onMenu = (ids, show) => {
+    for (const id of ids) $(id).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
+  };
+  onMenu(['dateDay', 'dateSumDay'], (e) => {
     const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
       const v = dayOfYear(EPW_YEAR, m, d);
       return { v, label: `${dayFull(v)} · ${what}` };
@@ -2171,8 +2175,7 @@ function bindDateWeather() {
     presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
       go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
   });
-  $('dateHour').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
+  onMenu(['dateHour', 'dateSumHour'], (e) => {
     const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
     const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
     presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
