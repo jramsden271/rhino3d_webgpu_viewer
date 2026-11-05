@@ -2163,9 +2163,10 @@ function bindDateWeather() {
   };
   const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
-  // The same menus on the minimised widget's reading in the title bar, in place of its lock menu.
+  // Each slider's whole field takes the menu, and so does the minimised widget's reading in the
+  // title bar, in place of its lock menu.
   const onMenu = (ids, show) => {
-    for (const id of ids) $(id).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
+    for (const id of ids) ($(id).closest('.field') || $(id)).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
   };
   onMenu(['dateDay', 'dateSumDay'], (e) => {
     const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
