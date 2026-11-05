@@ -156,7 +156,10 @@ function carGeometry() {
 // The engine and crashes, synthesised as the Proving Ground's are: two oscillators through a
 // low-pass filter for the engine, its pitch rising through five gears; filtered noise and a falling
 // thud for a crash. The audio starts with driving, which always follows a click or a key press.
-const GEARS = [0, 38, 72, 106, 140, 999]; // km/h at which each gear ends
+// The gears: the speed (km/h) at which each changes up, at SHIFT_REVS; top gear revs out at the
+// top speed. Short lower gears, so top gear sounds all the faster.
+const GEARS = [0, 30, 60, 90, 120, 999];
+const SHIFT_REVS = 0.9;
 const WIND_FROM = 60;   // km/h: the wind starts above this...
 const WIND_LEVEL = 0.053; // ...and is this loud at the top speed: under the engine
 const SCREECH_LEVEL = 0.14; // the tyres at full slide: about as loud as the engine
@@ -243,11 +246,11 @@ class DriveSound {
     let gi = 1;
     while (gi < GEARS.length - 1 && kmh >= GEARS[gi]) gi++;
     // The revs are the speed times the gear's ratio, as in a real car: in each gear they rise in
-    // proportion to the speed from 0 km/h, reaching the limit at the top of the gear's band. So a
-    // change up drops them only to the fraction that speed is of the new gear's top (38 km/h
-    // into 2nd: 38 / 72, 53%). They never fall below tick-over.
-    const hi = Math.min(GEARS[gi], 180);
-    const rpm = Math.max(0.15, Math.min(1, kmh / hi));
+    // proportion to the speed from 0 km/h, to SHIFT_REVS where it changes up (top gear: the limit
+    // at the top speed). So a change up drops them only to the share of the new gear's (30 km/h
+    // into 2nd: 90% × 30 / 60, 45%). They never fall below tick-over.
+    const full = gi < GEARS.length - 1 ? GEARS[gi] / SHIFT_REVS : DRIVE.TOP; // km/h at the limit
+    const rpm = Math.max(0.15, Math.min(1, kmh / full));
     const fq = 38 + rpm * 95 * (1 + gi * 0.06) + (gas ? 6 : 0);
     A.o1.frequency.setTargetAtTime(fq, t, 0.05); A.o2.frequency.setTargetAtTime(fq / 2, t, 0.05);
     A.f.frequency.setTargetAtTime(380 + (gas ? 1100 : 300) * rpm, t, 0.08);
