@@ -6,7 +6,7 @@
 // steps, 16 to a bar. A scheduler looks a little ahead and queues each step on the audio clock,
 // swung if the track asks (the off-beat sixteenths late). After the last section a track loops.
 
-const MUSIC = { AHEAD: 0.3, TICK: 40 };
+const MUSIC = { AHEAD: 0.3, TICK: 40, LEVEL: 2 / 3 }; // LEVEL: all the tracks, against the car's sounds
 const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
 
 // "Neon Meridian" ---------------------------------------------------------------------------
@@ -316,7 +316,7 @@ class DriveMusic {
     this.track = others[Math.floor(Math.random() * others.length)] || TRACKS[0];
     this.pos = { sec: 0, bar: 0, step: 0 };
     if (this.out) this.out.delay.delayTime.setValueAtTime(this.step * 3, this.out.ac.currentTime);
-    if (this.on) this.fadeTo(this.track.volume, 0.6);
+    if (this.on) this.fadeTo(this.track.volume * MUSIC.LEVEL, 0.6);
     this.lastGlide = null;
   }
 
@@ -333,7 +333,7 @@ class DriveMusic {
       if (!ac) return;
       if (!this.out || this.out.ac !== ac) this.build(ac, ac.destination);
       this.on = true;
-      this.fadeTo(this.track.volume, 0.6);
+      this.fadeTo(this.track.volume * MUSIC.LEVEL, 0.6);
       this.next = ac.currentTime + 0.1;
       this.timer = setInterval(() => this.tick(), MUSIC.TICK);
       this.tick();
