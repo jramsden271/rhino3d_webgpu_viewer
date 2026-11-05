@@ -190,6 +190,15 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .menu button:disabled { color: var(--muted); cursor: default; }
 .menu .n { color: var(--muted); font-variant-numeric: tabular-nums; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; }
+/* A title with a button at its right (+ on the date presets), and rows with a × at theirs. */
+.menu-title:has(.menu-side) { display: flex; align-items: center; gap: 8px; padding-right: 2px; }
+.menu-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-title > .menu-side { margin-left: auto; }
+.menu-row { display: flex; align-items: center; }
+.menu-row > button[role="menuitem"] { flex: 1; min-width: 0; }
+.menu .menu-side { flex: none; width: 24px; height: 24px; padding: 0; justify-content: center; align-items: center; color: var(--muted); font-size: 15px; line-height: 1; }
+.menu .menu-side:hover:not(:disabled) { color: var(--text, inherit); }
+.menu .menu-side:disabled { opacity: 0.4; }
 
 .popover { position: absolute; width: 290px; z-index: 5; }
 .pop-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }

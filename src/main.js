@@ -684,12 +684,25 @@ function openLayerMenu(picked, tree, [x, y]) {
 
 // A right-click menu at (x, y): items are { label, n (a count shown on the right; 0 disables
 // the item), run } or '-' for a divider.
-function showMenu(titleText, items, [x, y]) {
+// add: an optional button at the right of the title ({ label, title, disabled, run }), which
+// leaves the menu open. An item with remove gets a small cross at the right of its row, likewise.
+function showMenu(titleText, items, [x, y], { add } = {}) {
   const menu = $('layerMenu');
   menu.innerHTML = '';
   const title = document.createElement('div');
   title.className = 'menu-title';
-  title.textContent = title.title = titleText;
+  title.innerHTML = '<span></span>';
+  title.firstChild.textContent = title.firstChild.title = titleText;
+  if (add) {
+    const b = document.createElement('button');
+    b.className = 'menu-side';
+    b.textContent = add.label;
+    b.title = add.title;
+    b.setAttribute('aria-label', add.title);
+    b.disabled = !!add.disabled;
+    b.addEventListener('click', add.run);
+    title.appendChild(b);
+  }
   menu.appendChild(title);
   for (const it of items) {
     if (it === '-') { menu.appendChild(document.createElement('hr')); continue; }
@@ -700,7 +713,16 @@ function showMenu(titleText, items, [x, y]) {
     b.disabled = it.n === 0;
     if (b.disabled) b.title = 'No visible objects';
     b.addEventListener('click', () => { closeLayerMenu(); it.run(); });
-    menu.appendChild(b);
+    if (!it.remove) { menu.appendChild(b); continue; }
+    const row = document.createElement('div'), cross = document.createElement('button');
+    row.className = 'menu-row';
+    cross.className = 'menu-side';
+    cross.textContent = '×';
+    cross.title = `Remove ${it.label} from this list`;
+    cross.setAttribute('aria-label', cross.title);
+    cross.addEventListener('click', it.remove);
+    row.append(b, cross);
+    menu.appendChild(row);
   }
   menu.hidden = false;
   const w = menu.offsetWidth, h = menu.offsetHeight;
@@ -2122,13 +2144,23 @@ function bindDateWeather() {
   $('dateDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('dateHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
   for (const id of ['dateDay', 'dateHour']) $(id).addEventListener('change', saveViewState);
-  // Right-click the date slider for the solstices and equinoxes.
-  $('dateDay').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const at = (label, m, d) => ({ label, run: () => { setSun({ doy: dayOfYear(EPW_YEAR, m, d) }); saveViewState(); } });
-    showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
-      at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
-  });
+  // Right-click the date slider for the solstices and equinoxes, and the user's own dates. Those are
+  // kept for this machine, for every model; + adds the date showing, × removes one.
+  const DATES_KEY = '3dm-viewer-dates';
+  const loadDates = () => { try { return JSON.parse(localStorage.getItem(DATES_KEY) || '[]').filter((d) => d >= 1 && d <= 365); } catch (err) { return []; } };
+  const saveDates = (list) => { try { localStorage.setItem(DATES_KEY, JSON.stringify(list)); } catch (err) { /* storage unavailable */ } };
+  const dateMenu = (pos) => {
+    const at = (label, doy) => ({ label, run: () => { setSun({ doy }); saveViewState(); } });
+    const fixed = [[3, 21, '21 March · equinox'], [6, 21, '21 June · solstice'], [9, 23, '23 September · equinox'], [12, 21, '21 December · solstice']]
+      .map(([m, d, label]) => ({ doy: dayOfYear(EPW_YEAR, m, d), label }));
+    const mine = loadDates(), now = Math.round(state.sun.doy), name = dayName(now);
+    const has = mine.includes(now) || fixed.some((f) => f.doy === now);
+    const items = fixed.map((f) => at(f.label, f.doy));
+    if (mine.length) items.push('-', ...mine.map((doy) => ({ ...at(dayName(doy), doy), remove: () => { saveDates(loadDates().filter((d) => d !== doy)); dateMenu(pos); } })));
+    showMenu('Go to', items, pos, { add: { label: '+', title: has ? `${name} is already in this list` : `Add ${name} to this list`, disabled: has,
+      run: () => { saveDates([...loadDates(), now].sort((a, b) => a - b)); dateMenu(pos); } } });
+  };
+  $('dateDay').addEventListener('contextmenu', (e) => { e.preventDefault(); dateMenu([e.clientX, e.clientY]); });
   // Right-click the time slider for the usual analysis times.
   $('dateHour').addEventListener('contextmenu', (e) => {
     e.preventDefault();
