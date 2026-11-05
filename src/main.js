@@ -3943,16 +3943,16 @@ function syncComfortPanel() {
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
   $('comfortDetails').hidden = !C.details;
   const r = comfortNow();
+  // With no UTCI to show, the minimised widget shows the sunlight line in the reading's place (style.css).
+  $('comfortPanel').classList.toggle('no-utci', !!r.missing);
   const [sunCls, sunHtml] = sunState(r);
   $('comfortSun').className = 'sun-state ' + sunCls;
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    // Minimised, with no UTCI to show, the sunlight state takes its place.
-    setHtml($('comfortRead'), `<div data-full>${r.missing === 'epw'
+    setHtml($('comfortRead'), r.missing === 'epw'
       ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
-      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>'}</div>
-      <div class="sun-state ${sunCls}" data-min-only><span class="dot"></span><span>${sunHtml}</span></div>`);
+      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
     setHtml($('comfortInputs'), '');
     return;
   }
