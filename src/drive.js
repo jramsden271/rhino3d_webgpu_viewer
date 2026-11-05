@@ -242,8 +242,12 @@ class DriveSound {
     if (!on) { A.gn.gain.setTargetAtTime(0, t, 0.08); return; }
     let gi = 1;
     while (gi < GEARS.length - 1 && kmh >= GEARS[gi]) gi++;
-    const lo = GEARS[gi - 1], hi = Math.min(GEARS[gi], 180);
-    const rpm = 0.15 + 0.85 * Math.min(1, (kmh - lo) / (hi - lo));
+    // The revs are the speed times the gear's ratio, as in a real car: in each gear they rise in
+    // proportion to the speed from 0 km/h, reaching the limit at the top of the gear's band. So a
+    // change up drops them only to the fraction that speed is of the new gear's top (38 km/h
+    // into 2nd: 38 / 72, 53%). They never fall below tick-over.
+    const hi = Math.min(GEARS[gi], 180);
+    const rpm = Math.max(0.15, Math.min(1, kmh / hi));
     const fq = 38 + rpm * 95 * (1 + gi * 0.06) + (gas ? 6 : 0);
     A.o1.frequency.setTargetAtTime(fq, t, 0.05); A.o2.frequency.setTargetAtTime(fq / 2, t, 0.05);
     A.f.frequency.setTargetAtTime(380 + (gas ? 1100 : 300) * rpm, t, 0.08);
