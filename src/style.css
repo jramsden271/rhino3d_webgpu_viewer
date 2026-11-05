@@ -338,6 +338,13 @@ body.walking.touch .walk-stick { display: block; }
 body.walking .walk-frame { display: block; }
 /* Choosing where to start walking: the walking figure, standing on the cursor's spot. */
 #gfx.placing, #gfx.placing.dragging { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24'%3E%3Cg stroke='%23222' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13' cy='3.6' r='2.4' fill='%23f2b100' stroke-width='1.2'/%3E%3Cpath d='M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1' fill='none' stroke-width='4.6'/%3E%3Cpath d='M9 21l2.5-6 2.5 2.5V21M11.5 15l1-6-3 1.5L8 13M12.5 9l2 3 3 1' fill='none' stroke='%23f2b100' stroke-width='2.8'/%3E%3C/g%3E%3C/svg%3E") 15 30, crosshair; }
+/* Choosing where to start driving: a plain crosshair, as the marker is the car's size. */
+#gfx.placing.placing-car, #gfx.placing.placing-car.dragging { cursor: crosshair; }
+.drive-speed { margin-left: 6px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.drive-radio { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: -2px 0 8px; }
+.drive-radio[hidden] { display: none; }
+.drive-track { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#driveCam { width: 100%; }
 /* The Thermal comfort panel's sunlight line: in sunlight, weak sunlight, under a simulated cloud, in shade. */
 .sun-state { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); }
 .sun-state b { font-weight: 600; }
@@ -362,6 +369,14 @@ body.walking .walk-frame { display: block; }
 .drop-card { text-align: center; padding: 40px 48px; border: 2px dashed rgba(20, 24, 31, 0.25); border-radius: 18px; background: rgba(255, 255, 255, 0.7); color: #1b1f24; transition: transform 0.12s, border-color 0.12s; max-width: min(520px, calc(100% - 32px)); }
 .drop-card svg { width: 44px; height: 44px; fill: #2563eb; stroke: none; }
 .drop-card h1 { font-size: 20px; margin: 12px 0 6px; }
+.drop-logo { cursor: default; user-select: none; -webkit-tap-highlight-color: transparent; }
+.dev-label { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #8a929c; pointer-events: none; user-select: none; }
+.dev-label[hidden] { display: none; }
+/* Developer diagnostics over the model, under the top-left bar. */
+.diag { position: absolute; top: 64px; left: 12px; padding: 6px 9px; border-radius: 8px; background: rgba(10, 12, 16, 0.72); color: #d6dbe2;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; pointer-events: none; user-select: none; white-space: nowrap; z-index: 5; }
+.diag[hidden] { display: none; }
+.diag b { display: inline-block; width: 56px; color: #8a929c; font-weight: normal; }
 .drop-card p { margin: 4px 0; color: #5e6672; }
 .drop-card .link { color: #2563eb; }
 .drop-back { margin-top: 16px !important; }
