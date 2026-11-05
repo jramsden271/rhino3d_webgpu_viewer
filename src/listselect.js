@@ -5,6 +5,7 @@
 //   const rows = new RowSelection();
 //   rows.bind(listElement);            // once
 //   rows.setRows([{ key, row }, ...]); // whenever the list is rebuilt: rows in order; row.hidden leaves one out of ranges
+//   rows.onChange = () => { ... };     // optional: called after the selection changes
 
 class RowSelection {
   constructor() { this.rows = []; this.keys = new Set(); this.anchor = null; }
@@ -28,6 +29,7 @@ class RowSelection {
     this.keys = new Set(keys);
     this.anchor = anchor;
     for (const { key, row } of this.rows) row.classList.toggle('selected', this.keys.has(key));
+    this.onChange?.();
   }
 
   click(key, e) {
