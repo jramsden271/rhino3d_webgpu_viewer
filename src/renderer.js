@@ -639,8 +639,12 @@ fn shadeWater(in: MOut, V: vec3f, flatN: vec3f) -> vec3f {
 // 6 cm, at least 2 px on screen close up. Further off, where those 6 cm shrink below about a
 // pixel, it fades out, or small buildings would melt into blobs. conv: + near an outside corner,
 // - near an inside one.
+// Only hard edges are rounded. Across a smoothed edge (a coarse tree canopy, say) the model's own
+// normals already bend from face to face, so the shading normal here differs from the face's; on a
+// face with hard edges it is the face's own. The face normals in the prepass would otherwise make
+// every edge of a smooth model look like a corner, and draw a faint line along each.
 struct Soft { n: vec3f, conv: f32 };
-fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
+fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f, faceN: vec3f) -> Soft {
   var o = Soft(n, 0.0);
   let p0 = vec2i(pos);
   let g0 = textureLoad(gbuf, p0, 0);
@@ -648,7 +652,8 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   let pxw = max(length(dx), length(dy));   // model units per pixel
   if (g0.w <= 0.0 || abs(g0.w - d0) > 2.0 * pxw + abs(d0) * 1e-4) { return o; }   // another surface is in the prepass here
   let bevel = 0.06 / F.misc.y / pxw;       // the rounding, pixels
-  let k = smoothstep(0.4, 1.5, bevel);
+  let smoothed = smoothstep(4e-5, 6e-4, 1.0 - dot(n, normalize(faceN)));   // from about 0.5° to 2°
+  let k = smoothstep(0.4, 1.5, bevel) * (1.0 - smoothed);
   if (k <= 0.0) { return o; }
   let r = clamp(bevel, 2.0, 5.0);
   let lim = vec2i(F.viewport.xy) - 1;
@@ -747,7 +752,7 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f) -> Soft {
   var conv = 0.0;
   if (F.opts.z > 0.5 && F.opts.x == 0.0 && alpha >= 1.0) {
     ao = aoAt(in.pos.xy, in.wp, normalize(faceN));
-    if (cls != 2 && cls != 3) { let se = softEdge(in.pos.xy, in.wp, dwx, dwy, n); n = se.n; conv = se.conv; }
+    if (cls != 2 && cls != 3) { let se = softEdge(in.pos.xy, in.wp, dwx, dwy, n, faceN); n = se.n; conv = se.conv; }
   }
   let lt = lighting(in.wp, n, wrap);
   let h = normalize(lt.L + V);
