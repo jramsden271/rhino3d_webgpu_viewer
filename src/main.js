@@ -3943,16 +3943,17 @@ function syncComfortPanel() {
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
   $('comfortDetails').hidden = !C.details;
   const r = comfortNow();
-  // With no UTCI to show, the minimised widget shows the sunlight line in the reading's place (style.css).
+  // With no UTCI to show, the minimised widget shows the sunlight line in the reading's place
+  // (style.css). With no weather file at all there is no reading, only Add EPW in the title bar.
   $('comfortPanel').classList.toggle('no-utci', !!r.missing);
+  $('comfortAdd').hidden = r.missing !== 'epw';
+  $('comfortRead').hidden = r.missing === 'epw';
   const [sunCls, sunHtml] = sunState(r);
   $('comfortSun').className = 'sun-state ' + sunCls;
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    setHtml($('comfortRead'), r.missing === 'epw'
-      ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
-      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortRead'), r.missing === 'epw' ? '' : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
     setHtml($('comfortInputs'), '');
     return;
   }
@@ -4012,7 +4013,7 @@ function bindComfortPanel() {
   $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
   $('comfortClouds').checked = state.comfort.clouds;
   $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });
-  $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
+  $('comfortAdd').addEventListener('click', openWeatherDialog);
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 

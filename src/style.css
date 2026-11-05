@@ -562,6 +562,7 @@ body.walking .walk-frame { display: block; }
 /* Thermal comfort panel */
 /* Minimised with no UTCI (no weather file): the sunlight line instead of the reading. */
 #comfortPanel.min.no-utci #comfortRead { display: none; }
+#comfortRead[hidden] { display: none; }
 #comfortPanel.min.no-utci #comfortSun { display: flex !important; }
 .utci-read { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border-left: 4px solid var(--cat, var(--border)); display: flex; flex-direction: column; gap: 6px; }
 .utci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
