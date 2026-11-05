@@ -403,8 +403,9 @@ each parser in turn until one recognises it.
 
 Click **Date** on the toolbar (or press `S`) for the **Date widget**: the date and local time that
 the sun, the sky, the weather and the Thermal comfort widget all follow. Right-click the date
-slider to jump to a solstice or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00,
-and press ▶ to run the time from sunrise to sunset. The date has no year: sun positions change too
+slider to jump to a solstice or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00.
+The **+** in either menu adds the date or time showing to it, kept on this machine for every
+model, and the **×** beside an added one removes it. Press ▶ to run the time from sunrise to sunset. The date has no year: sun positions change too
 little from year to year to matter here (2017 is used). When the file has Rhino Sun settings, they
 set the starting date and time. The time is the location's clock time, shown with its offset from
 UTC (e.g. UTC+3 for Qatar).

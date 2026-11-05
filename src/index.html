@@ -126,17 +126,17 @@
 
   <section id="datePanel" class="chrome panel sun-panel" hidden aria-label="Date" data-min>
     <div class="panel-head">
-      <span>Date<span class="panel-sum" id="dateSum" data-min-only></span></span>
+      <span>Date<span class="panel-sum" id="dateSum" data-min-only><span id="dateSumDay" title="Right-click for the solstices and equinoxes, or your own dates"></span> · <span id="dateSumHour" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times"></span></span></span>
       <span class="panel-actions"><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
     </div>
     <div class="sun-body" data-full>
       <div class="field">
         <div class="field-label"><span>Date</span><output id="dateDayOut"></output></div>
-        <input type="range" id="dateDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes">
+        <input type="range" id="dateDay" min="1" max="365" step="1" title="Right-click for the solstices and equinoxes, or your own dates">
       </div>
       <div class="field">
         <div class="field-label"><span>Time</span><span><output id="dateTimeOut"></output><button id="datePlay" class="play" title="Animate through the day">▶</button></span></div>
-        <input type="range" id="dateHour" min="0" max="24" step="0.0833" title="Right-click for 10:00, 12:00, solar noon and 15:00">
+        <input type="range" id="dateHour" min="0" max="24" step="0.0833" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times">
       </div>
     </div>
   </section>
@@ -170,7 +170,7 @@
   <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort" data-min>
     <div class="panel-head">
       <span>Thermal comfort</span>
-      <span class="panel-actions"><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
+      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
     </div>
     <div class="sun-body">
       <div id="comfortRead" class="utci-read"></div>
@@ -366,7 +366,7 @@
   <template id="helpBody">
       <dl class="help-list">
         <dt>Orbit</dt><dd>Perspective and most named views: right-drag (around the point under the cursor) · Alt + left-drag · one finger</dd>
-        <dt>Rotate</dt><dd>Top: right-drag around the middle of the window, as if it were a dial (a large compass marks the middle while you drag) · Elevation: right-drag left or right · both: drag the compass</dd>
+        <dt>Rotate</dt><dd>Top: right-drag round a dial whose middle is a little left of where you start (a large compass marks it while you drag) · Elevation: right-drag left or right · both: drag the compass</dd>
         <dt>Pan</dt><dd>Left- or middle-drag · Shift + right-drag · two fingers</dd>
         <dt>Zoom</dt><dd>Mouse wheel (towards the cursor) · pinch on touch</dd>
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>

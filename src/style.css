@@ -112,12 +112,10 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .side.over::-webkit-scrollbar { display: none; }
 .side.over > .panel { flex-shrink: 0; }
 .panel.ghost { flex: none !important; pointer-events: none; overflow: hidden; }
-/* Minimised: Layers and Blocks keep a short list; the parts moved to the title bar. */
-:is(#layersPanel, #blocksPanel).min .layer-tree { flex: none; max-height: 300px; }
 .panel-actions .btn.icon.in-head { padding: 3px; margin: -3px 0; }
 .panel-actions .btn.icon.in-head svg { width: 16px; height: 16px; }
 .panel-actions input[type="range"].in-head { width: 96px; accent-color: var(--accent); margin: 0; }
-.layers-panel.min { flex: none; min-height: 0; }
+.layers-panel.min:not(#layersPanel, #blocksPanel) { flex: none; min-height: 0; }
 /* Minimised to the title bar alone. */
 :is(#datePanel, #lightsPanel, #walkPanel).min .panel-head,
 #streamlinesPanel.min:has(#streamlineLegend:empty) .panel-head { border-bottom: 0; }
@@ -131,6 +129,9 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 #weatherPanel.min:has(#weatherRead[hidden]) .sun-body { display: none; }
 #weatherPanel.min:has(#weatherRead[hidden]) .panel-head { border-bottom: 0; }
 .layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
+/* Minimised, Layers and Blocks only hide their filter: they still share the height, down to a lower least height. */
+#layersPanel, #blocksPanel { min-height: 150px; }
+:is(#layersPanel, #blocksPanel).min { min-height: 100px; }
 .sun-panel { flex: none; max-height: 100%; overflow-y: auto; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
 .panel-actions { display: flex; flex: none; align-items: center; gap: 10px; font-weight: 400; font-size: 12px; white-space: nowrap; }
@@ -189,6 +190,15 @@ button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .menu button:disabled { color: var(--muted); cursor: default; }
 .menu .n { color: var(--muted); font-variant-numeric: tabular-nums; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; }
+/* A title with a button at its right (+ on the date presets), and rows with a × at theirs. */
+.menu-title:has(.menu-side) { display: flex; align-items: center; gap: 8px; padding-right: 2px; }
+.menu-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-title > .menu-side { margin-left: auto; }
+.menu-row { display: flex; align-items: center; }
+.menu-row > button[role="menuitem"] { flex: 1; min-width: 0; }
+.menu .menu-side { flex: none; width: 24px; height: 24px; padding: 0; justify-content: center; align-items: center; color: var(--muted); font-size: 15px; line-height: 1; }
+.menu .menu-side:hover:not(:disabled) { color: var(--text, inherit); }
+.menu .menu-side:disabled { opacity: 0.4; }
 
 .popover { position: absolute; width: 290px; z-index: 5; }
 .pop-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -560,6 +570,10 @@ body.walking .walk-frame { display: block; }
 .notice.brief, .notice.info { border-left-color: var(--accent); }
 .btn.outline { border: 1px solid var(--border); }
 /* Thermal comfort panel */
+/* Minimised with no UTCI (no weather file): the sunlight line instead of the reading. */
+#comfortPanel.min.no-utci #comfortRead { display: none; }
+#comfortRead[hidden] { display: none; }
+#comfortPanel.min.no-utci #comfortSun { display: flex !important; }
 .utci-read { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--hover); border-left: 4px solid var(--cat, var(--border)); display: flex; flex-direction: column; gap: 6px; }
 .utci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .utci-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }

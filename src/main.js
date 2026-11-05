@@ -119,16 +119,22 @@ const HAS_MEMORY64 = (() => {
 const rhinoModules = {};
 
 // kind: 'w32' or 'w64'. In the built single-file viewer both WASM binaries are inlined as
-// base64; when running from src/ only the 32-bit reader is available.
+// base64. Running from src/, the 32-bit reader comes from its script tag and the 64-bit one is
+// fetched from vendor/ when first needed, in its own scope, as its loader also defines `rhino3dm`.
 function getRhino(kind) {
-  if (typeof RHINO3DM_WASM !== 'object') return (rhinoModules.dev ||= rhino3dm());
   return (rhinoModules[kind] ||= (async () => {
+    if (typeof RHINO3DM_WASM !== 'object') {
+      if (kind === 'w32') return rhino3dm();
+      const dir = '../vendor/package/wasm64/';
+      const [js, wasm] = await Promise.all([fetch(dir + 'rhino3dm.min.js').then((r) => r.text()), fetch(dir + 'rhino3dm.wasm').then((r) => r.arrayBuffer())]);
+      return new Function(`${js}\nreturn rhino3dm;`)()({ wasmBinary: new Uint8Array(wasm) });
+    }
     const bin = atob(RHINO3DM_WASM[kind]), bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return RHINO3DM_FACTORIES[kind]({ wasmBinary: bytes });
   })());
 }
-const can64 = () => HAS_MEMORY64 && typeof RHINO3DM_WASM === 'object';
+const can64 = () => HAS_MEMORY64;
 
 async function boot() {
   bindUi();
@@ -678,12 +684,25 @@ function openLayerMenu(picked, tree, [x, y]) {
 
 // A right-click menu at (x, y): items are { label, n (a count shown on the right; 0 disables
 // the item), run } or '-' for a divider.
-function showMenu(titleText, items, [x, y]) {
+// add: an optional button at the right of the title ({ label, title, disabled, run }), which
+// leaves the menu open. An item with remove gets a small cross at the right of its row, likewise.
+function showMenu(titleText, items, [x, y], { add } = {}) {
   const menu = $('layerMenu');
   menu.innerHTML = '';
   const title = document.createElement('div');
   title.className = 'menu-title';
-  title.textContent = title.title = titleText;
+  title.innerHTML = '<span></span>';
+  title.firstChild.textContent = title.firstChild.title = titleText;
+  if (add) {
+    const b = document.createElement('button');
+    b.className = 'menu-side';
+    b.textContent = add.label;
+    b.title = add.title;
+    b.setAttribute('aria-label', add.title);
+    b.disabled = !!add.disabled;
+    b.addEventListener('click', add.run);
+    title.appendChild(b);
+  }
   menu.appendChild(title);
   for (const it of items) {
     if (it === '-') { menu.appendChild(document.createElement('hr')); continue; }
@@ -694,7 +713,16 @@ function showMenu(titleText, items, [x, y]) {
     b.disabled = it.n === 0;
     if (b.disabled) b.title = 'No visible objects';
     b.addEventListener('click', () => { closeLayerMenu(); it.run(); });
-    menu.appendChild(b);
+    if (!it.remove) { menu.appendChild(b); continue; }
+    const row = document.createElement('div'), cross = document.createElement('button');
+    row.className = 'menu-row';
+    cross.className = 'menu-side';
+    cross.textContent = '×';
+    cross.title = `Remove ${it.label} from this list`;
+    cross.setAttribute('aria-label', cross.title);
+    cross.addEventListener('click', it.remove);
+    row.append(b, cross);
+    menu.appendChild(row);
   }
   menu.hidden = false;
   const w = menu.offsetWidth, h = menu.offsetHeight;
@@ -1998,7 +2026,8 @@ function syncDatePanel() {
   $('dateHour').value = S.hour;
   $('dateDayOut').textContent = dayName(S.doy);
   $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
-  $('dateSum').textContent = `${dayName(S.doy)} · ${fmtHour(S.hour)}`; // the minimised widget's reading
+  $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
+  $('dateSumHour').textContent = fmtHour(S.hour);
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -2116,20 +2145,41 @@ function bindDateWeather() {
   $('dateDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('dateHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
   for (const id of ['dateDay', 'dateHour']) $(id).addEventListener('change', saveViewState);
-  // Right-click the date slider for the solstices and equinoxes.
-  $('dateDay').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const at = (label, m, d) => ({ label, run: () => { setSun({ doy: dayOfYear(EPW_YEAR, m, d) }); saveViewState(); } });
-    showMenu('Go to', [at('21 March · equinox', 3, 21), at('21 June · solstice', 6, 21), at('23 September · equinox', 9, 23),
-      at('21 December · solstice', 12, 21)], [e.clientX, e.clientY]);
+  // Right-click the date or time slider for its usual values, and the user's own. Those are kept
+  // for this machine, for every model; + adds the value showing, × removes one. Values are whole
+  // numbers: the day of the year, or the minute of the day.
+  const presetMenu = ({ key, fixed, now, name, go, valid }) => {
+    const load = () => { try { return JSON.parse(localStorage.getItem(key) || '[]').filter(valid); } catch (err) { return []; } };
+    const save = (list) => { try { localStorage.setItem(key, JSON.stringify(list)); } catch (err) { /* storage unavailable */ } };
+    const at = (label, v) => ({ label, run: () => { go(v); saveViewState(); } });
+    const open = (pos) => {
+      const mine = load(), has = mine.includes(now) || fixed.some((f) => f.v === now);
+      const items = fixed.map((f) => at(f.label, f.v));
+      if (mine.length) items.push('-', ...mine.map((v) => ({ ...at(name(v), v), remove: () => { save(load().filter((w) => w !== v)); open(pos); } })));
+      showMenu('Go to', items, pos, { add: { label: '+', title: has ? `${name(now)} is already in this list` : `Add ${name(now)} to this list`, disabled: has,
+        run: () => { save([...load(), now].sort((a, b) => a - b)); open(pos); } } });
+    };
+    return open;
+  };
+  const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
+  // The same menus on the minimised widget's reading in the title bar, in place of its lock menu.
+  const onMenu = (ids, show) => {
+    for (const id of ids) $(id).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
+  };
+  onMenu(['dateDay', 'dateSumDay'], (e) => {
+    const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
+      const v = dayOfYear(EPW_YEAR, m, d);
+      return { v, label: `${dayFull(v)} · ${what}` };
+    });
+    presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
+      go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
   });
-  // Right-click the time slider for the usual analysis times.
-  $('dateHour').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const at = (label, hour) => ({ label, run: () => { setSun({ hour }); saveViewState(); } });
-    const noon = activeLocation() ? sunPosition().noon : null;
-    showMenu('Go to', [at('10:00', 10), at('12:00', 12), noon != null && at(`Solar noon · ${fmtHour(noon)}`, noon), at('15:00', 15)].filter(Boolean),
-      [e.clientX, e.clientY]);
+  onMenu(['dateHour', 'dateSumHour'], (e) => {
+    const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
+    const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
+    presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
+      go: (m) => setSun({ hour: m / 60 }) })([e.clientX, e.clientY]);
   });
   $('datePlay').addEventListener('click', toggleDatePlay);
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
@@ -3063,7 +3113,10 @@ function bindPointer() {
       const rules = viewRules(), rightDrag = e.pointerType !== 'touch' && e.button === 2 && !e.shiftKey;
       const orbit = rules === 'orbit' && (e.pointerType === 'touch' || rightDrag || (e.button === 0 && e.altKey));
       const mode = orbit ? 'orbit' : rightDrag ? rules : 'pan';
-      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, at: dialAngle(canvas, e) };
+      drag = { mode, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button };
+      // Top views turn about a dial whose middle is a fixed distance left of where the drag starts,
+      // so the turn feels the same wherever it starts.
+      if (mode === 'top') Object.assign(drag, { cx: e.clientX - innerWidth * DIAL_OFFSET, cy: e.clientY, at: 0 });
       pivot = null;
       if (orbit) pickPoint(e).then((p) => { if (drag && drag.mode === 'orbit') pivot = p; });
       else if (mode === 'pan') pickDepth(e, drag);
@@ -3172,7 +3225,9 @@ function syncCompass() {
 
 // While the window is a dial, a large see-through compass shows where the dial's middle is.
 function syncCompassOverlay() {
-  $('compassOverlay').hidden = drag?.mode !== 'top';
+  const el = $('compassOverlay'), on = drag?.mode === 'top';
+  el.hidden = !on;
+  if (on) { el.style.left = `${drag.cx}px`; el.style.top = `${drag.cy}px`; }
 }
 
 // Turns the view the short way round to face a compass bearing (degrees clockwise from north),
@@ -3207,11 +3262,16 @@ function dialAngle(el, e) {
   return Math.hypot(x, y) < 8 ? null : Math.atan2(y, x);
 }
 
-// Right-drag in a view looking straight down: the whole window is a dial, like the compass.
+// Right-drag in a view looking straight down: the whole window is a dial, like the compass, its
+// middle at (drag.cx, drag.cy). The view turns about the point under that middle, which stays put.
+const DIAL_OFFSET = 0.1; // of the window's width, left of where the drag starts
 function turnByDial(e) {
-  const a = dialAngle(canvas, e);
-  if (a === null) return;
-  if (drag.at !== null) camera.yaw += wrapAngle(a - drag.at);
+  const x = e.clientX - drag.cx, y = e.clientY - drag.cy;
+  if (Math.hypot(x, y) < 8) return;
+  const a = Math.atan2(y, x), mid = toNdc({ clientX: drag.cx, clientY: drag.cy });
+  const before = camera.planePoint(...mid);
+  camera.yaw += wrapAngle(a - drag.at);
+  camera.target = V3.add(camera.target, V3.sub(before, camera.planePoint(...mid)));
   drag.at = a;
 }
 
@@ -3943,14 +4003,17 @@ function syncComfortPanel() {
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
   $('comfortDetails').hidden = !C.details;
   const r = comfortNow();
+  // With no UTCI to show, the minimised widget shows the sunlight line in the reading's place
+  // (style.css). With no weather file at all there is no reading, only Add EPW in the title bar.
+  $('comfortPanel').classList.toggle('no-utci', !!r.missing);
+  $('comfortAdd').hidden = r.missing !== 'epw';
+  $('comfortRead').hidden = r.missing === 'epw';
   const [sunCls, sunHtml] = sunState(r);
   $('comfortSun').className = 'sun-state ' + sunCls;
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    setHtml($('comfortRead'), r.missing === 'epw'
-      ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
-      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortRead'), r.missing === 'epw' ? '' : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
     setHtml($('comfortInputs'), '');
     return;
   }
@@ -4010,7 +4073,7 @@ function bindComfortPanel() {
   $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
   $('comfortClouds').checked = state.comfort.clouds;
   $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });
-  $('comfortRead').addEventListener('click', (e) => { if (e.target.closest('[data-weather]')) openWeatherDialog(); });
+  $('comfortAdd').addEventListener('click', openWeatherDialog);
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 
