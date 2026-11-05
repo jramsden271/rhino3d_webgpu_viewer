@@ -119,16 +119,22 @@ const HAS_MEMORY64 = (() => {
 const rhinoModules = {};
 
 // kind: 'w32' or 'w64'. In the built single-file viewer both WASM binaries are inlined as
-// base64; when running from src/ only the 32-bit reader is available.
+// base64. Running from src/, the 32-bit reader comes from its script tag and the 64-bit one is
+// fetched from vendor/ when first needed, in its own scope, as its loader also defines `rhino3dm`.
 function getRhino(kind) {
-  if (typeof RHINO3DM_WASM !== 'object') return (rhinoModules.dev ||= rhino3dm());
   return (rhinoModules[kind] ||= (async () => {
+    if (typeof RHINO3DM_WASM !== 'object') {
+      if (kind === 'w32') return rhino3dm();
+      const dir = '../vendor/package/wasm64/';
+      const [js, wasm] = await Promise.all([fetch(dir + 'rhino3dm.min.js').then((r) => r.text()), fetch(dir + 'rhino3dm.wasm').then((r) => r.arrayBuffer())]);
+      return new Function(`${js}\nreturn rhino3dm;`)()({ wasmBinary: new Uint8Array(wasm) });
+    }
     const bin = atob(RHINO3DM_WASM[kind]), bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return RHINO3DM_FACTORIES[kind]({ wasmBinary: bytes });
   })());
 }
-const can64 = () => HAS_MEMORY64 && typeof RHINO3DM_WASM === 'object';
+const can64 = () => HAS_MEMORY64;
 
 async function boot() {
   bindUi();
