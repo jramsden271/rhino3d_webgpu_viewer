@@ -2144,30 +2144,39 @@ function bindDateWeather() {
   $('dateDay').addEventListener('input', (e) => setSun({ doy: +e.target.value }));
   $('dateHour').addEventListener('input', (e) => setSun({ hour: +e.target.value }));
   for (const id of ['dateDay', 'dateHour']) $(id).addEventListener('change', saveViewState);
-  // Right-click the date slider for the solstices and equinoxes, and the user's own dates. Those are
-  // kept for this machine, for every model; + adds the date showing, × removes one.
-  const DATES_KEY = '3dm-viewer-dates';
-  const loadDates = () => { try { return JSON.parse(localStorage.getItem(DATES_KEY) || '[]').filter((d) => d >= 1 && d <= 365); } catch (err) { return []; } };
-  const saveDates = (list) => { try { localStorage.setItem(DATES_KEY, JSON.stringify(list)); } catch (err) { /* storage unavailable */ } };
-  const dateMenu = (pos) => {
-    const at = (label, doy) => ({ label, run: () => { setSun({ doy }); saveViewState(); } });
-    const fixed = [[3, 21, '21 March · equinox'], [6, 21, '21 June · solstice'], [9, 23, '23 September · equinox'], [12, 21, '21 December · solstice']]
-      .map(([m, d, label]) => ({ doy: dayOfYear(EPW_YEAR, m, d), label }));
-    const mine = loadDates(), now = Math.round(state.sun.doy), name = dayName(now);
-    const has = mine.includes(now) || fixed.some((f) => f.doy === now);
-    const items = fixed.map((f) => at(f.label, f.doy));
-    if (mine.length) items.push('-', ...mine.map((doy) => ({ ...at(dayName(doy), doy), remove: () => { saveDates(loadDates().filter((d) => d !== doy)); dateMenu(pos); } })));
-    showMenu('Go to', items, pos, { add: { label: '+', title: has ? `${name} is already in this list` : `Add ${name} to this list`, disabled: has,
-      run: () => { saveDates([...loadDates(), now].sort((a, b) => a - b)); dateMenu(pos); } } });
+  // Right-click the date or time slider for its usual values, and the user's own. Those are kept
+  // for this machine, for every model; + adds the value showing, × removes one. Values are whole
+  // numbers: the day of the year, or the minute of the day.
+  const presetMenu = ({ key, fixed, now, name, go, valid }) => {
+    const load = () => { try { return JSON.parse(localStorage.getItem(key) || '[]').filter(valid); } catch (err) { return []; } };
+    const save = (list) => { try { localStorage.setItem(key, JSON.stringify(list)); } catch (err) { /* storage unavailable */ } };
+    const at = (label, v) => ({ label, run: () => { go(v); saveViewState(); } });
+    const open = (pos) => {
+      const mine = load(), has = mine.includes(now) || fixed.some((f) => f.v === now);
+      const items = fixed.map((f) => at(f.label, f.v));
+      if (mine.length) items.push('-', ...mine.map((v) => ({ ...at(name(v), v), remove: () => { save(load().filter((w) => w !== v)); open(pos); } })));
+      showMenu('Go to', items, pos, { add: { label: '+', title: has ? `${name(now)} is already in this list` : `Add ${name(now)} to this list`, disabled: has,
+        run: () => { save([...load(), now].sort((a, b) => a - b)); open(pos); } } });
+    };
+    return open;
   };
-  $('dateDay').addEventListener('contextmenu', (e) => { e.preventDefault(); dateMenu([e.clientX, e.clientY]); });
-  // Right-click the time slider for the usual analysis times.
+  const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
+  $('dateDay').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
+      const v = dayOfYear(EPW_YEAR, m, d);
+      return { v, label: `${dayFull(v)} · ${what}` };
+    });
+    presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
+      go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
+  });
   $('dateHour').addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    const at = (label, hour) => ({ label, run: () => { setSun({ hour }); saveViewState(); } });
-    const noon = activeLocation() ? sunPosition().noon : null;
-    showMenu('Go to', [at('10:00', 10), at('12:00', 12), noon != null && at(`Solar noon · ${fmtHour(noon)}`, noon), at('15:00', 15)].filter(Boolean),
-      [e.clientX, e.clientY]);
+    const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
+    const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
+    presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
+      go: (m) => setSun({ hour: m / 60 }) })([e.clientX, e.clientY]);
   });
   $('datePlay').addEventListener('click', toggleDatePlay);
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
