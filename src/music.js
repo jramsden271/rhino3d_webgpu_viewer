@@ -6,7 +6,7 @@
 // steps, 16 to a bar. A scheduler looks a little ahead and queues each step on the audio clock,
 // swung if the track asks (the off-beat sixteenths late). After the last section a track loops.
 
-const MUSIC = { AHEAD: 0.3, TICK: 40, LEVEL: 2 / 3 }; // LEVEL: all the tracks, against the car's sounds
+const MUSIC = { AHEAD: 0.3, TICK: 40, LEVEL: 0.75 }; // LEVEL: all the tracks, against the car's sounds (0.75: 2.5 dB down)
 const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
 
 // "Neon Meridian" ---------------------------------------------------------------------------
