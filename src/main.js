@@ -3948,9 +3948,11 @@ function syncComfortPanel() {
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    setHtml($('comfortRead'), r.missing === 'epw'
+    // Minimised, with no UTCI to show, the sunlight state takes its place.
+    setHtml($('comfortRead'), `<div data-full>${r.missing === 'epw'
       ? '<span class="fine">The UTCI needs the weather from a weather file (EPW).</span> <button class="link" data-weather>Add one…</button>'
-      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+      : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>'}</div>
+      <div class="sun-state ${sunCls}" data-min-only><span class="dot"></span><span>${sunHtml}</span></div>`);
     setHtml($('comfortInputs'), '');
     return;
   }
