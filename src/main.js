@@ -569,24 +569,22 @@ function applyLayerVisibility() {
 function buildLayerTree() {
   const tree = $('layerTree'), L = model.layers, kids = L.map(() => []), roots = [];
   for (const l of L) (l.parent >= 0 ? kids[l.parent] : roots).push(l.index);
-  // Total object count including sub-layers; empty branches are hidden.
+  // Total object count including sub-layers; empty branches are hidden (objects can move between
+  // layers, so every layer has a row and the counts are worked out again on refresh).
   const total = L.map(() => 0);
   const sum = (i) => (total[i] = L[i].count + kids[i].reduce((s, k) => s + sum(k), 0));
-  roots.forEach(sum);
   const collapsed = new Set();
   tree.innerHTML = '';
   const caretSvg = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
   const rows = [];
   const add = (i, depth) => {
-    if (!total[i]) return;
     const l = L[i], row = document.createElement('div');
     row.className = 'layer-row';
     row.setAttribute('role', 'treeitem');
     row.style.paddingLeft = 10 + depth * 16 + 'px';
-    const hasKids = kids[i].some((k) => total[k]);
-    row.innerHTML = `<button class="caret ${hasKids ? '' : 'empty'}" aria-label="Expand">${caretSvg}</button>` +
+    row.innerHTML = `<button class="caret" aria-label="Expand">${caretSvg}</button>` +
       `<input type="checkbox" class="eye" aria-label="Show this layer" title="Show or hide (Shift-click: isolate)"><span class="swatch"></span>` +
-      `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count">${total[i].toLocaleString()}</span>`;
+      `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count"></span>`;
     row.querySelector('.layer-name').textContent = l.name;
     row.title = l.fullPath;
     const cb = row.querySelector('input');
@@ -623,14 +621,17 @@ function buildLayerTree() {
   roots.forEach((r) => add(r, 0));
   const hiddenByCollapse = (i) => { for (let p = L[i].parent; p >= 0; p = L[p].parent) if (collapsed.has(p)) return true; return false; };
   function refreshRows() {
+    roots.forEach(sum);
     const filter = $('layerFilter').value.trim().toLowerCase(), match = new Set();
-    if (filter) for (const { i } of rows) if (L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
+    if (filter) for (const { i } of rows) if (total[i] && L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
     for (const { i, row, cb } of rows) {
       cb.checked = layerOn[i];
       row.classList.toggle('off', !layerOn[i]);
       row.classList.toggle('inherited-off', layerOn[i] && !layerEffective(i));
-      row.hidden = filter ? !match.has(i) : hiddenByCollapse(i);
+      row.hidden = !total[i] || (filter ? !match.has(i) : hiddenByCollapse(i));
       row.querySelector('.caret').classList.toggle('collapsed', collapsed.has(i));
+      row.querySelector('.caret').classList.toggle('empty', !kids[i].some((k) => total[k]));
+      row.querySelector('.layer-count').textContent = total[i].toLocaleString();
       const sw = row.querySelector('.swatch'), isMat = showsMaterial(), id = model.layers[i].id;
       sw.style.background = isMat ? lookBackground(layerLook(i)) : rgbHex(layerDisplayRgb(i));
       // Ring: set in the viewer ("Always off" alone does not count).
@@ -676,9 +677,13 @@ function openLayerMenu(picked, tree, [x, y]) {
     return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
   const own = visibleOn(picked), all = tree && visibleOn(tree);
+  // Move the selection here: one layer of the file's own (not one made for magic blocks).
+  const target = picked.length === 1 && !L[picked[0]].magic ? picked[0] : -1;
+  const moving = target < 0 ? 0 : state.sel.ids.filter((id) => model.objects[id].ai.layer !== target).length;
   showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
+    target >= 0 && { label: 'Move selection to this layer', n: moving, run: () => moveSelectionToLayer(target) },
     '-',
     { label: showsMaterial() ? 'Edit material' : 'Edit colour', run: () => openMaterialDialog(picked, buildLayerTree.row?.(picked[0]) || $('layersPanel')) },
   ].filter(Boolean), [x, y]);
@@ -742,7 +747,7 @@ function showLayersHelp() {
   Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The eye shows or hides a layer and its sub-layers. <kbd>Shift</kbd>-click an eye to isolate that layer.</p>
     <p>The square shows the layer's colour or material. Double-click the row, or right-click it for <b>Edit colour</b> or <b>Edit material</b>, to set the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
     ${ROW_SELECT_HELP('layers')}
-    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers, or edit its colour or material.</p>
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers, move the selected objects onto it, or edit its colour or material.</p>
     ${ROW_KEYS_HELP('layers', 'edit their colour or material')}` });
 }
 
@@ -1002,7 +1007,7 @@ function bindLayerMenu() {
 // state.layerSpecial: layer id -> magic material (materials.js id, 0 = always off), as chosen
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
-// layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
+// layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi, layer }, see resolveLook
 // in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
 // state.blockMagic: block definition id -> its magic block, { id } (see magicblocks.js).
 // Everything is remembered in this browser per model, and can be written into a
@@ -1172,11 +1177,17 @@ function applyObjectEdits(objEdits = {}) {
     Object.assign(model.objects[i].ai, d);
     state.objEdits[id] = { ...d };
   }
+  noteLayerMoves();
+}
+
+// The objects moved to another layer, as text: a sun exposure surface depends on it.
+function noteLayerMoves() {
+  model.layerMoves = Object.entries(state.objEdits).filter(([, d]) => d.layer !== undefined).map(([id, d]) => `${id}>${d.layer}`).join();
 }
 
 // ---------------------------------------------------------------------------------------------
 // Undo and redo, as in Rhino: changes to the model (layer colours, materials and magic materials,
-// object colour and material sources, the north angle, Revert) can be undone. View
+// object colour and material sources and layers, the north angle, Revert) can be undone. View
 // changes, hiding objects, turning layers on or off and the site location (a viewer setting, not
 // part of the model) are not recorded. Each entry keeps the edit state from before the change;
 // undoing swaps it with the current one. Not kept between sessions.
@@ -1261,7 +1272,11 @@ function loadEdits() {
   for (const [id, set] of Object.entries(e.blockMagic || {})) if (model.blocks.has(id) && MAGIC_BY_ID[set?.id]) state.blockMagic[id] = set;
   Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id), magicOf: blockMagic });
   // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
-  for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
+  for (const d of Object.values(e.objEdits || {})) {
+    if (d.ms === 2) d.ms = 3;
+    // A move to a layer this file doesn't have (or one made for magic blocks) is dropped.
+    if (d.layer !== undefined && !(Number.isInteger(d.layer) && model.layers[d.layer] && !model.layers[d.layer].magic)) delete d.layer;
+  }
   applyObjectEdits(e.objEdits);
   model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
@@ -1614,6 +1629,7 @@ async function downloadCopy() {
       a.objectColor = rgba(ai.oc);
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
+      a.layerIndex = ai.layer;
     }
     // Block sub-element settings: in the file these are the sources of the definition's own objects.
     const idefs = doc.instanceDefinitions();
@@ -1857,21 +1873,46 @@ function showInspector() {
 
 function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
+// Record how an object's attributes now differ from the file in state.objEdits.
+function noteObjectEdit(o) {
+  const d = {};
+  for (const k of ['cs', 'ms', 'mi', 'layer']) if (o.ai[k] !== o.ai0[k]) d[k] = o.ai[k];
+  if (rgbHex(o.ai.oc) !== rgbHex(o.ai0.oc)) d.oc = o.ai.oc;
+  if (Object.keys(d).length) state.objEdits[o.id] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.id];
+}
+
 // Change the selected objects' attributes (see resolveLook in extract.js) and rebuild.
 async function setSelectedAttrs(change) {
   const n = state.sel.ids.length;
   recordUndo(`Change ${showsMaterial() ? 'material' : 'colour'} of ${n > 1 ? `${n} objects` : 'object'}`);
   for (const id of state.sel.ids) {
-    const o = model.objects[id];
-    Object.assign(o.ai, change);
-    const d = {};
-    for (const k of ['cs', 'ms', 'mi']) if (o.ai[k] !== o.ai0[k]) d[k] = o.ai[k];
-    if (rgbHex(o.ai.oc) !== rgbHex(o.ai0.oc)) d.oc = o.ai.oc;
-    if (Object.keys(d).length) state.objEdits[o.id] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.id];
+    Object.assign(model.objects[id].ai, change);
+    noteObjectEdit(model.objects[id]);
   }
   await rebuildModel();
   saveEdits();
   showInspector();
+  if (matOpen()) syncMaterialDialog();
+}
+
+// Put the selected objects on layer i. Their colour and material follow it where they come from
+// the layer. Objects that end up on a layer that is off leave the selection, as in Rhino.
+async function moveSelectionToLayer(i) {
+  const ids = state.sel.ids.filter((id) => model.objects[id].ai.layer !== i);
+  if (!ids.length) return;
+  recordUndo(`Move ${ids.length > 1 ? `${ids.length.toLocaleString()} objects` : 'object'} to ${model.layers[i].name}`);
+  for (const id of ids) {
+    model.objects[id].ai.layer = i;
+    noteObjectEdit(model.objects[id]);
+  }
+  noteLayerMoves();
+  await rebuildModel();
+  saveEdits();
+  layerRows.keepShown();
+  const kept = state.sel.ids.filter((id) => layerEffective(model.objects[id].layer));
+  if (kept.length === state.sel.ids.length) showInspector();
+  else if (kept.length) selectObjects(kept);
+  else { state.sel = { ids: [], p: null }; $('inspect').hidden = true; inspectPin = null; pushObjectFlags(); }
   if (matOpen()) syncMaterialDialog();
 }
 
@@ -2020,7 +2061,7 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours, materials and layers, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, object layer, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
@@ -2927,7 +2968,7 @@ const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy,
 function exposureKeys() {
   if (!model || expo.layer < 0 || !activeLocation()) return null;
   const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.'), { days, hours } = exposurePeriod();
-  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden].join('|');
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden, model.layerMoves].join('|');
   return { surface, run: [surface, days[0], days.length, hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
 }
 
