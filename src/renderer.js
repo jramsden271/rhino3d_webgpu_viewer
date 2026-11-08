@@ -2060,13 +2060,15 @@ class Renderer {
   //  - walls: four WALL_W x WALL_H views looking out along +x, -x, +y and -y from (q.x, q.y),
   //    q.reach wide either side and q.reach deep, between heights q.z0 and q.z1.
   // Vegetation (by its layer's magic material, even with the Magic button off) is left out, so
-  // people walk through trees. Resolves to { ground, walls } (Float32Arrays, 4 floats per texel),
+  // people walk through trees. With q.water, water (likewise) is left out too, and drawn on its
+  // own into a third part: water, GROUND_RES² texels as ground, the highest water below q.top
+  // (the car sinks in it). Resolves to { ground, walls, water } (Float32Arrays, 4 floats per texel),
   // or null at once when the previous probe has not been read back yet (or later, if the GPU
   // rejected this one).
   probe(q) {
     if (this.probeBusy || !this.batches.length) return Promise.resolve(null);
     this.probeBusy = true;
-    const dev = this.device, G = PROBE.ground, W = PROBE.wallW, H = PROBE.wallH, rows = G + H, U = GPUBufferUsage;
+    const dev = this.device, G = PROBE.ground, W = PROBE.wallW, H = PROBE.wallH, rows = G + H + G, used = q.water ? rows : G + H, U = GPUBufferUsage;
     if (!this.probeTex) {
       const RA = GPUTextureUsage.RENDER_ATTACHMENT;
       this.probeTex = dev.createTexture({ size: [G, rows], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
@@ -2088,7 +2090,9 @@ class Renderer {
     });
     views.forEach((v, i) => dev.queue.writeBuffer(this.probeBufs[i], 0, Float32Array.from(v.vp)));
 
-    const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION);
+    const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION && !(q.water && b.special === MAT_WATER));
+    // The water, seen from above as the ground is.
+    if (q.water) views.push({ vp: views[0].vp, rect: [0, G + H, G, G], bg: 0, batches: this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special === MAT_WATER) });
     // Should the GPU reject this work, the read-back buffer still holds the previous result (for
     // somewhere else): resolve null then, so the walker asks again rather than trusting it.
     dev.pushErrorScope('validation');
@@ -2101,9 +2105,9 @@ class Renderer {
     views.forEach((v, i) => {
       pass.setViewport(...v.rect, 0, 1);
       pass.setScissorRect(...v.rect);
-      pass.setBindGroup(0, this.probeBGs[i]);
+      pass.setBindGroup(0, this.probeBGs[v.bg ?? i]);
       this.cull(v.vp, true);
-      for (const b of solid) {
+      for (const b of v.batches || solid) {
         if (!this.seen(b)) continue;
         pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
@@ -2111,7 +2115,7 @@ class Renderer {
       }
     });
     pass.end();
-    enc.copyTextureToBuffer({ texture: this.probeTex }, { buffer: this.probeRead, bytesPerRow: G * 16 }, [G, rows]);
+    enc.copyTextureToBuffer({ texture: this.probeTex }, { buffer: this.probeRead, bytesPerRow: G * 16 }, [G, used]);
     dev.queue.submit([enc.finish()]);
     const failed = dev.popErrorScope();
     return this.probeRead.mapAsync(GPUMapMode.READ).then(async () => {
@@ -2120,11 +2124,11 @@ class Renderer {
       // allocated per frame (garbage collection pauses showed as judder while walking).
       this.probeOut = this.probeOut || [0, 1].map(() => ({ all: new Float32Array(G * rows * 4), walls: new Float32Array(4 * W * H * 4) }));
       const out = this.probeOut[(this.probeFlip ^= 1)], all = out.all, walls = out.walls;
-      all.set(new Float32Array(this.probeRead.getMappedRange()));
+      all.set(new Float32Array(this.probeRead.getMappedRange(0, G * 16 * used)));
       this.probeRead.unmap();
       for (let k = 0; k < 4; k++) for (let r = 0; r < H; r++)
         walls.set(all.subarray(((G + r) * G + k * W) * 4, ((G + r) * G + (k + 1) * W) * 4), ((k * H + r) * W) * 4);
-      return { ground: all.subarray(0, G * G * 4), walls };
+      return { ground: all.subarray(0, G * G * 4), walls, water: q.water ? all.subarray((G + H) * G * 4, (G + H + G) * G * 4) : null };
     }, () => null).finally(() => { this.probeBusy = false; });
   }
 

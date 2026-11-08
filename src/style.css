@@ -352,6 +352,18 @@ body.walking.touch .walk-stick { display: block; }
 .walk-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
 .walk-fade.on { opacity: 0.6; transition: none; }
 .walk-fade.dark { opacity: 1; transition: opacity 0.25s; }
+/* Drive mode: the car has gone into water. */
+.drive-splash { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); pointer-events: none; opacity: 0;
+  font: 800 64px/1 system-ui, sans-serif; letter-spacing: 1px; color: #fff; -webkit-text-stroke: 2px #0b5d8f;
+  text-shadow: 0 4px 0 #0b5d8f, 0 8px 24px rgba(0, 40, 80, 0.5); }
+.drive-splash.go { animation: splash 1.4s ease-out forwards; }
+@keyframes splash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-6deg); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(3deg); }
+  30% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
 /* While walking: a blue frame round the window, so walk mode is plain to see. */
 .walk-frame { position: absolute; inset: 0; border: 6px solid var(--accent); border-radius: 10px; pointer-events: none; display: none; }
 body.walking .walk-frame { display: block; }
