@@ -92,7 +92,7 @@ class ChoiceList {
 
   // groups: [{ heading (optional), help (optional: { title, run }, a ? button on the heading's row),
   //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label),
-  //     toggle (optional: an on/off item, with a checkbox) }] }]
+  //     toggle (optional: an on/off item, with a checkbox; 'eye' for show/hide, drawn as an eye) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
     groups.forEach((g, n) => {
@@ -118,7 +118,7 @@ class ChoiceList {
         b.setAttribute('aria-checked', 'false');
         if (it.toggle) {
           const box = document.createElement('span');
-          box.className = 'box';
+          box.className = it.toggle === 'eye' ? 'box eye' : 'box';
           b.append(box);
         }
         const l = document.createElement('span');

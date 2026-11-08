@@ -585,11 +585,10 @@ function buildLayerTree() {
     row.style.paddingLeft = 10 + depth * 16 + 'px';
     const hasKids = kids[i].some((k) => total[k]);
     row.innerHTML = `<button class="caret ${hasKids ? '' : 'empty'}" aria-label="Expand">${caretSvg}</button>` +
-      `<input type="checkbox"><button class="swatch" title="Material for this layer"></button>` +
+      `<input type="checkbox" class="eye" aria-label="Show this layer" title="Show or hide (Shift-click: isolate)"><span class="swatch"></span>` +
       `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count">${total[i].toLocaleString()}</span>`;
     row.querySelector('.layer-name').textContent = l.name;
     row.title = l.fullPath;
-    row.querySelector('.swatch').addEventListener('click', (e) => openMaterialDialog(i, e.currentTarget));
     const cb = row.querySelector('input');
     cb.checked = layerOn[i];
     cb.addEventListener('click', (e) => {
@@ -608,7 +607,7 @@ function buildLayerTree() {
       refreshRows();
       layerRows.keepShown();
     });
-    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(i, row); });
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(layerRows.take(i), row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
@@ -636,7 +635,7 @@ function buildLayerTree() {
       sw.style.background = isMat ? lookBackground(layerLook(i)) : rgbHex(layerDisplayRgb(i));
       // Ring: set in the viewer ("Always off" alone does not count).
       sw.classList.toggle('edited', isMat ? !!state.layerMat[id] || !!state.layerSpecial[id] : !!state.layerColor[id]);
-      sw.title = isMat ? 'Material for this layer (Rendered view)' : 'Display colour for this layer (Shaded view)';
+      sw.title = isMat ? 'Material for this layer (Rendered view): double-click or right-click the row to edit' : 'Display colour for this layer (Shaded view): double-click or right-click the row to edit';
       // Magic material hint, in Rendered view.
       const tag = row.querySelector('.layer-special'), info = isMat && state.specials ? layerSpecialInfo(i) : { id: 0 };
       tag.hidden = !info.id;
@@ -649,6 +648,7 @@ function buildLayerTree() {
   refreshRows();
   layerRows.setRows(rows);
   buildLayerTree.refresh = refreshRows;
+  buildLayerTree.row = (i) => rows.find((x) => x.i === i)?.row;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
     $('layerFilter').value = ''; // the layer might not match it
@@ -679,6 +679,8 @@ function openLayerMenu(picked, tree, [x, y]) {
   showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
+    '-',
+    { label: showsMaterial() ? 'Edit material' : 'Edit colour', run: () => openMaterialDialog(picked, buildLayerTree.row?.(picked[0]) || $('layersPanel')) },
   ].filter(Boolean), [x, y]);
 }
 
@@ -732,23 +734,27 @@ function showMenu(titleText, items, [x, y], { add } = {}) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
-const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. An eye or right-click on a selected row acts on all the selected ${rows}.</p>`;
+// The keys a row list takes once clicked (see rowListKeys); other keys still reach the model.
+const ROW_KEYS_HELP = (rows, enter) => `<p><b>Keys</b>, once you click in the widget (its title is underlined): <kbd>Ctrl</kbd>+<kbd>A</kbd> select all the ${rows} · <kbd>↑</kbd> <kbd>↓</kbd> move the selection (<kbd>Shift</kbd> to extend it) · <kbd>Space</kbd> show or hide the selected ${rows} · <kbd>Enter</kbd> ${enter} · <kbd>Esc</kbd> clear the selection. Other keys, such as <kbd>F</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd>, work as usual; click in the view to give <kbd>Ctrl</kbd>+<kbd>A</kbd> back to the model.</p>`;
 
 function showLayersHelp() {
-  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
-    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The eye shows or hides a layer and its sub-layers. <kbd>Shift</kbd>-click an eye to isolate that layer.</p>
+    <p>The square shows the layer's colour or material. Double-click the row, or right-click it for <b>Edit colour</b> or <b>Edit material</b>, to set the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
     ${ROW_SELECT_HELP('layers')}
-    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers, or edit its colour or material.</p>
+    ${ROW_KEYS_HELP('layers', 'edit their colour or material')}` });
 }
 
 function showBlocksHelp() {
   Dialog.open({ title: 'Blocks', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
-    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The eye hides every copy of a block. A copy shows only if it and every block around it are shown. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
     <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
     <p>Clicking a tag on a selected row sets all the selected blocks.</p>
-    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>
+    ${ROW_KEYS_HELP('blocks', 'open their setting')}` });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -768,6 +774,8 @@ const SUB_SETTINGS = [
   ['byLayer', 'By layer: use each sub-element’s own layer', 'Each sub-element takes its colour and material from the layer it is on, not the layer of the block instance.'],
 ];
 const layerRows = new RowSelection(), blockRows = new RowSelection();
+// An open layer window follows the selected layers (clearing the selection leaves it as it is).
+layerRows.onChange = () => { const picked = layerRows.list(); if (matOpen() && picked.length) openMaterialDialog(picked); };
 const blockSetting = (id) => state.blockSub[id] || 'default';
 const blockMagic = (id) => MAGIC_BY_ID[state.blockMagic[id]?.id] || null;
 const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
@@ -814,7 +822,7 @@ function buildBlockList() {
     const row = document.createElement('div');
     row.className = 'layer-row block-row';
     row.title = b.name;
-    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.innerHTML = `<input type="checkbox" class="eye" aria-label="Show this block" title="Show or hide every copy"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
     row.querySelector('.layer-name').textContent = b.name;
     const cb = row.querySelector('input');
     cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
@@ -1227,7 +1235,7 @@ async function restoreEdits(e) {
   if (magicChange) buildLayerTree();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
-  if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  refreshMaterialDialog();
   afterBlockChange();
   pushObjectFlags();
 }
@@ -1343,30 +1351,53 @@ function reportRestored() {
 
 // Layer colour / material dialog -------------------------------------------------------------
 
-let matLayer = -1, matKind = 'material';
-function openMaterialDialog(i, anchor) {
-  const dlg = $('matDialog'), l = model.layers[i], look = layerLook(i);
-  matLayer = i;
+// The layer window edits one layer or several (the selected rows). Where the layers differ, a
+// setting shows as mixed until it is changed, and a change sets only that one setting on each.
+let matLayers = [], matKind = 'material', matMixed = {};
+const matOpen = () => !$('matDialog').hidden && matLayers.length > 0;
+const matWhat = () => (matLayers.length === 1 ? model.layers[matLayers[0]].name : `${matLayers.length} layers`);
+// The value shared by every layer in the window, or undefined when they differ.
+const matSame = (f) => { const v = new Set(matLayers.map(f)); return v.size === 1 ? [...v][0] : undefined; };
+
+// Without an anchor the window stays where it is (a refresh after an undo, a mode change or a new
+// selection).
+function openMaterialDialog(layers, anchor) {
+  const dlg = $('matDialog'), L = model.layers, one = layers.length === 1 ? L[layers[0]] : null;
+  matLayers = layers;
   matKind = showsMaterial() ? 'material' : 'colour';
-  const isMat = matKind === 'material';
-  $('matTitle').textContent = l.name;
-  $('matPath').textContent = l.fullPath.includes('::') ? l.fullPath : '';
+  const isMat = matKind === 'material', first = layers[0];
+  $('matTitle').textContent = one ? one.name : `${layers.length} layers`;
+  const names = layers.map((i) => L[i].name);
+  $('matPath').textContent = one ? (one.fullPath.includes('::') ? one.fullPath : '')
+    : names.slice(0, 4).join(', ') + (names.length > 4 ? ` and ${names.length - 4} more` : '');
+  $('matTitle').title = one ? one.fullPath : names.join(', ');
   for (const id of ['matSpecialRow', 'matSpecialHint', 'matGlossRow', 'matAlphaRow']) $(id).hidden = !isMat;
+  const sel = $('matSpecial');
+  sel.querySelector('option[value=""]')?.remove();
   if (isMat) {
-    const info = layerSpecialInfo(i);
-    $('matSpecial').value = info.auto ? 'auto' : String(info.id);
+    const special = matSame((i) => { const info = layerSpecialInfo(i); return info.auto ? 'auto' : String(info.id); });
+    matMixed = {
+      matSpecial: special === undefined,
+      matColor: matSame((i) => rgbHex(layerLook(i).rgb)) === undefined,
+      matGloss: matSame((i) => layerLook(i).gloss) === undefined,
+      matAlpha: matSame((i) => layerLook(i).alpha) === undefined,
+    };
+    if (matMixed.matSpecial) sel.insertAdjacentHTML('afterbegin', '<option value="" disabled>Mixed</option>');
+    sel.value = special ?? '';
+    const look = layerLook(first);
     $('matColor').value = rgbHex(look.rgb);
     $('matGloss').value = look.gloss;
     $('matAlpha').value = 1 - look.alpha;
-    $('matReset').hidden = !editedMaterialLayers().has(l.id);
+    $('matReset').hidden = !layers.some((i) => editedMaterialLayers().has(L[i].id));
   } else {
-    $('matSource').textContent = 'Display colour, used in Shaded view. ' + (state.layerColor[l.id] ? 'Set in this viewer.' : 'From the file.');
-    $('matColor').value = rgbHex(layerDisplayRgb(i));
-    $('matReset').hidden = !state.layerColor[l.id];
+    matMixed = { matColor: matSame((i) => rgbHex(layerDisplayRgb(i))) === undefined };
+    $('matColor').value = rgbHex(layerDisplayRgb(first));
+    $('matReset').hidden = !layers.some((i) => state.layerColor[L[i].id]);
   }
   syncMaterialDialog();
-  placePopover(dlg, anchor, 'layersPanel');
+  if (anchor) placePopover(dlg, anchor, 'layersPanel');
 }
+const refreshMaterialDialog = () => { if (matOpen()) openMaterialDialog(matLayers); };
 
 // Show a window beside a side panel, level with the row it belongs to.
 function placePopover(dlg, anchor, panel) {
@@ -1423,53 +1454,92 @@ function objectsNotFollowingLayer(i, kind) {
 }
 
 function syncMaterialDialog() {
-  const isMat = matKind === 'material', l = model.layers[matLayer];
+  const isMat = matKind === 'material', L = model.layers, n = matLayers.length, one = n === 1;
+  // "Set in this viewer" for all, some or none of the layers.
+  const setHere = (has) => {
+    const k = matLayers.filter((i) => has(L[i].id)).length;
+    return k === n ? 'Set in this viewer.' : k ? `Set in this viewer on ${k} of ${n}.` : null;
+  };
+  const differ = matMixed.matColor ? ' The colours differ; picking one sets it on all of them.' : '';
   if (isMat) {
-    const info = layerSpecialInfo(matLayer), look = layerLook(matLayer), name = info.id ? SPECIAL[info.id].name : '';
-    // The magic material and why; then where the colour comes from.
-    $('matSpecialHint').textContent = (info.auto ? (info.id ? `Auto: ${name}. ` : '') : '') + specialReason(info) +
-      (info.id && !state.specials ? ' Magic materials are off (Magic in the render mode menu).' : '');
-    $('matSource').textContent = 'Render material, used in Rendered view. ' + (state.layerMat[l.id] ? 'Set in this viewer.'
-      : look.special ? `Colour: the ${name} default.`
-      : l.materialName ? `From the file's material “${l.materialName}”.` : 'No material in the file (default).');
-    $('matColorLabel').textContent = look.special && SPECIAL[look.special].tones ? 'Base colour' : 'Colour';
-    $('matColorRow').title = look.special ? `${name} varies around this colour; any colour keeps the variation.` : '';
+    const first = matLayers[0], info = layerSpecialInfo(first), look = layerLook(first), name = info.id ? SPECIAL[info.id].name : '';
+    const off = !state.specials && matLayers.some((i) => layerSpecialId(i)) ? ' Magic materials are off (Magic in the render mode menu).' : '';
+    if (one) {
+      // The magic material and why; then where the colour comes from.
+      const l = L[first];
+      $('matSpecialHint').textContent = (info.auto ? (info.id ? `Auto: ${name}. ` : '') : '') + specialReason(info) + off;
+      $('matSource').textContent = 'Render material, used in Rendered view. ' + (state.layerMat[l.id] ? 'Set in this viewer.'
+        : look.special ? `Colour: the ${name} default.`
+        : l.materialName ? `From the file's material “${l.materialName}”.` : 'No material in the file (default).');
+    } else {
+      // With Auto, each layer has its own match.
+      const ids = matLayers.map(layerSpecialId), names = [...new Set(ids.filter(Boolean).map((id) => SPECIAL[id].name))];
+      const matched = ids.filter(Boolean).length;
+      $('matSpecialHint').textContent = (matMixed.matSpecial ? 'These layers have different magic material settings.'
+        : !info.auto ? (info.id ? `${name} on all ${n}, chosen in this viewer.` : 'Turned off in this viewer.')
+        : !matched ? 'Auto: none of these layers match a magic material.'
+        : `Auto: ${names.join(', ')} on ${matched === n ? `all ${n}` : `${matched} of ${n}`}.`) + off;
+      $('matSource').textContent = 'Render material, used in Rendered view. ' + (setHere((id) => state.layerMat[id]) || 'From the file.') + differ;
+    }
+    const tones = matLayers.some((i) => { const s = layerLook(i).special; return s && SPECIAL[s].tones; });
+    $('matColorLabel').textContent = tones ? 'Base colour' : 'Colour';
+    $('matColorRow').title = tones ? 'A magic material varies around this colour; any colour keeps the variation.' : '';
+  } else {
+    $('matSource').textContent = 'Display colour, used in Shaded view. ' + (setHere((id) => state.layerColor[id]) || 'From the file.') + differ;
+    $('matColorLabel').textContent = 'Colour';
+    $('matColorRow').title = '';
   }
-  $('matAlphaOut').textContent = Math.round($('matAlpha').value * 100) + '%';
-  $('matGlossOut').textContent = Math.round($('matGloss').value * 100) + '%';
-  const own = objectsNotFollowingLayer(matLayer, matKind);
-  const what = isMat ? 'material' : 'colour';
+  $('matAlphaOut').textContent = matMixed.matAlpha ? 'Mixed' : Math.round($('matAlpha').value * 100) + '%';
+  $('matGlossOut').textContent = matMixed.matGloss ? 'Mixed' : Math.round($('matGloss').value * 100) + '%';
+  const own = matLayers.flatMap((i) => objectsNotFollowingLayer(i, matKind));
+  const what = isMat ? 'material' : 'colour', many = own.length > 1;
   $('matOwn').innerHTML = own.length
-    ? `${own.length.toLocaleString()} object${own.length > 1 ? 's' : ''} on this layer ${own.length > 1 ? 'have their' : 'has its'} own ${what}, so ${own.length > 1 ? 'they are' : 'it is'} not changed here. <button class="link" id="matSelectOwn">Select ${own.length > 1 ? 'them' : 'it'}</button> to set the ${what} source to “By layer”.`
+    ? `${own.length.toLocaleString()} object${many ? 's' : ''} on ${one ? 'this layer' : 'these layers'} ${many ? 'have their' : 'has its'} own ${what}, so ${many ? 'they are' : 'it is'} not changed here. <button class="link" id="matSelectOwn">Select ${many ? 'them' : 'it'}</button> to set the ${what} source to “By layer”.`
     : '';
 }
 
-// Any edit in the dialog becomes this layer's own setting.
+// Any edit in the window becomes each layer's own setting. Only the setting changed is written,
+// so each layer keeps its other settings.
 function onMaterialEdit(e) {
-  const l = model.layers[matLayer], field = e?.target.id || '';
+  const L = model.layers, field = e?.target.id || '';
   const what = matKind === 'colour' ? 'layer colour' : field === 'matSpecial' ? 'magic material' : { matGloss: 'layer gloss', matAlpha: 'layer transparency' }[field] || 'layer material';
-  recordUndo(`Change ${what} (${l.name})`, field === 'matSpecial' ? null : `${matKind}:${l.id}:${field}`);
+  recordUndo(`Change ${what} (${matWhat()})`, field === 'matSpecial' ? null : `${matKind}:${matLayers.map((i) => L[i].id).join(',')}:${field}`);
   if (matKind === 'colour') {
-    state.layerColor[l.id] = hexRgb($('matColor').value);
-  } else if (e && e.target.id === 'matSpecial') {
+    const rgb = hexRgb($('matColor').value);
+    for (const i of matLayers) state.layerColor[L[i].id] = [...rgb];
+  } else if (field === 'matSpecial') {
     // A new magic material starts from its own default colour (other settings are kept).
-    const wasVeg = layerSpecialId(matLayer) === MAT_VEGETATION, v = $('matSpecial').value;
-    if (v === 'auto') delete state.layerSpecial[l.id]; else state.layerSpecial[l.id] = +v;
-    const m = state.layerMat[l.id];
-    if (m) {
-      delete m.rgb;
-      if (m.alpha >= 1 && !m.gloss) delete state.layerMat[l.id];
+    const v = $('matSpecial').value;
+    let veg = false;
+    for (const i of matLayers) {
+      const id = L[i].id, wasVeg = layerSpecialId(i) === MAT_VEGETATION;
+      if (v === 'auto') delete state.layerSpecial[id]; else state.layerSpecial[id] = +v;
+      const m = state.layerMat[id];
+      if (m) {
+        delete m.rgb;
+        if (m.alpha >= 1 && !m.gloss) delete state.layerMat[id];
+      }
+      if (wasVeg !== (layerSpecialId(i) === MAT_VEGETATION)) veg = true;
     }
-    $('matColor').value = rgbHex(layerLook(matLayer).rgb);
     // Foliage uses smoothed normals, which are built with the batches.
-    if (wasVeg !== (layerSpecialId(matLayer) === MAT_VEGETATION)) rebuildModel();
+    if (veg) rebuildModel();
   } else {
-    state.layerMat[l.id] = { rgb: hexRgb($('matColor').value), alpha: 1 - +$('matAlpha').value, gloss: +$('matGloss').value };
+    // A layer without its own colour keeps following the file or its magic material.
+    const key = { matColor: 'rgb', matAlpha: 'alpha', matGloss: 'gloss' }[field];
+    const v = key === 'rgb' ? hexRgb($('matColor').value) : key === 'alpha' ? 1 - +$('matAlpha').value : +$('matGloss').value;
+    for (const i of matLayers) {
+      const id = L[i].id, prev = state.layerMat[id], look = layerLook(i);
+      state.layerMat[id] = { ...(prev?.rgb ? { rgb: prev.rgb } : {}), alpha: look.alpha, gloss: look.gloss, [key]: key === 'rgb' ? [...v] : v };
+    }
   }
-  $('matReset').hidden = matKind === 'colour' ? false : !editedMaterialLayers().has(l.id);
-  if (matKind === 'colour') $('matSource').textContent = 'Display colour, used in Shaded view. Set in this viewer.';
-  syncMaterialDialog();
   applyLayerMaterials();
+  if (field === 'matSpecial') openMaterialDialog(matLayers); // the colours change with it
+  else {
+    matMixed[field] = false;
+    const edited = matKind === 'colour' ? (id) => !!state.layerColor[id] : (id) => editedMaterialLayers().has(id);
+    $('matReset').hidden = !matLayers.some((i) => edited(L[i].id));
+    syncMaterialDialog();
+  }
   if (state.sel.ids.length) showInspector();
 }
 
@@ -1480,25 +1550,28 @@ function bindMaterialDialog() {
   $('matSpecial').addEventListener('change', onMaterialEdit);
   // A drag of a slider or the colour picker is one undo step; it ends with the change event.
   for (const id of ['matColor', 'matGloss', 'matAlpha']) $(id).addEventListener('change', endUndoGroup);
-  const close = () => { $('matDialog').hidden = true; matLayer = -1; endUndoGroup(); };
+  const close = () => { $('matDialog').hidden = true; matLayers = []; endUndoGroup(); };
   $('matClose').addEventListener('click', close);
   $('matDone').addEventListener('click', close);
   $('matReset').addEventListener('click', () => {
-    const id = model.layers[matLayer].id;
-    recordUndo(`Reset layer ${matKind === 'colour' ? 'colour' : 'material'} (${model.layers[matLayer].name})`);
-    if (matKind === 'colour') delete state.layerColor[id];
-    else {
-      const wasVeg = layerSpecialId(matLayer) === MAT_VEGETATION;
+    const L = model.layers;
+    recordUndo(`Reset layer ${matKind === 'colour' ? 'colour' : 'material'} (${matWhat()})`);
+    let veg = false;
+    for (const i of matLayers) {
+      const id = L[i].id;
+      if (matKind === 'colour') { delete state.layerColor[id]; continue; }
+      const wasVeg = layerSpecialId(i) === MAT_VEGETATION;
       delete state.layerMat[id];
       delete state.layerSpecial[id];
-      if (wasVeg !== (layerSpecialId(matLayer) === MAT_VEGETATION)) rebuildModel();
+      if (wasVeg !== (layerSpecialId(i) === MAT_VEGETATION)) veg = true;
     }
+    if (veg) rebuildModel();
     applyLayerMaterials();
-    openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+    openMaterialDialog(matLayers);
   });
   $('matOwn').addEventListener('click', (e) => {
     if (e.target.id !== 'matSelectOwn') return;
-    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !objectOff(id)));
+    selectObjects(matLayers.flatMap((i) => objectsNotFollowingLayer(i, matKind)).filter((id) => !objectOff(id)));
   });
 }
 
@@ -1799,7 +1872,7 @@ async function setSelectedAttrs(change) {
   await rebuildModel();
   saveEdits();
   showInspector();
-  if (!$('matDialog').hidden && matLayer >= 0) syncMaterialDialog();
+  if (matOpen()) syncMaterialDialog();
 }
 
 function hideSelected() {
@@ -2421,7 +2494,7 @@ function openResultsDialog() {
 // The toolbar's Results menu: one item for each kind of result there is.
 let resultsList = null, resultsMenu = null;
 function bindResultsMenu() {
-  // An item's checkbox shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
+  // An item's eye shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
   resultsList = new ChoiceList({ label: 'Results', onPick: (id, e) => {
     if (e.target.closest('.box')) { if (id === 'streamlines') setStreamlinesOn(!state.streamlines.on); else setMapsOn(!state.maps.on); }
     else if (id === 'streamlines') toggleStreamlinesPanel();
@@ -2432,8 +2505,8 @@ function bindResultsMenu() {
 }
 function fillResultsMenu() {
   const items = [];
-  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: true });
-  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: true });
+  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: 'eye' });
+  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: 'eye' });
   resultsList.setGroups(items.length ? [{ items }] : []);
   syncResultsMenu();
 }
@@ -2493,7 +2566,7 @@ function fillStreamlines() {
     row.dataset.key = key;
     if (parent) row.dataset.parent = parent;
     row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
-    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
+    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox" class="eye" aria-label="Show" title="Show or hide"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
     row.querySelector('.layer-name').textContent = label;
     row.querySelector('.caret').addEventListener('click', () => {
       if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
@@ -2567,7 +2640,7 @@ function fillMaps() {
     top.className = 'layer-row';
     top.title = `${m.map.name} in ${m.file.name}`;
     top.dataset.key = m.key;
-    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox"><span class="layer-name"></span>`;
+    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox" class="eye" aria-label="Show this map" title="Show or hide"><span class="layer-name"></span>`;
     top.querySelector('.layer-name').textContent = m.label;
     top.querySelector('.caret').addEventListener('click', () => {
       if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
@@ -3522,8 +3595,55 @@ function bindLightsPanel() {
   });
 }
 
+// Widget shortcuts. A click (or keyboard focus) in a widget that has shortcuts makes it the active
+// widget, marked on its title bar; a click in the view, or in a widget without them, ends that.
+// Keys go to the active widget first, and on to the model when it doesn't use them.
+const widgetKeys = new Map(); // panel id -> (keydown event) => true when the widget used the key
+let activeWidget = null;
+function setActiveWidget(p) {
+  if (p === activeWidget) return;
+  activeWidget?.classList.remove('active-widget');
+  activeWidget = p;
+  p?.classList.add('active-widget');
+}
+function bindWidgetKeys() {
+  widgetKeys.set('layersPanel', rowListKeys(layerRows, (layers, row) => openMaterialDialog(layers, row)));
+  widgetKeys.set('blocksPanel', rowListKeys(blockRows, (ids, row) => openBlockDialog(ids, row)));
+  const pick = (e) => {
+    const p = e.target.closest?.('.side .panel');
+    if (p) setActiveWidget(widgetKeys.has(p.id) ? p : null);
+    else if (e.target === canvas) setActiveWidget(null);
+  };
+  window.addEventListener('pointerdown', pick, true);
+  window.addEventListener('focusin', pick, true);
+}
+function widgetKey(e) {
+  if (!activeWidget) return false;
+  if (activeWidget.hidden || !activeWidget.offsetParent) { setActiveWidget(null); return false; }
+  return !!widgetKeys.get(activeWidget.id)?.(e);
+}
+
+// Shortcuts for a list of rows (Layers, Blocks): Ctrl+A all the rows, the arrows move the selection
+// (Shift: extend it), Space shows or hides the selected rows (as clicking the first one's eye),
+// Enter opens their window, Esc clears the selection.
+function rowListKeys(rows, open) {
+  return (e) => {
+    const k = e.key, ctrl = e.ctrlKey || e.metaKey, sel = rows.list();
+    const first = sel.length ? rows.rows.find((r) => r.key === sel[0]) : null;
+    if (ctrl && !e.altKey && k.toLowerCase() === 'a') { rows.all(); return true; }
+    if (ctrl || e.altKey) return false;
+    if (k === 'ArrowDown' || k === 'ArrowUp') { rows.step(k === 'ArrowDown' ? 1 : -1, e.shiftKey); return true; }
+    if (k === ' ' && first) { first.row.querySelector('.eye').click(); return true; }
+    if (k === 'Enter' && first) { open(sel, first.row); return true; }
+    if (k === 'Escape' && sel.length) { rows.set([]); return true; }
+    return false;
+  };
+}
+
 function onKey(e) {
-  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+  // A checkbox or radio button with the focus (as after clicking an eye) doesn't take the keys.
+  const typing = !!e.target.matches?.('input:not([type="checkbox"], [type="radio"]), select, textarea');
+  if (!typing && model && !walker.active && !driver.active && widgetKey(e)) { e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && model) {
     const k = e.key.toLowerCase();
     if (k === 'z' || k === 'y') { e.preventDefault(); stepHistory(k === 'y' || e.shiftKey); return; }
@@ -4114,7 +4234,7 @@ function toggleSpecials() {
   state.specials = !state.specials;
   savePrefs();
   applyLayerMaterials(false);
-  if (!$('matDialog').hidden && matLayer >= 0 && matKind === 'material') openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  if (matKind === 'material') refreshMaterialDialog();
   if (state.sel.ids.length) showInspector();
   syncToolbar();
 }
@@ -4126,7 +4246,7 @@ function setMode(m) {
   if (!model || wasMat === showsMaterial()) return;
   // Swatches, the layer dialog and the inspector switch between display colour and material.
   buildLayerTree.refresh?.();
-  if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  refreshMaterialDialog();
   if (state.sel.ids.length) showInspector();
 }
 function toggle(key) {
@@ -4304,6 +4424,7 @@ function bindUi() {
   bindWalkPanel();
   bindDrivePanel();
   bindPointer();
+  bindWidgetKeys();
   window.addEventListener('pagehide', saveViewState);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewState(); });
   syncToolbar();

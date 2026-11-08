@@ -100,6 +100,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .panel.anim { overflow: hidden !important; }
 .panel-head { user-select: none; -webkit-user-select: none; }
 .panel-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The widget that takes the keys first (see bindWidgetKeys in main.js). */
+.panel.active-widget > .panel-head > span:first-child { text-decoration: underline 2px var(--accent); text-underline-offset: 4px; }
 .panel-sum { margin-left: 10px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
@@ -162,7 +164,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.25); flex: none; padding: 0; }
 button.swatch { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
 button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent-soft); outline: none; }
-button.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
+.swatch.edited { box-shadow: 0 0 0 2px var(--accent); }
 .lights-list { padding: 4px 0; }
 .light-row { display: flex; align-items: center; gap: 7px; padding: 4px 12px; font-size: 12.5px; }
 .light-row:hover { background: var(--hover); }
@@ -280,6 +282,13 @@ input[type="checkbox"]:not(.switch input), .box { appearance: none; flex: none; 
 input[type="checkbox"]:not(.switch input):checked, [aria-checked="true"] > .box { background: var(--accent); border-color: var(--accent); }
 input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] > .box::after { content: ""; position: absolute; inset: 0; background: var(--surface-solid); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.7l4.5-5.4' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center / 100% no-repeat; }
 .sun-body .fine { font-size: 11.5px; color: var(--muted); }
+/* Show/hide ticks are an eye: open when shown, closed when hidden. */
+input[type="checkbox"].eye:not(.switch input), .box.eye { width: 16px; height: 16px; border: none; border-radius: 3px; background: none; }
+input[type="checkbox"].eye:not(.switch input)::after, .box.eye::after { content: ""; position: absolute; inset: 0; background: var(--muted); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 10s3.6 5.5 10 5.5S22 10 22 10'/%3E%3Cpath d='m4.5 13.2-2 2.3M9 15.2l-.8 2.8M15 15.2l.8 2.8M19.5 13.2l2 2.3'/%3E%3C/svg%3E") center / 100% no-repeat; }
+input[type="checkbox"].eye:not(.switch input):checked, [aria-checked="true"] > .box.eye { background: none; }
+input[type="checkbox"].eye:not(.switch input):checked::after, [aria-checked="true"] > .box.eye::after { background: var(--text); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / 100% no-repeat; }
+input[type="checkbox"].eye:not(.switch input):hover::after, .box.eye:hover::after { background: var(--accent); }
+input[type="checkbox"].eye:not(.switch input):focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
 .switch { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 .switch span { position: absolute; inset: 0; background: var(--border); border-radius: 9px; cursor: pointer; transition: background 0.15s; }

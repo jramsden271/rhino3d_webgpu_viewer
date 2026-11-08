@@ -112,7 +112,7 @@
   <aside id="mapPanel" class="chrome panel layers-panel" hidden aria-label="CFD map" data-min>
     <div class="panel-head">
       <span>CFD map</span>
-      <span class="panel-actions"><label class="switch" title="Show the ticked maps, or none"><input type="checkbox" id="mapOn"><span></span></label><button class="x" id="mapClose" aria-label="Close CFD map" title="Close">×</button></span>
+      <span class="panel-actions"><label class="switch" title="Show the maps with an open eye, or none"><input type="checkbox" id="mapOn"><span></span></label><button class="x" id="mapClose" aria-label="Close CFD map" title="Close">×</button></span>
     </div>
     <div id="mapList" class="layer-tree" data-full></div>
     <div class="res-foot">
@@ -377,12 +377,12 @@
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
         <dt>Messages</dt><dd>The bell (top left) keeps the messages about this model, until you dismiss them or open another model</dd>
-        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
-        <dt>Blocks</dt><dd>The Blocks widget lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
+        <dt>Colours</dt><dd>Double-click a layer in the Layers panel, or right-click it for Edit colour or Edit material: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
+        <dt>Blocks</dt><dd>The Blocks widget lists the blocks in use · its eye hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Results</dt><dd>The file icon at the top left adds results files to the model · once one is read, <b>Results</b> on the toolbar opens what it holds · <b>CFD streamlines</b> lists them, coloured by the Lawson comfort criteria · <b>CFD map</b> lists the maps with a choice of result for each · hold the mouse over a map to read its results</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · click the <b>N</b> or a tick to face north, east, south or west</dd>
-        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
+        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects (in a clicked Layers or Blocks widget: all its rows; see its ?)</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> date · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>

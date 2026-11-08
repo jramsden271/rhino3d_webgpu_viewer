@@ -51,7 +51,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
-| Select all visible objects | | `Ctrl+A` |
+| Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
 
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
@@ -129,17 +129,27 @@ containing what you type. In Layers, a matching layer shows with the layers abov
 a collapsed one.
 
 In the Layers and Blocks widgets, click a row to select it, Ctrl-click to add or remove a row, and
-Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
-selected rows.
+Shift-click to select a run of rows. An eye (open when shown, closed when hidden) or right-click
+on a selected row acts on all the selected rows. Show/hide ticks are drawn as an eye throughout,
+in the CFD results lists and the Results menu too.
 
-In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
+Clicking in the Layers or Blocks widget gives it the keyboard first (its title is underlined), until
+you click in the view: `Ctrl+A` selects all its rows, the up and down arrows move the selection
+(`Shift` extends it), `Space` shows or hides the selected rows, `Enter` opens their window and
+`Esc` clears the selection. Other keys, such as `F` or `Ctrl+Z`, still reach the model.
+
+In the Layers panel, Shift-click an eye to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:
 
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
+- **Edit material** (**Edit colour** in Shaded view): the window below, for the selected layers.
 
-Double-click a layer's row to open its colour or material window, as its square does.
+Double-click a layer's row to open its colour or material window; the square only shows it. Opened
+from a selected row, the window sets all the selected layers at once: a change sets only the
+setting changed, so each layer keeps its other settings, and a setting that differs between them
+shows as Mixed until it is changed. The window follows the selection while it is open.
 
 The Blocks widget appears for models with blocks. It lists each block definition that has an
 instance, including those only used inside other blocks, with its number of copies in the model
@@ -149,8 +159,8 @@ instance, including those only used inside other blocks, with its number of copi
 - **Select sub-blocks**: adds every block inside it, at any depth, to the selected rows.
 - **Sub-element setting**: as clicking its tag or double-clicking its row.
 
-Unticking a block hides every copy of it, like turning a layer off: a copy shows only if it and
-every block around it are ticked. A row is dimmed when none of its copies can show because of the
+Closing a block's eye hides every copy of it, like turning a layer off: a copy shows only if it
+and every block around it are shown. A row is dimmed when none of its copies can show because of the
 blocks around it. Block visibility is separate from **Unhide all**, is remembered with the view,
 and is not undoable or saved in a copy.
 
@@ -208,7 +218,7 @@ The order, and each widget's state and lock, are remembered for every model.
 
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
-its material dialog (click the layer's square in Rendered view):
+its material dialog (double-click the layer's row in Rendered view):
 
 - **Auto** (the default): the layer is matched by name. The layer's own name is tried first,
   then its parent layers' names, then the name of its render material. The match is shown as
@@ -273,7 +283,8 @@ pause after 15 seconds idle.
 
 **Layer colours and materials.** Each layer's square in the Layers panel shows what that view
 uses: in Shaded (and Clay) view, the layer's **display colour**; in Rendered view, its
-**material**. Click it to change that one:
+**material**. Double-click the row, or right-click it and choose **Edit colour** or
+**Edit material**, to change that one:
 
 - In Shaded view: the display colour.
 - In Rendered view: the magic material (see above), colour, gloss and transparency.
@@ -361,16 +372,16 @@ file, a copy of each is kept with the model and comes back when you reopen it fr
 so to update one, remove it and add the new version.
 
 Once a file has been read, **Results** appears on the toolbar. In its menu, each item opens or closes
-its panel, and is coloured while the panel is open; the item's checkbox is the same as the switch on
+its panel, and is coloured while the panel is open; the item's eye is the same as the switch on
 that panel's title bar, showing or hiding what it draws. **CFD streamlines** opens a panel listing the streamlines in the file, with the polylines of each nested under it, as sub-layers
-are under a layer. Each has a checkbox, and unticking a streamline hides all its polylines; the
-switch on the panel's title bar shows what is ticked or nothing. They're drawn as polylines in the file's coordinates,
+are under a layer. Each has an eye, and closing a streamline's eye hides all its polylines; the
+switch on the panel's title bar shows those with an open eye, or nothing. They're drawn as polylines in the file's coordinates,
 scaled to the model's units, with each segment coloured by the velocity at its start, on the Lawson
 comfort criteria.
 
 Its **CFD map** item opens a panel for results on a surface, drawn from the file's nodes and faces,
 which needs no change to the model. Each map has its results nested under it, one chosen at a time,
-and a checkbox to hide it; the switch on the title bar shows what is ticked or nothing. Below the
+and an eye to hide it; the switch on the title bar shows those with an open eye, or nothing. Below the
 list are the colour scale's legend and **Move up or down**, from 10 m down to 100 m up. Hold the mouse over
 a map and a panel follows it with every result at that spot, worked out between the nodes. Faces
 touching a node that lacks the chosen result are left out, rather than shown in a colour that means
