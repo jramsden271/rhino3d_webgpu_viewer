@@ -455,6 +455,7 @@ async function openBytes(name, bytes, handle = null) {
     await new Promise((r) => setTimeout(r, 20));
     Object.assign(renderer, { specialsOn: state.specials, layerMaterials: null, layerColours: null, layerSpecials: null });
     renderer.setModel(m.batches);
+    bumpModel('objects');
     m.batches = null;
     model.loadMs = performance.now() - t0;
     resetObjectState();
@@ -1101,6 +1102,7 @@ function saveEdits() {
 // Push layer colours and materials to the renderer (no rebuild needed).
 function applyLayerMaterials(save = true) {
   if (!model) return;
+  bumpModel('appearance');
   model.specialOf = layerSpecialId;
   renderer.setMaterialRules(state.specials, layerMaterialFor,
     (i) => (model.layers[i] && state.layerColor[model.layers[i].id]) || null, layerSpecialId);
@@ -1116,6 +1118,7 @@ async function rebuildModel() {
   if (slow) { showBusy('Updating the model', 0.5); await new Promise((r) => setTimeout(r, 20)); }
   try {
     renderer.setModel(buildBatches(model));
+    bumpModel('objects');
   } finally {
     if (slow) hideBusy();
   }
@@ -1127,6 +1130,7 @@ async function rebuildModel() {
 
 function pushMagicBatches() {
   renderer.setModel(buildBatches(model));
+  bumpModel('objects');
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
@@ -1177,12 +1181,49 @@ function applyObjectEdits(objEdits = {}) {
     Object.assign(model.objects[i].ai, d);
     state.objEdits[id] = { ...d };
   }
-  noteLayerMoves();
 }
 
-// The objects moved to another layer, as text: a sun exposure surface depends on it.
-function noteLayerMoves() {
-  model.layerMoves = Object.entries(state.objEdits).filter(([, d]) => d.layer !== undefined).map(([id, d]) => `${id}>${d.layer}`).join();
+// ---------------------------------------------------------------------------------------------
+// Model versions, for analyses. An analysis keeps the key of what its results were worked out
+// from and compares it with modelKey(...) (see checkAnalysis), so a change made anywhere reaches
+// every analysis without each one listing the ways the model can change.
+//
+//   objects:    which objects there are, where they are and their layers: any rebuild of the batches
+//               (object edits, blocks, magic blocks, undo, Revert) and the hidden objects and blocks.
+//   appearance: layer and object colours and materials.
+//   visibility: which layers are on.
+//   site:       the location and north angle.
+// objects and appearance are counters that go up on any change, so undoing back to where results
+// were made also marks them out of date: a needless run, never a missed change. visibility and
+// site are their own values.
+
+const modelVersion = { objects: 0, appearance: 0 };
+const bumpModel = (part) => { modelVersion[part]++; };
+const MODEL_PARTS = {
+  objects: () => modelVersion.objects,
+  appearance: () => modelVersion.appearance,
+  visibility: () => layerOn.map(Number).join(''),
+  site: () => { const S = state.sun; return [S.lat, S.lon, S.utcOffset, S.north].join(); },
+};
+const modelKey = (...parts) => parts.map((p) => MODEL_PARTS[p]()).join('|');
+
+// Each frame, for an analysis with results: whether they still match their settings (key, from
+// modelKey and the analysis's own settings, or null for nothing to work out), and if not, a new
+// run after a pause (so dragging a slider runs once) or, without auto, a note that the results
+// are out of date. a holds the state: auto, stale, timer, and the keys of the results shown
+// (doneKey), the run going on (runKey), one waiting (pendingKey) and one stopped (stoppedKey).
+// run() starts a run; sync() shows a change of stale.
+function checkAnalysis(a, key, run, sync) {
+  // Settings changed and changed back: the results shown are up to date again.
+  if (key && key === a.doneKey && a.stale && !a.runKey) { a.stale = false; sync(); }
+  if (!key || key === a.doneKey || key === a.runKey || key === a.pendingKey) return;
+  if (!a.auto || key === a.stoppedKey) {
+    if (!a.stale) { a.stale = true; sync(); }
+    return;
+  }
+  a.pendingKey = key;
+  clearTimeout(a.timer);
+  a.timer = setTimeout(run, 150);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1739,8 +1780,8 @@ function resetObjectState() {
 
 let flagsHidden = '';
 function pushObjectFlags() {
-  const hidden = `${state.hidden.size},${state.blockOff.size}`;
-  if (hidden !== flagsHidden) { flagsHidden = hidden; recheckMagicGround(); }
+  const hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.');
+  if (hidden !== flagsHidden) { flagsHidden = hidden; bumpModel('objects'); recheckMagicGround(); }
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
   if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
@@ -1905,7 +1946,6 @@ async function moveSelectionToLayer(i) {
     model.objects[id].ai.layer = i;
     noteObjectEdit(model.objects[id]);
   }
-  noteLayerMoves();
   await rebuildModel();
   saveEdits();
   layerRows.keepShown();
@@ -2967,26 +3007,16 @@ const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy,
 // The settings a surface and a run depend on, or null when there is nothing to work out.
 function exposureKeys() {
   if (!model || expo.layer < 0 || !activeLocation()) return null;
-  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.'), { days, hours } = exposurePeriod();
-  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden, model.layerMoves].join('|');
-  return { surface, run: [surface, days[0], days.length, hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
+  const { days, hours } = exposurePeriod();
+  // The surface is the layer's objects. The shadows on it come from every visible object that is
+  // not too transparent, so they also depend on the materials.
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, modelKey('objects')].join('|');
+  return { surface, run: [surface, days[0], days.length, hours, expo.step, modelKey('visibility', 'appearance', 'site')].join('|') };
 }
 
-// Each frame, and on a change in the panel: whether the results still match the settings, and if not, a new run (after a
-// pause, so that dragging a slider runs once) or, without Update automatically, a note that the
-// results are out of date.
+// Each frame, and on a change in the panel (see checkAnalysis).
 function checkExposure() {
-  const k = expo.on ? exposureKeys() : null;
-  // Settings changed and changed back: the results shown are up to date again.
-  if (k && k.run === expo.doneKey && expo.stale && !expo.runKey) { expo.stale = false; syncExposurePanel(); }
-  if (!k || k.run === expo.doneKey || k.run === expo.runKey || k.run === expo.pendingKey) return;
-  if (!expo.auto || k.run === expo.stoppedKey) {
-    if (!expo.stale) { expo.stale = true; syncExposurePanel(); }
-    return;
-  }
-  expo.pendingKey = k.run;
-  clearTimeout(expo.timer);
-  expo.timer = setTimeout(runExposure, 150);
+  checkAnalysis(expo, expo.on ? exposureKeys()?.run : null, runExposure, syncExposurePanel);
 }
 
 async function runExposure() {
