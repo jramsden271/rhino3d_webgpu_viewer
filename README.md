@@ -119,7 +119,7 @@ walking for a torch: a spot light held at chest height that points where you loo
 shadows (see [Lights](#lights)).
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
-materials, object colour and material sources, the north angle and Revert.
+materials, object colour and material sources, moves to another layer, the north angle and Revert.
 View changes, date and time, hiding objects, turning layers on or off and the site location
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
@@ -144,6 +144,11 @@ visibility saved in the file. Right-click a layer for:
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
+- **Move selection to this layer**: puts the selected objects on that layer (the count is those
+  not already on it). Their colour and material follow the new layer where they come from the
+  layer. A block instance moves on its own; the objects inside the block keep their layers, as in
+  Rhino. Objects moved to a layer that is off leave the selection. Only layers that hold objects
+  are listed, so a move goes to one of those.
 - **Edit material** (**Edit colour** in Shaded view): the window below, for the selected layers.
 
 Double-click a layer's row to open its colour or material window; the square only shows it. Opened
@@ -324,8 +329,8 @@ objects, triangles, curves, block instances, layers, location, anything not show
 changes made in the viewer. It also has the model's **north angle**, as in Rhino: degrees
 anticlockwise from the model's +X axis to north, so 90 means +Y is north. It comes from the
 file's Sun settings or Earth anchor point, or is 90 when the file sets neither. From there,
-**Download .3dm** saves a copy with your colour and material changes, and **Revert changes**
-puts everything (layer colours and materials, object colours and materials, the north angle,
+**Download .3dm** saves a copy with your colour, material and layer changes, and **Revert changes**
+puts everything (layer colours and materials, object colours, materials and layers, the north angle,
 hidden objects and layer visibility) back to how it is in the file. The cameras stay where they are.
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
