@@ -585,11 +585,10 @@ function buildLayerTree() {
     row.style.paddingLeft = 10 + depth * 16 + 'px';
     const hasKids = kids[i].some((k) => total[k]);
     row.innerHTML = `<button class="caret ${hasKids ? '' : 'empty'}" aria-label="Expand">${caretSvg}</button>` +
-      `<input type="checkbox"><button class="swatch" title="Material for this layer"></button>` +
+      `<input type="checkbox" class="eye" aria-label="Show this layer" title="Show or hide (Shift-click: isolate)"><span class="swatch"></span>` +
       `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count">${total[i].toLocaleString()}</span>`;
     row.querySelector('.layer-name').textContent = l.name;
     row.title = l.fullPath;
-    row.querySelector('.swatch').addEventListener('click', (e) => openMaterialDialog(layerRows.take(i), e.currentTarget));
     const cb = row.querySelector('input');
     cb.checked = layerOn[i];
     cb.addEventListener('click', (e) => {
@@ -636,7 +635,7 @@ function buildLayerTree() {
       sw.style.background = isMat ? lookBackground(layerLook(i)) : rgbHex(layerDisplayRgb(i));
       // Ring: set in the viewer ("Always off" alone does not count).
       sw.classList.toggle('edited', isMat ? !!state.layerMat[id] || !!state.layerSpecial[id] : !!state.layerColor[id]);
-      sw.title = isMat ? 'Material for this layer (Rendered view)' : 'Display colour for this layer (Shaded view)';
+      sw.title = isMat ? 'Material for this layer (Rendered view): double-click or right-click the row to edit' : 'Display colour for this layer (Shaded view): double-click or right-click the row to edit';
       // Magic material hint, in Rendered view.
       const tag = row.querySelector('.layer-special'), info = isMat && state.specials ? layerSpecialInfo(i) : { id: 0 };
       tag.hidden = !info.id;
@@ -735,18 +734,18 @@ function showMenu(titleText, items, [x, y], { add } = {}) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
-const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. An eye or right-click on a selected row acts on all the selected ${rows}.</p>`;
 
 function showLayersHelp() {
-  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
-    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The eye shows or hides a layer and its sub-layers. <kbd>Shift</kbd>-click an eye to isolate that layer.</p>
+    <p>The square shows the layer's colour or material. Double-click the row, or right-click it for <b>Edit colour</b> or <b>Edit material</b>, to set the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
     ${ROW_SELECT_HELP('layers')}
     <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
 }
 
 function showBlocksHelp() {
   Dialog.open({ title: 'Blocks', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
-    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The eye hides every copy of a block. A copy shows only if it and every block around it are shown. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
     <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
@@ -819,7 +818,7 @@ function buildBlockList() {
     const row = document.createElement('div');
     row.className = 'layer-row block-row';
     row.title = b.name;
-    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.innerHTML = `<input type="checkbox" class="eye" aria-label="Show this block" title="Show or hide every copy"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
     row.querySelector('.layer-name').textContent = b.name;
     const cb = row.querySelector('input');
     cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
@@ -2491,7 +2490,7 @@ function openResultsDialog() {
 // The toolbar's Results menu: one item for each kind of result there is.
 let resultsList = null, resultsMenu = null;
 function bindResultsMenu() {
-  // An item's checkbox shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
+  // An item's eye shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
   resultsList = new ChoiceList({ label: 'Results', onPick: (id, e) => {
     if (e.target.closest('.box')) { if (id === 'streamlines') setStreamlinesOn(!state.streamlines.on); else setMapsOn(!state.maps.on); }
     else if (id === 'streamlines') toggleStreamlinesPanel();
@@ -2502,8 +2501,8 @@ function bindResultsMenu() {
 }
 function fillResultsMenu() {
   const items = [];
-  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: true });
-  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: true });
+  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: 'eye' });
+  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: 'eye' });
   resultsList.setGroups(items.length ? [{ items }] : []);
   syncResultsMenu();
 }
@@ -2563,7 +2562,7 @@ function fillStreamlines() {
     row.dataset.key = key;
     if (parent) row.dataset.parent = parent;
     row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
-    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
+    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox" class="eye" aria-label="Show" title="Show or hide"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
     row.querySelector('.layer-name').textContent = label;
     row.querySelector('.caret').addEventListener('click', () => {
       if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
@@ -2637,7 +2636,7 @@ function fillMaps() {
     top.className = 'layer-row';
     top.title = `${m.map.name} in ${m.file.name}`;
     top.dataset.key = m.key;
-    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox"><span class="layer-name"></span>`;
+    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox" class="eye" aria-label="Show this map" title="Show or hide"><span class="layer-name"></span>`;
     top.querySelector('.layer-name').textContent = m.label;
     top.querySelector('.caret').addEventListener('click', () => {
       if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
