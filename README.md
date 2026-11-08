@@ -51,7 +51,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
-| Select all visible objects | | `Ctrl+A` |
+| Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
 
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
@@ -132,6 +132,11 @@ In the Layers and Blocks widgets, click a row to select it, Ctrl-click to add or
 Shift-click to select a run of rows. An eye (open when shown, closed when hidden) or right-click
 on a selected row acts on all the selected rows. Show/hide ticks are drawn as an eye throughout,
 in the CFD results lists and the Results menu too.
+
+Clicking in the Layers or Blocks widget gives it the keyboard first (its title is underlined), until
+you click in the view: `Ctrl+A` selects all its rows, the up and down arrows move the selection
+(`Shift` extends it), `Space` shows or hides the selected rows, `Enter` opens their window and
+`Esc` clears the selection. Other keys, such as `F` or `Ctrl+Z`, still reach the model.
 
 In the Layers panel, Shift-click an eye to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:

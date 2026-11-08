@@ -735,12 +735,15 @@ function showMenu(titleText, items, [x, y], { add } = {}) {
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
 const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. An eye or right-click on a selected row acts on all the selected ${rows}.</p>`;
+// The keys a row list takes once clicked (see rowListKeys); other keys still reach the model.
+const ROW_KEYS_HELP = (rows, enter) => `<p><b>Keys</b>, once you click in the widget (its title is underlined): <kbd>Ctrl</kbd>+<kbd>A</kbd> select all the ${rows} · <kbd>↑</kbd> <kbd>↓</kbd> move the selection (<kbd>Shift</kbd> to extend it) · <kbd>Space</kbd> show or hide the selected ${rows} · <kbd>Enter</kbd> ${enter} · <kbd>Esc</kbd> clear the selection. Other keys, such as <kbd>F</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd>, work as usual; click in the view to give <kbd>Ctrl</kbd>+<kbd>A</kbd> back to the model.</p>`;
 
 function showLayersHelp() {
   Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The eye shows or hides a layer and its sub-layers. <kbd>Shift</kbd>-click an eye to isolate that layer.</p>
     <p>The square shows the layer's colour or material. Double-click the row, or right-click it for <b>Edit colour</b> or <b>Edit material</b>, to set the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
     ${ROW_SELECT_HELP('layers')}
-    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers, or edit its colour or material.</p>
+    ${ROW_KEYS_HELP('layers', 'edit their colour or material')}` });
 }
 
 function showBlocksHelp() {
@@ -750,7 +753,8 @@ function showBlocksHelp() {
     <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
     <p>Clicking a tag on a selected row sets all the selected blocks.</p>
-    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>
+    ${ROW_KEYS_HELP('blocks', 'open their setting')}` });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3591,8 +3595,55 @@ function bindLightsPanel() {
   });
 }
 
+// Widget shortcuts. A click (or keyboard focus) in a widget that has shortcuts makes it the active
+// widget, marked on its title bar; a click in the view, or in a widget without them, ends that.
+// Keys go to the active widget first, and on to the model when it doesn't use them.
+const widgetKeys = new Map(); // panel id -> (keydown event) => true when the widget used the key
+let activeWidget = null;
+function setActiveWidget(p) {
+  if (p === activeWidget) return;
+  activeWidget?.classList.remove('active-widget');
+  activeWidget = p;
+  p?.classList.add('active-widget');
+}
+function bindWidgetKeys() {
+  widgetKeys.set('layersPanel', rowListKeys(layerRows, (layers, row) => openMaterialDialog(layers, row)));
+  widgetKeys.set('blocksPanel', rowListKeys(blockRows, (ids, row) => openBlockDialog(ids, row)));
+  const pick = (e) => {
+    const p = e.target.closest?.('.side .panel');
+    if (p) setActiveWidget(widgetKeys.has(p.id) ? p : null);
+    else if (e.target === canvas) setActiveWidget(null);
+  };
+  window.addEventListener('pointerdown', pick, true);
+  window.addEventListener('focusin', pick, true);
+}
+function widgetKey(e) {
+  if (!activeWidget) return false;
+  if (activeWidget.hidden || !activeWidget.offsetParent) { setActiveWidget(null); return false; }
+  return !!widgetKeys.get(activeWidget.id)?.(e);
+}
+
+// Shortcuts for a list of rows (Layers, Blocks): Ctrl+A all the rows, the arrows move the selection
+// (Shift: extend it), Space shows or hides the selected rows (as clicking the first one's eye),
+// Enter opens their window, Esc clears the selection.
+function rowListKeys(rows, open) {
+  return (e) => {
+    const k = e.key, ctrl = e.ctrlKey || e.metaKey, sel = rows.list();
+    const first = sel.length ? rows.rows.find((r) => r.key === sel[0]) : null;
+    if (ctrl && !e.altKey && k.toLowerCase() === 'a') { rows.all(); return true; }
+    if (ctrl || e.altKey) return false;
+    if (k === 'ArrowDown' || k === 'ArrowUp') { rows.step(k === 'ArrowDown' ? 1 : -1, e.shiftKey); return true; }
+    if (k === ' ' && first) { first.row.querySelector('.eye').click(); return true; }
+    if (k === 'Enter' && first) { open(sel, first.row); return true; }
+    if (k === 'Escape' && sel.length) { rows.set([]); return true; }
+    return false;
+  };
+}
+
 function onKey(e) {
-  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+  // A checkbox or radio button with the focus (as after clicking an eye) doesn't take the keys.
+  const typing = !!e.target.matches?.('input:not([type="checkbox"], [type="radio"]), select, textarea');
+  if (!typing && model && !walker.active && !driver.active && widgetKey(e)) { e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && model) {
     const k = e.key.toLowerCase();
     if (k === 'z' || k === 'y') { e.preventDefault(); stepHistory(k === 'y' || e.shiftKey); return; }
@@ -4373,6 +4424,7 @@ function bindUi() {
   bindWalkPanel();
   bindDrivePanel();
   bindPointer();
+  bindWidgetKeys();
   window.addEventListener('pagehide', saveViewState);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewState(); });
   syncToolbar();
