@@ -681,7 +681,7 @@ function openLayerMenu(picked, tree, [x, y]) {
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
     '-',
-    { label: showsMaterial() ? 'Material…' : 'Colour…', run: () => openMaterialDialog(picked, buildLayerTree.row?.(picked[0]) || $('layersPanel')) },
+    { label: showsMaterial() ? 'Edit material' : 'Edit colour', run: () => openMaterialDialog(picked, buildLayerTree.row?.(picked[0]) || $('layersPanel')) },
   ].filter(Boolean), [x, y]);
 }
 

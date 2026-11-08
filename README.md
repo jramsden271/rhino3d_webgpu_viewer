@@ -138,7 +138,7 @@ visibility saved in the file. Right-click a layer for:
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
-- **Material…** (**Colour…** in Shaded view): the window below, for the selected layers.
+- **Edit material** (**Edit colour** in Shaded view): the window below, for the selected layers.
 
 Double-click a layer's row to open its colour or material window, as its square does. Opened
 from a selected row, the window sets all the selected layers at once: a change sets only the
