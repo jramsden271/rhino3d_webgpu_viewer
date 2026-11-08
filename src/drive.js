@@ -52,8 +52,7 @@ const DRIVE = {
   LOST: 3,           // seconds flying with nothing below before going back
   LEDGE: 3.5,        // off a ledge, its edge is no obstacle within this of where the car left
   LOCK: 0.8,         // seconds the controls are locked after going back
-  SINK: 0.6,         // water (by its layer's magic material) holds nothing up: this deep in it, a splash...
-  SPLASHED: 0.7,     // ...and this many seconds later, back to where the car last stood
+  SINK: 0.6,         // water (by its layer's magic material) holds nothing up: this deep in it, a splash and back
   MIN_FOV: 25,       // field of view range (degrees) for zooming with the mouse wheel
   MAX_FOV: 80,
 };
@@ -389,7 +388,7 @@ class Driver {
     this.music.pick(); // a new drive, a new track at random (getting back in a parked car carries on)
     Object.assign(this, { x: start[0], y: start[1], z: start[2], a: heading, vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0,
       grounded: false, air: 0, map: null, stable: [], lastStable: 0, lockUntil: 0, shake: 0, orbit: 0, tilt: 0, dragging: false,
-      camPos: null, launch: null, sunk: 0, last: performance.now(), gen: (this.gen || 0) + 1 });
+      camPos: null, launch: null, last: performance.now(), gen: (this.gen || 0) + 1 });
     // The first look round: the ground straight below the start, however far down.
     let map = null;
     while (this.active && !(map = await this.look(start[2] + DRIVE.ROOF * u))) await new Promise(requestAnimationFrame);
@@ -708,14 +707,12 @@ class Driver {
       const [mn] = this.ctx.bounds();
       if (this.z < mn[2] - 5 * u || (g === null && this.air > DRIVE.LOST)) this.lost(now);
     }
-    // In water: a splash, and soon after back to firm ground.
-    if (this.sunk && now >= this.sunk) this.lost(now);
-    else if (!this.sunk && this.active) {
+    // In water: a splash, and back to firm ground.
+    if (this.active) {
       const w = this.waterAt([this.x, this.y], 0.5 * u);
       if (w != null && this.z < w - DRIVE.SINK * u) {
-        this.sunk = now + DRIVE.SPLASHED * 1000;
-        this.lockUntil = this.sunk;
         this.ctx.splash?.();
+        this.lost(now);
       }
     }
     this.place3d();
@@ -816,7 +813,7 @@ class Driver {
     const s = this.stable[0];
     if (!s) { this.ctx.notice('The car went off the model.'); this.exit(); return; }
     Object.assign(this, { x: s[0], y: s[1], z: s[2], a: s[3], vF: 0, vL: 0, vz: 0, yaw: 0, steer: 0, pitch: 0, roll: 0, rawPitch: 0, rawRoll: 0, grounded: true, air: 0,
-      lockUntil: now + DRIVE.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1, camPos: null, launch: null, sunk: 0 });
+      lockUntil: now + DRIVE.LOCK * 1000, map: null, stable: [s], gen: this.gen + 1, camPos: null, launch: null });
     this.ctx.fade();
   }
 
