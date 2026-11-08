@@ -553,7 +553,9 @@ always in sun (magma), and are not kept: they last until the settings change or 
   needed in Rhino. Edges sharper than 40° keep a normal for each side. A new layer starts at the
   finest spacing that gives about 200,000 points.
 - What casts shadows is what is shown: hide a layer or an object and the results update without
-  it. Materials more than 40% transparent do not cast shadows, as for the sun.
+  it. Materials more than 40% transparent do not cast shadows, as for the sun. Any change to the
+  model (hidden objects, layers, moves between layers, materials, blocks, location or north)
+  marks the results out of date, or recalculates them with Update automatically.
 - Under the results: the area analysed, and how much of it is in sun and shaded on average over
   the period (in m² and %, weighted by area).
 - **Update automatically** recalculates soon after any change. Off, the results stay as they are
