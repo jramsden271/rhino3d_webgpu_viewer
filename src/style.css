@@ -74,6 +74,11 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .tool-menu-body.row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
 .tool-menu-body.grid { display: grid; grid-template-columns: repeat(2, auto); align-items: center; gap: 6px 10px; }
 .tool-menu .btn-combo > .btn { background: transparent; padding-left: 3px; }
+/* The Tools menu: Weather, UTCI and Lights as on the toolbar, then the analysis tools. */
+.tool-widgets { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.tool-widgets > .btn.toggle, .tool-widgets > .btn-combo { justify-content: flex-start; }
+.tool-widgets > .btn.toggle { text-align: left; padding-left: 8px; }
+.tool-rule { width: 100%; margin: 2px 0; border: 0; border-top: 1px solid var(--border); }
 .choice-list { display: flex; flex-direction: column; gap: 1px; min-width: 170px; max-width: 280px; }
 .choice-list .heading { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 2px; font-size: 11px; color: var(--muted); }
 .choice-list .heading .q { padding: 0 4px; margin-right: -4px; border-radius: 5px; font-size: 13px; font-weight: 600; color: var(--muted); }

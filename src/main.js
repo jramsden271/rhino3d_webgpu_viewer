@@ -2353,6 +2353,7 @@ function syncWeatherPanel() {
   $('weatherOn').checked = state.weatherOn;
   $('weatherQuick').setAttribute('aria-pressed', String(state.weatherOn));
   document.querySelector('[data-act="weather"]').setAttribute('aria-pressed', String(state.weatherPanel));
+  syncToolsButton();
   syncViewChecks();
   if (!state.weatherPanel) return;
   const loc = activeLocation(), e = site.epw;
@@ -3304,7 +3305,7 @@ function syncExposureProgress() {
 
 function syncExposurePanel() {
   if (!exposureBound) return;
-  $('btnTools').setAttribute('aria-pressed', String(expo.panel));
+  syncToolsButton();
   if (!expo.panel) return;
   const located = !!activeLocation();
   $('exposureRead').hidden = located;
@@ -3343,6 +3344,11 @@ function syncExposurePanel() {
   setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
 }
 
+// The Tools button is pressed while any widget it opens is open.
+function syncToolsButton() {
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+}
+
 function showExposureHelp() {
   Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
     <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
@@ -3358,7 +3364,13 @@ function bindExposurePanel() {
   toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
   toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
-  toolsMenu.body.append(toolsList.el);
+  // Weather, thermal comfort and lights: the toolbar's controls for them, their on/off icons
+  // included, live in this menu, above the analysis tools.
+  const widgets = document.createElement('div'), rule = document.createElement('hr');
+  widgets.className = 'tool-widgets';
+  widgets.append($('weatherCombo'), document.querySelector('[data-act="comfort"]'), $('lightsCombo'));
+  rule.className = 'tool-rule';
+  toolsMenu.body.append(widgets, rule, toolsList.el);
   $('exposureClose').addEventListener('click', () => expo.panel && toggleExposurePanel());
   $('exposureHelp').addEventListener('click', showExposureHelp);
   $('exposureRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
@@ -3758,6 +3770,7 @@ function toggleLightsPanel() {
   state.lightsPanel = !state.lightsPanel;
   $('lightsPanel').hidden = !state.lightsPanel;
   document.querySelector('[data-act="lights"]').setAttribute('aria-pressed', String(state.lightsPanel));
+  syncToolsButton();
   syncLightsPanel();
 }
 
@@ -3794,7 +3807,7 @@ function syncLightsPanel() {
 function showLightsHelp() {
   Dialog.open({ title: 'Lights', html: true, width: 360, body: `<p>The Rhino file's point and spot lights, lamps you add and the walker's torch light the model; they show best at night.</p>
     <p><kbd>B</kbd> adds a lamp just off the surface under the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes the lamps you added · <kbd>T</kbd> switches the torch on and off while walking.</p>
-    <p>The switch at the top (or the bulb on the toolbar's Lights button) turns the file's and added lights on and off. While on, the ticked lights shine; with none ticked, all of them do. The torch has its own checkbox.</p>
+    <p>The switch at the top (or the bulb on the Lights button in the Tools menu) turns the file's and added lights on and off. While on, the ticked lights shine; with none ticked, all of them do. The torch has its own checkbox.</p>
     <p>Up to ${MAX_LAMPS} lights shine at once: the torch first, then the list in order. The torch and about four lamps also cast shadows.</p>` });
 }
 
@@ -4307,6 +4320,7 @@ function toggleComfortPanel() {
   C.panel = !C.panel;
   $('comfortPanel').hidden = !C.panel;
   document.querySelector('[data-act="comfort"]').setAttribute('aria-pressed', String(C.panel));
+  syncToolsButton();
   if (C.panel) { syncComfortPanel(); checkSunlight(); }
 }
 
@@ -4635,7 +4649,7 @@ function bindUi() {
     ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
-    title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
+    title.prepend(document.querySelector(`${btn} svg`).cloneNode(true));
   }
   bindLightsPanel();
   bindComfortPanel();

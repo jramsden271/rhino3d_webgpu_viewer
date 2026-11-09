@@ -41,14 +41,14 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: click the N or a tick | |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
-| Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
-| Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
+| Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Tools → Lights | `G` · `B` · `Shift+B` |
+| Thermal comfort panel (UTCI at the camera) | Toolbar: Tools → UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
 | Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
-| Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
+| Weather widget · all its View items on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
@@ -433,7 +433,7 @@ little from year to year to matter here (2017 is used). When the file has Rhino 
 set the starting date and time. The time is the location's clock time, shown with its offset from
 UTC (e.g. UTC+3 for Qatar).
 
-Click **Weather** on the toolbar for the **Weather widget**, at the Date and Time widgets' date and time.
+Click **Tools → Weather** on the toolbar for the **Weather widget**, at the Date and Time widgets' date and time.
 Its title has the weather file's sun and cloud icon and, without a weather file, an **Add EPW**
 link (or **Set location** without a location either: the location dialog takes a weather file
 too). Readings, three to a row, each with an icon (hover for more):
@@ -460,7 +460,7 @@ greyed out, and its tooltip says why:
   dims the sun and sets how bright the sky's light is (see below).
 - **Sun path diagram** (needs a location, in perspective views).
 
-The switch on the widget's title bar, and the sun and cloud icon on the toolbar's Weather button,
+The switch on the widget's title bar, and the sun and cloud icon on the Weather button in the Tools menu,
 turn all of View off and on again without changing the ticks. The ticks, the switch and the date
 and time are remembered for each model in this browser.
 
@@ -576,7 +576,7 @@ pass tests every point against it, blending the four texels round it.
 
 ## Thermal comfort
 
-Click **UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
+Click **Tools → UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
 Universal Thermal Climate Index (UTCI) at the camera, at the Date and Time widgets' date and time, and
 shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
 file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
@@ -637,7 +637,7 @@ comfort study.
 ## Lights
 
 Point and spot lights light the model in any shading mode; they show best at night. Click
-**Lights** (or press `G`) to open the Lights panel, which lists:
+**Tools → Lights** (or press `G`) to open the Lights panel, which lists:
 
 - **Torch**: the walker's torch, on and off with the checkbox or `T` in pedestrian mode.
 - **From the Rhino file**: the file's point and spot lights, with their position, colour,
@@ -648,7 +648,7 @@ Point and spot lights light the model in any shading mode; they show best at nig
   cursor (towards you). × removes one, `Shift+B` all of them. They are not saved with the file.
 
 The panel's **?** button repeats the keys and limits. The switch in the panel's title, or the
-bulb icon on the toolbar's Lights button (yellow and filled while on), turns the file's and
+bulb icon on the Lights button in the Tools menu (yellow and filled while on), turns the file's and
 added lights on and off together. While they are on, the ticked lights shine, or all of them
 when none is ticked; a lamp added while some are ticked is ticked too. The torch has its own
 checkbox. Up to 8 lights shine at once (the torch first, then the list in order); the panel

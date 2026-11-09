@@ -41,7 +41,7 @@
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
     <button class="btn toggle" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
-    <button class="btn toggle" id="btnTools" title="Tools for analysing the model"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
+    <button class="btn toggle" id="btnTools" title="Tools: weather, thermal comfort, lights and sun exposure"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -296,7 +296,6 @@
       <label class="field-row" id="matGlossRow">Gloss <span class="range"><input type="range" id="matGloss" min="0" max="1" step="0.05"><output id="matGlossOut"></output></span></label>
       <label class="field-row" id="matAlphaRow">Transparency <span class="range"><input type="range" id="matAlpha" min="0" max="0.9" step="0.05"><output id="matAlphaOut"></output></span></label>
       <div class="fine note" id="matOwn"></div>
-      <div class="fine">Applies to objects whose source is “By layer”. Remembered in this browser; to save a .3dm copy, click the file name (top left).</div>
       <div class="pop-actions"><button class="link" id="matReset">Reset to file</button><button class="btn primary" id="matDone">Done</button></div>
     </div>
   </div>
