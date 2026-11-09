@@ -78,10 +78,10 @@ class ChoiceList {
     if (label) this.el.setAttribute('aria-label', label);
     this.el.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
-      if (b) onPick(b.dataset.id, e);
+      if (b && b.getAttribute('aria-disabled') !== 'true') onPick(b.dataset.id, e);
     });
     this.el.addEventListener('keydown', (e) => {
-      const all = [...this.el.querySelectorAll('button[data-id]')], at = all.indexOf(document.activeElement);
+      const all = [...this.el.querySelectorAll('button[data-id]')].filter((b) => !b.hidden), at = all.indexOf(document.activeElement);
       const to = { ArrowDown: at + 1, ArrowUp: at - 1 + all.length, Home: 0, End: all.length - 1 }[e.key];
       if (to === undefined) return;
       e.preventDefault();
@@ -90,15 +90,16 @@ class ChoiceList {
     });
   }
 
-  // groups: [{ heading (optional), help (optional: { title, run }, a ? button on the heading's row),
+  // groups: [{ id (optional: for showGroup), heading (optional), help (optional: { title, run }, a ? button on the heading's row),
   //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label),
   //     toggle (optional: an on/off item, with a checkbox; 'eye' for show/hide, drawn as an eye) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
     groups.forEach((g, n) => {
-      if (n) this.el.append(document.createElement('hr'));
+      const tag = (el) => { if (g.id) el.dataset.group = g.id; return el; };
+      if (n) this.el.append(tag(document.createElement('hr')));
       if (g.heading) {
-        const h = document.createElement('div');
+        const h = tag(document.createElement('div'));
         h.className = 'heading';
         h.textContent = g.heading;
         if (g.help) {
@@ -111,7 +112,7 @@ class ChoiceList {
         this.el.append(h);
       }
       for (const it of g.items) {
-        const b = document.createElement('button');
+        const b = tag(document.createElement('button'));
         b.dataset.id = it.id;
         b.title = it.title || it.label;
         b.setAttribute('role', it.toggle ? 'menuitemcheckbox' : 'menuitemradio');
@@ -142,4 +143,11 @@ class ChoiceList {
   item(id) { return this.el.querySelector(`button[data-id="${id}"]`); }
   setChecked(id, on) { this.item(id).setAttribute('aria-checked', String(on)); }
   setOpen(id, on) { this.item(id).classList.toggle('open', on); } // coloured, as a toolbar button whose panel is open
+  // Greyed out, with why in its tooltip (title), or back as it was.
+  setDisabled(id, why, title) {
+    const b = this.item(id);
+    b.setAttribute('aria-disabled', String(!!why));
+    b.title = why ? `${why}. ${title}` : title;
+  }
+  showGroup(id, on) { for (const el of this.el.querySelectorAll(`[data-group="${id}"]`)) el.hidden = !on; }
 }

@@ -91,6 +91,11 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list .box { margin-right: -8px; }
 .choice-list .box::before { content: ""; position: absolute; inset: -6px; } /* easier to hit, when it does something of its own */
 .choice-list button.open { background: var(--accent-soft); color: var(--accent); }
+.choice-list button[hidden], .choice-list hr[hidden], .choice-list .heading[hidden] { display: none; }
+.choice-list button[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.choice-list button[aria-disabled="true"]:hover { background: transparent; }
+.choice-list button[aria-disabled="true"] .box { opacity: 0.5; }
+.choice-list .view-speed { padding: 0 8px 4px 30px; } /* under its label */
 .choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
@@ -167,6 +172,8 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .caret svg { width: 12px; height: 12px; transition: transform 0.12s; }
 .caret.collapsed svg { transform: rotate(-90deg); }
 .caret.empty { visibility: hidden; }
+.flat > .layer-row > .caret { display: none; }
+.carets > .layer-row { padding-left: 30px; } /* as a top-level layer's, after its caret */
 .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.25); flex: none; padding: 0; }
 button.swatch { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
 button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent-soft); outline: none; }
@@ -601,11 +608,6 @@ body.walking .walk-frame { display: block; }
 .wx-grid .sun-dot { fill: #f6c344; stroke: #f2b01e; stroke-width: 1.2; }
 .wx-grid .down .sun-dot { fill: var(--surface-solid); stroke: var(--muted); }
 .wx-grid .two { display: flex; flex-direction: column; font-size: 12px; line-height: 1.2; }
-.view-checks { gap: 8px; }
-.view-checks .check:has(input:disabled) { color: var(--muted); cursor: default; }
-.view-checks .check:has(input:disabled) input { opacity: 0.5; cursor: default; }
-.view-clouds { display: flex; align-items: center; gap: 10px; }
-.view-clouds .check { flex: none; }
 .view-speed { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .view-speed[hidden] { display: none; }
 .view-speed input { flex: 1; min-width: 0; }

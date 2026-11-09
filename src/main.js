@@ -22,9 +22,8 @@ const state = {
   // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
   dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
   weatherPanel: false,
-  weatherViewOpen: true, // the Weather widget's View section is open
   weatherOn: true,  // the Weather widget's switch: off, none of its View items show, whatever is ticked
-  // The Weather widget's View items, as ticked. Each also needs a location or a weather file
+  // The View items, as ticked under Weather in the render mode menu. Each also needs a location or a weather file
   // (VIEW_NEEDS), and the switch on: viewOn says whether it shows.
   view: { sun: false, sky: true, clouds: true, haze: true, path: false },
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
@@ -250,8 +249,9 @@ function currentSky(altitude) {
   return site.epw ? weatherSky(site.epw, S.doy, S.hour, altitude) : null;
 }
 
-// The Weather widget's View items: what each needs, and what each is.
+// The View items, under Weather in the render mode menu: what each needs, and what each is.
 const VIEW_ITEMS = ['sun', 'sky', 'clouds', 'haze', 'path'];
+const VIEW_LABELS = { sun: 'Sun', sky: 'Sky', clouds: 'Clouds', haze: 'Haze', path: 'Sun path diagram' };
 const VIEW_NEEDS = { sun: 'location', sky: 'location', clouds: 'epw', haze: 'epw', path: 'location' };
 const VIEW_TITLES = {
   sun: 'Sunlight and shadows at the Date and Time widgets\' date and time, and the moon\'s at night',
@@ -263,8 +263,9 @@ const VIEW_TITLES = {
 
 // Why a View item cannot show, or null if it can: it needs a location or a weather file, the
 // widget's switch on, and (the sun path) a perspective view.
+const viewHasData = (item) => (VIEW_NEEDS[item] === 'epw' ? !!site.epw : !!activeLocation());
 function viewWhyNot(item) {
-  if (VIEW_NEEDS[item] === 'epw' ? !site.epw : !activeLocation()) return VIEW_NEEDS[item] === 'epw' ? 'Needs a weather file (EPW)' : 'Needs a location';
+  if (!viewHasData(item)) return VIEW_NEEDS[item] === 'epw' ? 'Needs a weather file (EPW)' : 'Needs a location';
   if (!state.weatherOn) return 'The Weather widget is switched off';
   if (item === 'path' && camera.ortho) return 'Drawn in perspective views only';
   return null;
@@ -626,6 +627,11 @@ function buildLayerTree() {
   const hiddenByCollapse = (i) => { for (let p = L[i].parent; p >= 0; p = L[p].parent) if (collapsed.has(p)) return true; return false; };
   function refreshRows() {
     roots.forEach(sum);
+    // The top-level layers line up with the blocks: with no sub-layers (with objects) the carets
+    // take no room, and with them the blocks leave the same room.
+    const flat = !rows.some(({ i }) => total[i] && kids[i].some((k) => total[k]));
+    tree.classList.toggle('flat', flat);
+    $('blockList').classList.toggle('carets', !flat);
     const filter = $('layerFilter').value.trim().toLowerCase(), match = new Set();
     if (filter) for (const { i } of rows) if (total[i] && L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
     for (const { i, row, cb } of rows) {
@@ -961,9 +967,6 @@ function bindBlocksPanel() {
   $('blockList').addEventListener('scroll', closeLayerMenu);
   $('blocksClose').addEventListener('click', () => state.blocks && toggle('blocks'));
   $('blocksHelp').addEventListener('click', showBlocksHelp);
-  document.querySelectorAll('[data-blocks]').forEach((b) => b.addEventListener('click', () => {
-    if (model) setBlocksOn(blockRows.rows.filter((r) => !r.row.hidden).map((r) => r.key), b.dataset.blocks === 'all');
-  }));
   const close = () => { $('blockDialog').hidden = true; };
   $('blockClose').addEventListener('click', close);
   $('blockDone').addEventListener('click', close);
@@ -2338,15 +2341,23 @@ function bindPickers() {
   $('timePlay').addEventListener('click', toggleDatePlay);
 }
 
-// The View ticks: each disabled, with why in its tooltip, when it cannot show.
+// The View ticks, under Weather in the render mode menu. Those without the data they need (a
+// location, a weather file) are hidden, and the section with them if none is left; any other that
+// cannot show is greyed out, with why in its tooltip.
 function syncViewChecks() {
+  if (!modeList) return;
+  let any = false;
   for (const item of VIEW_ITEMS) {
-    const box = document.querySelector(`[data-view="${item}"]`), why = viewWhyNot(item);
-    box.checked = state.view[item];
-    box.disabled = !!why;
-    box.closest('label').title = why ? `${why}. ${VIEW_TITLES[item]}` : VIEW_TITLES[item];
+    const id = `view-${item}`, has = viewHasData(item);
+    modeList.setChecked(id, state.view[item]);
+    modeList.item(id).hidden = !has;
+    modeList.setDisabled(id, has && viewWhyNot(item), VIEW_TITLES[item]);
+    any ||= has;
   }
+  modeList.showGroup('weather', any);
   $('cloudSpeedField').hidden = !viewOn('clouds');
+  $('cloudSpeed').value = clouds.speed;
+  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind speed` : 'Still';
 }
 
 function syncWeatherPanel() {
@@ -2361,11 +2372,6 @@ function syncWeatherPanel() {
   $('weatherAdd').hidden = !!e;
   $('weatherAdd').textContent = loc ? 'Add EPW' : 'Set location';
   $('weatherAdd').title = loc ? 'Add a weather file (EPW): its weather, clouds and haze' : 'Set the site location, for the sun and the sky. A weather file can set it too';
-  $('weatherViewToggle').setAttribute('aria-expanded', String(state.weatherViewOpen));
-  $('weatherViewToggle').querySelector('.caret').classList.toggle('collapsed', !state.weatherViewOpen);
-  $('weatherView').hidden = !state.weatherViewOpen;
-  $('cloudSpeed').value = clouds.speed;
-  $('cloudSpeedOut').value = clouds.speed ? `${clouds.speed}× wind speed` : 'Still';
   const cells = [...(loc ? sunCells() : []), ...(loc && e ? ['<span class="rule"></span>'] : []), ...(e ? weatherCells() : [])];
   $('weatherRead').hidden = !cells.length;
   $('weatherRead').innerHTML = cells.join('');
@@ -2498,8 +2504,6 @@ function bindDateWeather() {
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherAdd').addEventListener('click', () => (activeLocation() ? openWeatherDialog() : openLocationDialog()));
-  $('weatherViewToggle').addEventListener('click', () => { state.weatherViewOpen = !state.weatherViewOpen; syncWeatherPanel(); });
-  document.querySelectorAll('[data-view]').forEach((box) => box.addEventListener('change', () => setWeatherView(box.dataset.view, box.checked)));
   $('cloudSpeed').addEventListener('input', (e) => { clouds.speed = +e.target.value; savePrefs(); syncWeatherPanel(); redraw(); });
   $('weatherOn').addEventListener('change', (e) => setWeatherOn(e.target.checked));
   $('weatherQuick').addEventListener('click', () => setWeatherOn(!state.weatherOn));
@@ -4455,13 +4459,17 @@ let modeList = null;
 
 function bindModeMenu() {
   modeList = new ChoiceList({ label: 'Render settings', onPick: (id) => {
-    if (id === 'specials') toggleSpecials();
+    if (id.startsWith('view-')) { const item = id.slice(5); setWeatherView(item, !state.view[item]); }
+    else if (id === 'specials') toggleSpecials();
     else if (RENDER_TOGGLES.some((t) => t.id === id)) toggle(id);
     else setMode(+id);
   } });
-  modeList.setGroups([{ items: RENDER_TOGGLES.map((t) => ({ ...t, toggle: true })) },
+  // What the Weather widget can draw, each item hidden while there is no data for it.
+  const weather = { id: 'weather', heading: 'Weather', items: VIEW_ITEMS.map((item) => ({ id: `view-${item}`, label: VIEW_LABELS[item], title: VIEW_TITLES[item], toggle: true })) };
+  modeList.setGroups([{ items: RENDER_TOGGLES.map((t) => ({ ...t, toggle: true })) }, weather,
     { items: MODES.map(([id, label, title]) => ({ id: String(id), label, title })) }]);
-  new ToolbarMenu($('btnMode'), { label: 'Render mode' }).body.append(modeList.el);
+  modeList.item('view-clouds').after($('cloudSpeedField')); // the cloud speed, under Clouds while they show
+  new ToolbarMenu($('btnMode'), { label: 'Render mode', onOpen: syncViewChecks }).body.append(modeList.el);
 }
 
 function syncModeMenu() {
@@ -4654,12 +4662,6 @@ function bindUi() {
   bindLightsPanel();
   bindComfortPanel();
   bindExposurePanel();
-  document.querySelectorAll('[data-layers]').forEach((b) => b.addEventListener('click', () => {
-    if (!model) return;
-    layerOn = model.layers.map(() => b.dataset.layers === 'all');
-    applyLayerVisibility();
-    buildLayerTree.refresh?.();
-  }));
   window.addEventListener('keydown', onKey);
   const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
