@@ -48,7 +48,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
 | Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
-| Weather widget · all its View items on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
+| Weather widget · everything under Weather in the render mode menu on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
@@ -446,8 +446,11 @@ too). Readings, three to a row, each with an icon (hover for more):
   the direct normal radiation. Values are interpolated between the file's hourly records, each
   taken as the middle of its hour.
 
-**View** lists what is drawn. Each item is independent of the others; one that cannot show is
-greyed out, and its tooltip says why:
+What the weather draws is under **Weather** in the render mode menu (the toolbar button that
+names the render mode, such as **Rendered**). Each item is independent of the others. Items
+needing a location or a weather file that the model doesn't have are hidden, and so is the whole
+section without a location. One that cannot show for another reason is greyed out, and its
+tooltip says why:
 
 - **Sun** (needs a location): the sun's light and shadows, and the moon's at night.
 - **Sky** (needs a location): the sky behind the model, from day to starry night. Off, or
@@ -455,13 +458,13 @@ greyed out, and its tooltip says why:
   the model is the same either way. With the Sun off the model keeps its usual light, so the sky
   is never darker than dusk.
 - **Clouds** (needs a weather file): the file's clouds, in the sky and, with the Sun on, as
-  shadows on the model. A cloud speed slider shows beside it while they are on.
+  shadows on the model. A cloud speed slider shows under it while they are on.
 - **Haze** (needs a weather file): the file's radiation, beyond what the clouds account for. It
   dims the sun and sets how bright the sky's light is (see below).
 - **Sun path diagram** (needs a location, in perspective views).
 
 The switch on the widget's title bar, and the sun and cloud icon on the Weather button in the Tools menu,
-turn all of View off and on again without changing the ticks. The ticks, the switch and the date
+turn all of these off and on again without changing the ticks. The ticks, the switch and the date
 and time are remembered for each model in this browser.
 
 ### Clouds and daylight
@@ -514,7 +517,7 @@ to, so these last only while they are open.
 
 ## Sun and shadows
 
-Tick **Sun** under View in the Weather widget to light the model by the sun with cast shadows, at
+Tick **Sun** under Weather in the render mode menu to light the model by the sun with cast shadows, at
 the Date and Time widgets' date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date

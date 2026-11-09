@@ -35,7 +35,7 @@
     <span class="sep"></span>
     <button class="btn toggle" data-act="date" title="Date: the date for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span id="dateLabel">Date</span></button>
     <button class="btn toggle" data-act="time" title="Time: the time of day for the sun and the weather"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="clock-h" d="M12 12V7.6"/><path class="clock-m" d="M12 12V5.6"/></svg><span id="timeLabel">Time</span></button>
-    <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: everything ticked in the Weather widget's View section"><svg viewBox="0 0 24 24" aria-hidden="true" class="wx-icon"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather: the sun, sky, clouds and weather at the Date widget's date and time">Weather</button></span>
+    <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: everything ticked under Weather in the render mode menu"><svg viewBox="0 0 24 24" aria-hidden="true" class="wx-icon"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather: the sun, sky, clouds and weather at the Date widget's date and time">Weather</button></span>
     <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
@@ -88,7 +88,7 @@
   <aside id="layersPanel" class="chrome panel layers-panel" hidden data-min>
     <div class="panel-head">
       <span>Layers</span>
-      <span class="panel-actions"><button class="link" data-layers="all">Show all</button><button class="link" data-layers="none">Hide all</button><button class="x q" id="layersHelp" aria-label="About layers" title="About layers">?</button><button class="x" id="layersClose" aria-label="Close layers" title="Close (L)">×</button></span>
+      <span class="panel-actions"><button class="x q" id="layersHelp" aria-label="About layers" title="About layers">?</button><button class="x" id="layersClose" aria-label="Close layers" title="Close (L)">×</button></span>
     </div>
     <div class="panel-filter" data-full><input type="search" id="layerFilter" placeholder="Filter layers" aria-label="Filter layers"></div>
     <div id="layerTree" class="layer-tree" role="tree"></div>
@@ -96,7 +96,7 @@
   <aside id="blocksPanel" class="chrome panel layers-panel" hidden data-min>
     <div class="panel-head">
       <span>Blocks</span>
-      <span class="panel-actions"><button class="link" data-blocks="all">Show all</button><button class="link" data-blocks="none">Hide all</button><button class="x q" id="blocksHelp" aria-label="About blocks" title="About blocks">?</button><button class="x" id="blocksClose" aria-label="Close blocks" title="Close (K)">×</button></span>
+      <span class="panel-actions"><button class="x q" id="blocksHelp" aria-label="About blocks" title="About blocks">?</button><button class="x" id="blocksClose" aria-label="Close blocks" title="Close (K)">×</button></span>
     </div>
     <div class="panel-filter" data-full><input type="search" id="blockFilter" placeholder="Filter blocks" aria-label="Filter blocks"></div>
     <div id="blockList" class="layer-tree"></div>
@@ -160,28 +160,15 @@
   <section id="weatherPanel" class="chrome panel sun-panel" hidden aria-label="Weather" data-min>
     <div class="panel-head">
       <span>Weather</span>
-      <span class="panel-actions"><button class="link" id="weatherAdd" hidden></button><label class="switch" title="Weather on/off: turns off everything ticked under View, and keeps the ticks for when it is back on"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close the Weather widget" title="Close">×</button></span>
+      <span class="panel-actions"><button class="link" id="weatherAdd" hidden></button><label class="switch" title="Weather on/off: turns off everything ticked under Weather in the render mode menu, and keeps the ticks for when it is back on"><input type="checkbox" id="weatherOn"><span></span></label><button class="x" id="weatherClose" aria-label="Close the Weather widget" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="weatherRead" class="wx-grid"></div>
-      <div class="field" data-full>
-        <div class="field-label"><button class="field-toggle" id="weatherViewToggle" aria-controls="weatherView"><span class="caret"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>View</button></div>
-        <div id="weatherView" class="field-details view-checks">
-          <div class="check-row">
-            <label class="check"><input type="checkbox" data-view="sun"> Sun</label>
-            <label class="check"><input type="checkbox" data-view="sky"> Sky</label>
-            <label class="check"><input type="checkbox" data-view="haze"> Haze</label>
-          </div>
-          <div class="view-clouds">
-            <label class="check"><input type="checkbox" data-view="clouds"> Clouds</label>
-            <span class="view-speed" id="cloudSpeedField" title="Cloud speed: the clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
-              <input type="range" id="cloudSpeed" min="0" max="100" step="1" aria-label="Cloud speed">
-              <output id="cloudSpeedOut"></output>
-            </span>
-          </div>
-          <label class="check"><input type="checkbox" data-view="path"> Sun path diagram</label>
-        </div>
-      </div>
+      <!-- The cloud speed slider: moved into the render mode menu, under Clouds. -->
+      <span class="view-speed" id="cloudSpeedField" title="Cloud speed: the clouds drift with the weather file's wind, measured 10 m up, multiplied by this. Clouds sit higher where the wind is stronger, and a larger multiplier makes the drift easier to see. 0 stops them.">
+        <input type="range" id="cloudSpeed" min="0" max="100" step="1" aria-label="Cloud speed">
+        <output id="cloudSpeedOut"></output>
+      </span>
     </div>
   </section>
   <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort" data-min>
