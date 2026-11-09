@@ -17,7 +17,7 @@ const EXPOSURE_LIFT = 0.03; // metres: the results are drawn this far in front o
 const EXPOSURE_TEXEL = 0.25;
 const EXPOSURE_UP_ONLY = 45; // degrees from straight up, at most, for Ground/roof only
 
-// The periods offered round the Date widget's date and time, both ends included. A date span
+// The periods offered round the Date and Time widgets' date and time, both ends included. A date span
 // runs on round the end of the year (the sun's path repeats), so 1 January ±3 days starts on
 // 29 December; a time span stops at the ends of the day.
 const EXPOSURE_DATE_SPANS = [

@@ -33,7 +33,8 @@
     <span class="sep"></span>
     <button class="btn toggle camera-btn mode-btn" id="btnMode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10.2 5.9A6.4 6.4 0 0 0 5.9 10.2l3.3 1c.1-2 .4-3.7 1-5.3z" style="fill:currentColor;stroke:none"/></svg><span id="modeName">Rendered</span></button>
     <span class="sep"></span>
-    <button class="btn toggle" data-act="date" title="Date: the date and time for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Date</button>
+    <button class="btn toggle" data-act="date" title="Date: the date for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span id="dateLabel">Date</span></button>
+    <button class="btn toggle" data-act="time" title="Time: the time of day for the sun and the weather"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="clock-h" d="M12 12V7.6"/><path class="clock-m" d="M12 12V5.6"/></svg><span id="timeLabel">Time</span></button>
     <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: everything ticked in the Weather widget's View section"><svg viewBox="0 0 24 24" aria-hidden="true" class="wx-icon"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather: the sun, sky, clouds and weather at the Date widget's date and time">Weather</button></span>
     <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
@@ -126,17 +127,33 @@
 
   <section id="datePanel" class="chrome panel sun-panel" hidden aria-label="Date" data-min>
     <div class="panel-head">
-      <span>Date<span class="panel-sum" id="dateSum" data-min-only><span id="dateSumDay" title="Right-click for the solstices and equinoxes, or your own dates"></span> · <span id="dateSumHour" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times"></span></span></span>
-      <span class="panel-actions"><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
+      <span><span id="dateTitle" title="Right-click for the solstices and equinoxes, or your own dates"></span></span>
+      <span class="panel-actions"><button class="x" id="dateMode"></button><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
     </div>
     <div class="sun-body" data-full>
-      <div class="field" title="Right-click for the solstices and equinoxes, or your own dates">
-        <div class="field-label"><span>Date</span><output id="dateDayOut"></output></div>
-        <input type="range" id="dateDay" min="1" max="365" step="1">
+      <div class="field" id="dateSliderField" title="Right-click for the solstices and equinoxes, or your own dates"><input type="range" id="dateDay" min="1" max="365" step="1" aria-label="Date"></div>
+      <div class="pick-body" id="datePicker">
+        <div class="pick-month">
+          <button class="pick-nav" id="dayPickPrev" aria-label="Previous month" title="Previous month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+          <span id="dayPickMonth" aria-live="polite"></span>
+          <button class="pick-nav" id="dayPickNext" aria-label="Next month" title="Next month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="pick-grid pick-days" id="dayPickGrid"></div>
       </div>
-      <div class="field" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times">
-        <div class="field-label"><span>Time</span><span><output id="dateTimeOut"></output><button id="datePlay" class="play" title="Animate through the day">▶</button></span></div>
-        <input type="range" id="dateHour" min="0" max="24" step="0.0833">
+    </div>
+  </section>
+  <section id="timePanel" class="chrome panel sun-panel" hidden aria-label="Time" data-min>
+    <div class="panel-head">
+      <span><span id="timeTitle" title="Right-click for solar noon, or your own times"></span><span class="panel-sum" id="timeZone"></span></span>
+      <span class="panel-actions"><button class="x" id="timePlay"></button><button class="x" id="timeMode"></button><button class="x" id="timeClose" aria-label="Close the Time widget" title="Close">×</button></span>
+    </div>
+    <div class="sun-body" data-full>
+      <div class="field" id="timeSliderField" title="Right-click for solar noon, or your own times"><input type="range" id="dateHour" min="0" max="24" step="0.0833" aria-label="Time"></div>
+      <div class="pick-body" id="timePicker">
+        <div class="clock-head">
+          <button class="clock-part" id="timePickH" title="Choose the hour"></button><span class="clock-colon">:</span><button class="clock-part" id="timePickM" title="Choose the minute"></button>
+        </div>
+        <svg class="clock-dial" id="timePickDial" viewBox="0 0 240 240" tabindex="0" role="slider" aria-label="Hour"></svg>
       </div>
     </div>
   </section>
@@ -176,7 +193,7 @@
       <div id="comfortRead" class="utci-read"></div>
       <div id="comfortSun" class="sun-state" data-full></div>
       <div class="field" data-full>
-        <div class="field-label"><button class="field-toggle" id="comfortToggle" aria-controls="comfortDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button><output id="comfortWhen" title="Date and time from the Date widget"></output></div>
+        <div class="field-label"><button class="field-toggle" id="comfortToggle" aria-controls="comfortDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button><output id="comfortWhen" title="Date and time from the Date and Time widgets"></output></div>
         <div id="comfortDetails" class="field-details" hidden>
           <div class="field">
             <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
@@ -209,7 +226,7 @@
       </div>
       <div class="field" data-full>
         <div class="field-label"><span>Time span</span><output id="exposureHoursOut"></output></div>
-        <select class="exposure-span" id="exposureTimeSpan" aria-label="Time span" title="The times tested each day, round the Date widget's time (S). Both ends are included"></select>
+        <select class="exposure-span" id="exposureTimeSpan" aria-label="Time span" title="The times tested each day, round the Time widget's time. Both ends are included"></select>
       </div>
       <label class="field-label exposure-inline" data-full><span>Interval</span><select class="exposure-span" id="exposureStep" title="Time between the times tested"></select></label>
       <label class="field-label exposure-inline" data-full><span>Grid spacing</span><select class="exposure-span" id="exposureSpacing" title="Most distance between the points tested on the surfaces. Closer is finer, and slower"></select></label>

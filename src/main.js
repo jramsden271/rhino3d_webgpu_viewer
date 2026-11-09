@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -18,7 +18,9 @@ const state = {
   lightsOn: true,
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
-  datePanel: false,
+  datePanel: false, timePanel: false,
+  // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
+  dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
   weatherPanel: false,
   weatherViewOpen: true, // the Weather widget's View section is open
   weatherOn: true,  // the Weather widget's switch: off, none of its View items show, whatever is ticked
@@ -235,7 +237,7 @@ function frameState() {
   return s;
 }
 
-// Clouds: the weather file's sky at the Date widget's date and time, and how far the clouds have
+// Clouds: the weather file's sky at the Date and Time widgets' date and time, and how far the clouds have
 // drifted. They move with the 10 m wind times the Weather widget's multiplier (clouds sit higher,
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
@@ -252,7 +254,7 @@ function currentSky(altitude) {
 const VIEW_ITEMS = ['sun', 'sky', 'clouds', 'haze', 'path'];
 const VIEW_NEEDS = { sun: 'location', sky: 'location', clouds: 'epw', haze: 'epw', path: 'location' };
 const VIEW_TITLES = {
-  sun: 'Sunlight and shadows at the Date widget\'s date and time, and the moon\'s at night',
+  sun: 'Sunlight and shadows at the Date and Time widgets\' date and time, and the moon\'s at night',
   sky: 'The sky behind the model. Off: a plain white background, for screenshots. The light on the model is the same either way',
   clouds: 'The weather file\'s clouds, drifting with its wind. They show in the sky, and cast shadows with the Sun on',
   haze: 'The weather file\'s haze: dims the sun beyond what the clouds account for, and sets how bright the sky\'s light is, from its radiation',
@@ -2164,6 +2166,8 @@ function applyFileLocation(loc) {
 }
 
 const dayName = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
 
 // The Date and Weather widgets, and the widgets that follow the date and time.
 function syncDateWeather() {
@@ -2174,15 +2178,164 @@ function syncDateWeather() {
 }
 
 function syncDatePanel() {
-  const S = state.sun;
+  const S = state.sun, doy = Math.round(S.doy), datePick = state.dateMode === 'picker', timePick = state.timeMode === 'picker';
   document.querySelector('[data-act="date"]').setAttribute('aria-pressed', String(state.datePanel));
+  document.querySelector('[data-act="time"]').setAttribute('aria-pressed', String(state.timePanel));
   $('dateDay').max = daysInYear(EPW_YEAR);
   $('dateDay').value = S.doy;
   $('dateHour').value = S.hour;
-  $('dateDayOut').textContent = dayName(S.doy);
-  $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
-  $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
-  $('dateSumHour').textContent = fmtHour(S.hour);
+  // The toolbar buttons and the widgets' titles read the date and the time ("9 June", "09:00"),
+  // and the clocks' hands show it.
+  $('dateLabel').textContent = $('dateTitle').textContent = dayFull(doy);
+  $('timeLabel').textContent = $('timeTitle').textContent = fmtClock(S.hour);
+  $('timeZone').textContent = activeLocation() ? fmtUtc(S.utcOffset) : '';
+  const mins = Math.round(S.hour * 60) % 1440;
+  for (const h of document.querySelectorAll('.clock-h')) h.setAttribute('transform', `rotate(${((mins / 2) % 360).toFixed(1)} 12 12)`);
+  for (const m of document.querySelectorAll('.clock-m')) m.setAttribute('transform', `rotate(${(mins % 60) * 6} 12 12)`);
+  $('dateSliderField').hidden = datePick; $('datePicker').hidden = !datePick;
+  $('timeSliderField').hidden = timePick; $('timePicker').hidden = !timePick;
+  drawSunHeads();
+  if (datePick) syncDayPicker();
+  if (timePick) syncTimePicker();
+}
+
+// The Date and Time widgets' title-bar buttons: slider or picker, and for the time, run through the day.
+const HEAD_ICONS = {
+  slider: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.2 6h2M6.8 6h4"/><circle cx="4.9" cy="6" r="1.8"/></svg>',
+  calendar: '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.75" y="2.5" width="8.5" height="7.75" rx="1"/><path d="M1.75 5.2h8.5M4.2 1.2v2.4M7.8 1.2v2.4"/></svg>',
+  clock: '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.8 1.1"/></svg>',
+  play: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.6 2.3v7.4L9.5 6z"/></svg>',
+  pause: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.3 2.6v6.8M7.7 2.6v6.8"/></svg>',
+};
+function drawSunHeads() {
+  const set = (b, icon, title) => {
+    if (b.dataset.icon !== icon) { b.innerHTML = HEAD_ICONS[icon]; b.dataset.icon = icon; }
+    b.title = title; b.setAttribute('aria-label', title);
+  };
+  const datePick = state.dateMode === 'picker', timePick = state.timeMode === 'picker';
+  set($('dateMode'), datePick ? 'slider' : 'calendar', datePick ? 'Show the slider' : 'Show the calendar');
+  set($('timeMode'), timePick ? 'slider' : 'clock', timePick ? 'Show the slider' : 'Show the clock');
+  set($('timePlay'), sunAnim ? 'pause' : 'play', sunAnim ? 'Stop' : 'Run the time from sunrise to sunset');
+  $('timePlay').classList.toggle('on', !!sunAnim);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The pickers, in the Date and Time widgets' picker mode. A click sets the date or time at once,
+// as the sliders do.
+
+let pickMonth = 1, pickDoy = 0; // the month the calendar shows, and the date it last showed
+
+function syncDayPicker() {
+  const doy = Math.round(state.sun.doy), grid = $('dayPickGrid');
+  // A new date (from the slider, a menu, the file) shows its month; the arrows only browse.
+  if (doy !== pickDoy) { pickDoy = doy; pickMonth = dateFromDayOfYear(EPW_YEAR, doy).month; }
+  $('dayPickMonth').textContent = MONTHS_FULL[pickMonth - 1];
+  if (grid.dataset.month !== String(pickMonth)) {
+    const first = dayOfYear(EPW_YEAR, pickMonth, 1), next = pickMonth === 12 ? daysInYear(EPW_YEAR) + 1 : dayOfYear(EPW_YEAR, pickMonth + 1, 1);
+    grid.innerHTML = '';
+    for (let d = first; d < next; d++) {
+      const b = document.createElement('button');
+      b.dataset.doy = d;
+      b.textContent = d - first + 1;
+      b.setAttribute('aria-label', dayFull(d));
+      grid.appendChild(b);
+    }
+    grid.dataset.month = pickMonth;
+  }
+  for (const b of grid.children) { const on = +b.dataset.doy === doy; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+}
+
+// The time picker is a clock face, as on a phone: the hours in two rings (00 to 11 outside, 12 to
+// 23 inside), then the minutes, to the minute. Click or drag round the face; letting go of an hour moves on to the
+// minutes. The hour and minute at the top switch between them. The arrow keys step the face.
+let clockMode = 'h';
+const CLOCK = { c: 120, face: 116, outer: 96, inner: 64 }; // the dial's SVG geometry
+
+// The time as an hour (0 to 23) and minutes; 24:00 is 23 h and 60 min.
+function pickedTime() {
+  const m = Math.round(state.sun.hour * 60), h = Math.min(23, Math.floor(m / 60));
+  return { h, m: m - h * 60 };
+}
+
+function syncTimePicker() {
+  const { h, m } = pickedTime(), end = m >= 60, hourMode = clockMode === 'h', { c, face, outer, inner } = CLOCK;
+  $('timePickH').textContent = end ? '24' : String(h).padStart(2, '0');
+  $('timePickM').textContent = end ? '00' : String(m).padStart(2, '0');
+  $('timePickH').classList.toggle('on', hourMode); $('timePickH').setAttribute('aria-pressed', String(hourMode));
+  $('timePickM').classList.toggle('on', !hourMode); $('timePickM').setAttribute('aria-pressed', String(!hourMode));
+  const at = (turn, r) => [c + r * Math.sin(turn * 2 * Math.PI), c - r * Math.cos(turn * 2 * Math.PI)];
+  const text = (x, y, s, cls) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="${cls}">${s}</text>`;
+  let labels = '', knob;
+  if (hourMode) {
+    const sel = end ? 0 : h;
+    for (let k = 0; k < 24; k++) {
+      const [x, y] = at((k % 12) / 12, k < 12 ? outer : inner);
+      const cls = k < 12 ? (k === sel ? 'outer on' : 'outer') : (k === sel ? 'inner on' : 'inner');
+      labels += text(x, y, k === 0 ? '00' : k, cls);
+    }
+    knob = { p: at((sel % 12) / 12, sel < 12 ? outer : inner), dot: false };
+  } else {
+    const sel = end ? 0 : m;
+    for (let k = 0; k < 60; k += 5) { const [x, y] = at(k / 60, outer); labels += text(x, y, String(k).padStart(2, '0'), `outer${k === sel ? ' on' : ''}`); }
+    knob = { p: at(sel / 60, outer), dot: sel % 5 !== 0 };
+  }
+  const [kx, ky] = knob.p, dial = $('timePickDial');
+  // The knob goes under the labels, so the chosen one reads white on it.
+  dial.innerHTML = `<circle class="face" cx="${c}" cy="${c}" r="${face}"/><line class="hand" x1="${c}" y1="${c}" x2="${kx.toFixed(1)}" y2="${ky.toFixed(1)}"/>` +
+    `<circle class="hub" cx="${c}" cy="${c}" r="3"/><circle class="knob" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="17"/>` +
+    (knob.dot ? `<circle class="knob-dot" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="2.5"/>` : '') + labels;
+  dial.setAttribute('aria-label', hourMode ? 'Hour' : 'Minute');
+  dial.setAttribute('aria-valuetext', hourMode ? $('timePickH').textContent : $('timePickM').textContent);
+}
+
+// Sets the hour or the minute, keeping the other.
+function setClock(mode, v) {
+  const { h, m } = pickedTime();
+  if (sunAnim) toggleDatePlay();
+  setSun({ hour: mode === 'h' ? v + (m >= 60 ? 0 : m) / 60 : h + v / 60 });
+  saveViewState();
+}
+
+function bindClock() {
+  const dial = $('timePickDial');
+  // The hour or minute under the pointer: by its angle, and for the hours by the ring it is nearer.
+  const valueAt = (e) => {
+    const r = dial.getBoundingClientRect(), s = (2 * CLOCK.c) / r.width;
+    const dx = (e.clientX - r.left) * s - CLOCK.c, dy = (e.clientY - r.top) * s - CLOCK.c;
+    const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
+    if (clockMode === 'm') return Math.round(turn * 60) % 60;
+    const k = Math.round(turn * 12) % 12;
+    return Math.hypot(dx, dy) < (CLOCK.outer + CLOCK.inner) / 2 ? k + 12 : k;
+  };
+  let dragging = false;
+  dial.addEventListener('pointerdown', (e) => { dragging = true; dial.setPointerCapture(e.pointerId); setClock(clockMode, valueAt(e)); });
+  dial.addEventListener('pointermove', (e) => { if (dragging) { const v = valueAt(e), { h, m } = pickedTime(); if (v !== (clockMode === 'h' ? h : m)) setClock(clockMode, v); } });
+  const release = () => { if (!dragging) return; dragging = false; if (clockMode === 'h') { clockMode = 'm'; syncTimePicker(); } };
+  dial.addEventListener('pointerup', release);
+  dial.addEventListener('pointercancel', () => { dragging = false; });
+  dial.addEventListener('keydown', (e) => {
+    const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (step) {
+      const { h, m } = pickedTime();
+      if (clockMode === 'h') setClock('h', (h + step + 24) % 24); else setClock('m', ((m >= 60 ? 0 : m) + step + 60) % 60);
+    } else if (e.key === 'Enter' && clockMode === 'h') { clockMode = 'm'; syncTimePicker(); }
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
+  for (const [id, mode] of [['timePickH', 'h'], ['timePickM', 'm']]) $(id).addEventListener('click', () => { clockMode = mode; syncTimePicker(); dial.focus(); });
+}
+
+function bindPickers() {
+  const pick = (changes) => { if (sunAnim) toggleDatePlay(); setSun(changes); saveViewState(); };
+  $('dayPickGrid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) pick({ doy: +b.dataset.doy }); });
+  const month = (d) => { pickMonth = ((pickMonth - 1 + d + 12) % 12) + 1; syncDayPicker(); };
+  $('dayPickPrev').addEventListener('click', () => month(-1));
+  $('dayPickNext').addEventListener('click', () => month(1));
+  bindClock();
+  // The title bars' buttons: slider or picker, and run the time through the day.
+  $('dateMode').addEventListener('click', () => { state.dateMode = state.dateMode === 'picker' ? 'slider' : 'picker'; pickDoy = 0; savePrefs(); syncDatePanel(); });
+  $('timeMode').addEventListener('click', () => { state.timeMode = state.timeMode === 'picker' ? 'slider' : 'picker'; clockMode = 'h'; savePrefs(); syncDatePanel(); });
+  $('timePlay').addEventListener('click', toggleDatePlay);
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -2278,11 +2431,15 @@ function toggleDatePanel() {
   $('datePanel').hidden = !state.datePanel;
   syncDateWeather();
 }
+function toggleTimePanel() {
+  state.timePanel = !state.timePanel;
+  $('timePanel').hidden = !state.timePanel;
+  syncDateWeather();
+}
 
 // Runs the time through the day: from just before sunrise to just after sunset at the location.
 function toggleDatePlay() {
-  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; $('datePlay').classList.remove('on'); $('datePlay').textContent = '▶'; return; }
-  $('datePlay').classList.add('on'); $('datePlay').textContent = '❚❚';
+  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; drawSunHeads(); return; }
   let last = performance.now();
   const step = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -2294,6 +2451,7 @@ function toggleDatePlay() {
     sunAnim = requestAnimationFrame(step);
   };
   sunAnim = requestAnimationFrame(step);
+  drawSunHeads();
 }
 
 function bindDateWeather() {
@@ -2316,14 +2474,12 @@ function bindDateWeather() {
     };
     return open;
   };
-  const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
   // Each slider's whole field takes the menu, and so does the minimised widget's reading in the
   // title bar, in place of its lock menu.
   const onMenu = (ids, show) => {
     for (const id of ids) ($(id).closest('.field') || $(id)).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
   };
-  onMenu(['dateDay', 'dateSumDay'], (e) => {
+  onMenu(['dateDay', 'dateTitle'], (e) => {
     const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
       const v = dayOfYear(EPW_YEAR, m, d);
       return { v, label: `${dayFull(v)} · ${what}` };
@@ -2331,13 +2487,13 @@ function bindDateWeather() {
     presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
       go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
   });
-  onMenu(['dateHour', 'dateSumHour'], (e) => {
+  onMenu(['dateHour', 'timeTitle'], (e) => {
     const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
-    const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
+    const fixed = noon != null ? [{ v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }] : [];
     presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
       go: (m) => setSun({ hour: m / 60 }) })([e.clientX, e.clientY]);
   });
-  $('datePlay').addEventListener('click', toggleDatePlay);
+  bindPickers();
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherAdd').addEventListener('click', () => (activeLocation() ? openWeatherDialog() : openLocationDialog()));
@@ -2350,7 +2506,7 @@ function bindDateWeather() {
   syncDateWeather();
 }
 
-// The Weather widget: the sun and the weather file at the Date widget's date and time, and what to show.
+// The Weather widget: the sun and the weather file at the Date and Time widgets' date and time, and what to show.
 function toggleWeatherPanel() {
   state.weatherPanel = !state.weatherPanel;
   $('weatherPanel').hidden = !state.weatherPanel;
@@ -2482,7 +2638,7 @@ function openWeatherDialog() {
     el('epw').innerHTML = epwStatusHtml();
     el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
     el('remove').hidden = !e;
-    el('note').textContent = `The weather file gives the weather in the Weather widget at the Date widget's date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
+    el('note').textContent = `The weather file gives the weather in the Weather widget at the Date and Time widgets' date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
       ? 'It belongs to the open model; with none open, it is cleared when one is opened.'
       : model.handle ? `It belongs to ${model.name} and comes back when you reopen it from Recent files.`
         : `It belongs to ${model.name} while it is open.`}`;
@@ -3002,7 +3158,7 @@ const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
 const fmtMetres = (m) => `${m} m`;
 const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
 
-// The days and hours tested: the chosen spans round the Date widget's date and time.
+// The days and hours tested: the chosen spans round the Date and Time widgets' date and time.
 const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy, EPW_YEAR), hours: exposureHours(expo.timeSpan, state.sun.hour) });
 
 // The settings a surface and a run depend on, or null when there is nothing to work out.
@@ -3191,9 +3347,9 @@ function showExposureHelp() {
   Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
     <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
-    <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date widget (press S), shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
+    <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date and Time widgets, shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
     <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
-    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Date widget.</p>
+    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Time widget.</p>
     <p>With <b>Update automatically</b> off, the results stay as they are while you change the settings, which keeps long periods quick to set up. Tick it again to calculate.</p>
     <p>The results are not kept: they go when the model is closed.</p>` });
 }
@@ -4141,7 +4297,7 @@ function sunState(r) {
 }
 
 // The Thermal comfort panel ---------------------------------------------------------------------
-// UTCI at the camera from the weather file at the Date widget's date and time: air temperature and
+// UTCI at the camera from the weather file at the Date and Time widgets' date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised when the camera is in sunlight by
 // the direct sun on the person (SolarCal) and by sun-warmed surroundings (a placeholder).
@@ -4252,7 +4408,7 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
-    <p>It is estimated at the camera, at the Date widget's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
+    <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
@@ -4456,8 +4612,10 @@ function bindUi() {
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
+  document.querySelector('[data-act="time"]').addEventListener('click', toggleTimePanel);
   bindCompass();
   $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
+  $('timeClose').addEventListener('click', () => state.timePanel && toggleTimePanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
@@ -4473,7 +4631,7 @@ function bindUi() {
   bindFileDialog();
   bindDateWeather();
   // Each widget's title carries its toolbar button's icon.
-  for (const [btn, panel] of [['[data-act="date"]', 'datePanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
+  for (const [btn, panel] of [['[data-act="date"]', 'datePanel'], ['[data-act="time"]', 'timePanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
     ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');

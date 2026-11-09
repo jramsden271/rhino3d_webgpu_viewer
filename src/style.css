@@ -103,6 +103,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 /* The widget that takes the keys first (see bindWidgetKeys in main.js). */
 .panel.active-widget > .panel-head > span:first-child { text-decoration: underline 2px var(--accent); text-underline-offset: 4px; }
 .panel-sum { margin-left: 10px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.clock-h { stroke-width: 2.3; }
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
@@ -219,6 +220,39 @@ button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-s
 .range input { flex: 1; accent-color: var(--accent); min-width: 0; }
 .range output { width: 34px; text-align: right; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pop-actions { display: flex; justify-content: space-between; align-items: center; }
+/* The Date and Time widgets: a slider, or a picker (a calendar, a clock face). */
+.pick-body { display: flex; flex-direction: column; gap: 10px; }
+.pick-body[hidden], #dateSliderField[hidden], #timeSliderField[hidden] { display: none; }
+#timeZone { margin-left: 0; }
+/* Minimised, there is no slider or picker to switch between. */
+.panel.min :is(#dateMode, #timeMode) { display: none; }
+.pick-month { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
+.pick-nav { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; }
+.pick-nav:hover { background: var(--hover); }
+.pick-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pick-grid { display: grid; gap: 3px; }
+.pick-days { grid-template-columns: repeat(7, 1fr); }
+.pick-grid button { height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.pick-grid button:hover { background: var(--hover); }
+.pick-grid button.on { background: var(--accent); color: #fff; font-weight: 600; }
+.pick-grid button:focus-visible, .pick-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The time picker's clock face. */
+.clock-head { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.clock-part { font: 500 36px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; padding: 8px 12px; border: 0; border-radius: 10px; background: var(--hover); color: var(--text); cursor: pointer; }
+.clock-part:hover { background: var(--accent-soft); }
+.clock-part.on { background: var(--accent-soft); color: var(--accent); }
+.clock-part:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clock-colon { font: 500 36px/1 system-ui, sans-serif; }
+.clock-dial { display: block; width: 100%; height: auto; aspect-ratio: 1; max-width: 230px; margin: 0 auto; stroke: none; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.clock-dial:focus { outline: none; }
+.clock-dial:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
+.clock-dial .face { fill: var(--hover); }
+.clock-dial .hand { stroke: var(--accent); stroke-width: 2; }
+.clock-dial .hub, .clock-dial .knob { fill: var(--accent); }
+.clock-dial .knob-dot { fill: #fff; }
+.clock-dial text { font-size: 14px; fill: var(--text); text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; pointer-events: none; }
+.clock-dial text.inner { font-size: 12px; fill: var(--muted); }
+.clock-dial text.on { fill: #fff; font-weight: 600; }
 .pop-actions .link[hidden] { visibility: hidden; display: inline; }
 
 .inspect { position: absolute; top: 0; left: 0; width: max-content; min-width: 300px; max-width: min(800px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; z-index: 4; padding: 0 0 8px; }
