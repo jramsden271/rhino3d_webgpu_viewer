@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -18,7 +18,9 @@ const state = {
   lightsOn: true,
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
-  datePanel: false,
+  datePanel: false, timePanel: false,
+  // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
+  dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
   weatherPanel: false,
   weatherViewOpen: true, // the Weather widget's View section is open
   weatherOn: true,  // the Weather widget's switch: off, none of its View items show, whatever is ticked
@@ -76,6 +78,7 @@ const driver = new Driver({
   onExit: () => { if (stick) endStick(); $('driveHint').hidden = true; $('drivePanel').hidden = true; endPlacing(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncDrivePanel(); redraw(); },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
+  splash: () => { const s = $('driveSplash'); s.hidden = false; s.classList.remove('go'); void s.offsetWidth; s.classList.add('go'); },
   side: () => (drivesOnLeft() ? -1 : 1),
 });
 driver.settings.collide = true;
@@ -234,7 +237,7 @@ function frameState() {
   return s;
 }
 
-// Clouds: the weather file's sky at the Date widget's date and time, and how far the clouds have
+// Clouds: the weather file's sky at the Date and Time widgets' date and time, and how far the clouds have
 // drifted. They move with the 10 m wind times the Weather widget's multiplier (clouds sit higher,
 // where the wind is stronger, and the multiplier also makes the drift easier to see).
 let comfortAt = 0;   // when the thermal comfort panel last followed the drifting clouds
@@ -251,7 +254,7 @@ function currentSky(altitude) {
 const VIEW_ITEMS = ['sun', 'sky', 'clouds', 'haze', 'path'];
 const VIEW_NEEDS = { sun: 'location', sky: 'location', clouds: 'epw', haze: 'epw', path: 'location' };
 const VIEW_TITLES = {
-  sun: 'Sunlight and shadows at the Date widget\'s date and time, and the moon\'s at night',
+  sun: 'Sunlight and shadows at the Date and Time widgets\' date and time, and the moon\'s at night',
   sky: 'The sky behind the model. Off: a plain white background, for screenshots. The light on the model is the same either way',
   clouds: 'The weather file\'s clouds, drifting with its wind. They show in the sky, and cast shadows with the Sun on',
   haze: 'The weather file\'s haze: dims the sun beyond what the clouds account for, and sets how bright the sky\'s light is, from its radiation',
@@ -455,6 +458,7 @@ async function openBytes(name, bytes, handle = null) {
     await new Promise((r) => setTimeout(r, 20));
     Object.assign(renderer, { specialsOn: state.specials, layerMaterials: null, layerColours: null, layerSpecials: null });
     renderer.setModel(m.batches);
+    bumpModel('objects');
     m.batches = null;
     model.loadMs = performance.now() - t0;
     resetObjectState();
@@ -569,27 +573,24 @@ function applyLayerVisibility() {
 function buildLayerTree() {
   const tree = $('layerTree'), L = model.layers, kids = L.map(() => []), roots = [];
   for (const l of L) (l.parent >= 0 ? kids[l.parent] : roots).push(l.index);
-  // Total object count including sub-layers; empty branches are hidden.
+  // Total object count including sub-layers; empty branches are hidden (objects can move between
+  // layers, so every layer has a row and the counts are worked out again on refresh).
   const total = L.map(() => 0);
   const sum = (i) => (total[i] = L[i].count + kids[i].reduce((s, k) => s + sum(k), 0));
-  roots.forEach(sum);
   const collapsed = new Set();
   tree.innerHTML = '';
   const caretSvg = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
   const rows = [];
   const add = (i, depth) => {
-    if (!total[i]) return;
     const l = L[i], row = document.createElement('div');
     row.className = 'layer-row';
     row.setAttribute('role', 'treeitem');
     row.style.paddingLeft = 10 + depth * 16 + 'px';
-    const hasKids = kids[i].some((k) => total[k]);
-    row.innerHTML = `<button class="caret ${hasKids ? '' : 'empty'}" aria-label="Expand">${caretSvg}</button>` +
-      `<input type="checkbox"><button class="swatch" title="Material for this layer"></button>` +
-      `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count">${total[i].toLocaleString()}</span>`;
+    row.innerHTML = `<button class="caret" aria-label="Expand">${caretSvg}</button>` +
+      `<input type="checkbox" class="eye" aria-label="Show this layer" title="Show or hide (Shift-click: isolate)"><span class="swatch"></span>` +
+      `<span class="layer-name"></span><span class="layer-special" hidden></span><span class="layer-count"></span>`;
     row.querySelector('.layer-name').textContent = l.name;
     row.title = l.fullPath;
-    row.querySelector('.swatch').addEventListener('click', (e) => openMaterialDialog(i, e.currentTarget));
     const cb = row.querySelector('input');
     cb.checked = layerOn[i];
     cb.addEventListener('click', (e) => {
@@ -608,7 +609,7 @@ function buildLayerTree() {
       refreshRows();
       layerRows.keepShown();
     });
-    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(i, row); });
+    row.addEventListener('dblclick', (e) => { if (!e.target.closest('input, button')) openMaterialDialog(layerRows.take(i), row); });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const r = row.getBoundingClientRect();
@@ -624,19 +625,22 @@ function buildLayerTree() {
   roots.forEach((r) => add(r, 0));
   const hiddenByCollapse = (i) => { for (let p = L[i].parent; p >= 0; p = L[p].parent) if (collapsed.has(p)) return true; return false; };
   function refreshRows() {
+    roots.forEach(sum);
     const filter = $('layerFilter').value.trim().toLowerCase(), match = new Set();
-    if (filter) for (const { i } of rows) if (L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
+    if (filter) for (const { i } of rows) if (total[i] && L[i].name.toLowerCase().includes(filter)) for (let a = i; a >= 0 && !match.has(a); a = L[a].parent) match.add(a);
     for (const { i, row, cb } of rows) {
       cb.checked = layerOn[i];
       row.classList.toggle('off', !layerOn[i]);
       row.classList.toggle('inherited-off', layerOn[i] && !layerEffective(i));
-      row.hidden = filter ? !match.has(i) : hiddenByCollapse(i);
+      row.hidden = !total[i] || (filter ? !match.has(i) : hiddenByCollapse(i));
       row.querySelector('.caret').classList.toggle('collapsed', collapsed.has(i));
+      row.querySelector('.caret').classList.toggle('empty', !kids[i].some((k) => total[k]));
+      row.querySelector('.layer-count').textContent = total[i].toLocaleString();
       const sw = row.querySelector('.swatch'), isMat = showsMaterial(), id = model.layers[i].id;
       sw.style.background = isMat ? lookBackground(layerLook(i)) : rgbHex(layerDisplayRgb(i));
       // Ring: set in the viewer ("Always off" alone does not count).
       sw.classList.toggle('edited', isMat ? !!state.layerMat[id] || !!state.layerSpecial[id] : !!state.layerColor[id]);
-      sw.title = isMat ? 'Material for this layer (Rendered view)' : 'Display colour for this layer (Shaded view)';
+      sw.title = isMat ? 'Material for this layer (Rendered view): double-click or right-click the row to edit' : 'Display colour for this layer (Shaded view): double-click or right-click the row to edit';
       // Magic material hint, in Rendered view.
       const tag = row.querySelector('.layer-special'), info = isMat && state.specials ? layerSpecialInfo(i) : { id: 0 };
       tag.hidden = !info.id;
@@ -649,6 +653,7 @@ function buildLayerTree() {
   refreshRows();
   layerRows.setRows(rows);
   buildLayerTree.refresh = refreshRows;
+  buildLayerTree.row = (i) => rows.find((x) => x.i === i)?.row;
   // Reveal a layer's row (expanding its parents) and flash it.
   buildLayerTree.reveal = (i) => {
     $('layerFilter').value = ''; // the layer might not match it
@@ -676,9 +681,15 @@ function openLayerMenu(picked, tree, [x, y]) {
     return model.objects.flatMap((o, id) => (set.has(o.layer) && !objectOff(id) && layerEffective(o.layer) ? [id] : []));
   };
   const own = visibleOn(picked), all = tree && visibleOn(tree);
+  // Move the selection here: one layer of the file's own (not one made for magic blocks).
+  const target = picked.length === 1 && !L[picked[0]].magic ? picked[0] : -1;
+  const moving = target < 0 ? 0 : state.sel.ids.filter((id) => model.objects[id].ai.layer !== target).length;
   showMenu(picked.length > 1 ? `${picked.length} layers` : L[picked[0]].fullPath, [
     { label: 'Select objects', n: own.length, run: () => selectObjects(own) },
     tree && { label: 'Select sublayer objects', n: all.length, run: () => selectObjects(all) },
+    target >= 0 && { label: 'Move selection to this layer', n: moving, run: () => moveSelectionToLayer(target) },
+    '-',
+    { label: showsMaterial() ? 'Edit material' : 'Edit colour', run: () => openMaterialDialog(picked, buildLayerTree.row?.(picked[0]) || $('layersPanel')) },
   ].filter(Boolean), [x, y]);
 }
 
@@ -732,23 +743,27 @@ function showMenu(titleText, items, [x, y], { add } = {}) {
 
 function closeLayerMenu() { $('layerMenu').hidden = true; }
 
-const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. A checkbox or right-click on a selected row acts on all the selected ${rows}.</p>`;
+const ROW_SELECT_HELP = (rows) => `<p><b>Selecting:</b> click a row to select it · <kbd>Ctrl</kbd>-click to add or remove a row · <kbd>Shift</kbd>-click to select a run of rows. An eye or right-click on a selected row acts on all the selected ${rows}.</p>`;
+// The keys a row list takes once clicked (see rowListKeys); other keys still reach the model.
+const ROW_KEYS_HELP = (rows, enter) => `<p><b>Keys</b>, once you click in the widget (its title is underlined): <kbd>Ctrl</kbd>+<kbd>A</kbd> select all the ${rows} · <kbd>↑</kbd> <kbd>↓</kbd> move the selection (<kbd>Shift</kbd> to extend it) · <kbd>Space</kbd> show or hide the selected ${rows} · <kbd>Enter</kbd> ${enter} · <kbd>Esc</kbd> clear the selection. Other keys, such as <kbd>F</kbd> or <kbd>Ctrl</kbd>+<kbd>Z</kbd>, work as usual; click in the view to give <kbd>Ctrl</kbd>+<kbd>A</kbd> back to the model.</p>`;
 
 function showLayersHelp() {
-  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The tick turns a layer and its sub-layers on or off. <kbd>Shift</kbd>-click a tick to isolate that layer.</p>
-    <p>The square, or double-clicking the row, sets the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
+  Dialog.open({ title: 'Layers', html: true, width: 420, body: `<p>The eye shows or hides a layer and its sub-layers. <kbd>Shift</kbd>-click an eye to isolate that layer.</p>
+    <p>The square shows the layer's colour or material. Double-click the row, or right-click it for <b>Edit colour</b> or <b>Edit material</b>, to set the layer's display colour in Shaded view, and its material and magic material in Rendered view. These reach objects whose source is “By layer”.</p>
     ${ROW_SELECT_HELP('layers')}
-    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers.</p>` });
+    <p><b>Right-click</b> to select the visible objects on a layer or its sub-layers, move the selected objects onto it, or edit its colour or material.</p>
+    ${ROW_KEYS_HELP('layers', 'edit their colour or material')}` });
 }
 
 function showBlocksHelp() {
   Dialog.open({ title: 'Blocks', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
-    <p>The tick hides every copy of a block. A copy shows only if it and every block around it are ticked. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
+    <p>The eye hides every copy of a block. A copy shows only if it and every block around it are shown. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
     <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
     <p>Clicking a tag on a selected row sets all the selected blocks.</p>
-    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>` });
+    <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>
+    ${ROW_KEYS_HELP('blocks', 'open their setting')}` });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -768,6 +783,8 @@ const SUB_SETTINGS = [
   ['byLayer', 'By layer: use each sub-element’s own layer', 'Each sub-element takes its colour and material from the layer it is on, not the layer of the block instance.'],
 ];
 const layerRows = new RowSelection(), blockRows = new RowSelection();
+// An open layer window follows the selected layers (clearing the selection leaves it as it is).
+layerRows.onChange = () => { const picked = layerRows.list(); if (matOpen() && picked.length) openMaterialDialog(picked); };
 const blockSetting = (id) => state.blockSub[id] || 'default';
 const blockMagic = (id) => MAGIC_BY_ID[state.blockMagic[id]?.id] || null;
 const blockLink = (id) => `<button class="link" data-block="${id}">${escapeHtml(model.blocks.get(id).name)}</button>`;
@@ -814,7 +831,7 @@ function buildBlockList() {
     const row = document.createElement('div');
     row.className = 'layer-row block-row';
     row.title = b.name;
-    row.innerHTML = `<input type="checkbox"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
+    row.innerHTML = `<input type="checkbox" class="eye" aria-label="Show this block" title="Show or hide every copy"><span class="layer-name"></span><button class="layer-special block-tag"></button><span class="layer-count">${b.copies.toLocaleString()}</span>`;
     row.querySelector('.layer-name').textContent = b.name;
     const cb = row.querySelector('input');
     cb.addEventListener('click', () => setBlocksOn(blockRows.has(b.id) ? blockRows.list() : [b.id], cb.checked));
@@ -994,7 +1011,7 @@ function bindLayerMenu() {
 // state.layerSpecial: layer id -> magic material (materials.js id, 0 = always off), as chosen
 //   in the viewer; layers not listed are Auto (matched by name).
 // They follow Rhino's rules: they change only objects whose colour or material comes from that
-// layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi }, see resolveLook
+// layer. state.objEdits: object key -> changed attributes ({ cs, oc, ms, mi, layer }, see resolveLook
 // in extract.js). state.blockSub: block definition id -> its sub-element setting (see Blocks).
 // state.blockMagic: block definition id -> its magic block, { id } (see magicblocks.js).
 // Everything is remembered in this browser per model, and can be written into a
@@ -1088,6 +1105,7 @@ function saveEdits() {
 // Push layer colours and materials to the renderer (no rebuild needed).
 function applyLayerMaterials(save = true) {
   if (!model) return;
+  bumpModel('appearance');
   model.specialOf = layerSpecialId;
   renderer.setMaterialRules(state.specials, layerMaterialFor,
     (i) => (model.layers[i] && state.layerColor[model.layers[i].id]) || null, layerSpecialId);
@@ -1103,6 +1121,7 @@ async function rebuildModel() {
   if (slow) { showBusy('Updating the model', 0.5); await new Promise((r) => setTimeout(r, 20)); }
   try {
     renderer.setModel(buildBatches(model));
+    bumpModel('objects');
   } finally {
     if (slow) hideBusy();
   }
@@ -1114,6 +1133,7 @@ async function rebuildModel() {
 
 function pushMagicBatches() {
   renderer.setModel(buildBatches(model));
+  bumpModel('objects');
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
@@ -1167,8 +1187,51 @@ function applyObjectEdits(objEdits = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Model versions, for analyses. An analysis keeps the key of what its results were worked out
+// from and compares it with modelKey(...) (see checkAnalysis), so a change made anywhere reaches
+// every analysis without each one listing the ways the model can change.
+//
+//   objects:    which objects there are, where they are and their layers: any rebuild of the batches
+//               (object edits, blocks, magic blocks, undo, Revert) and the hidden objects and blocks.
+//   appearance: layer and object colours and materials.
+//   visibility: which layers are on.
+//   site:       the location and north angle.
+// objects and appearance are counters that go up on any change, so undoing back to where results
+// were made also marks them out of date: a needless run, never a missed change. visibility and
+// site are their own values.
+
+const modelVersion = { objects: 0, appearance: 0 };
+const bumpModel = (part) => { modelVersion[part]++; };
+const MODEL_PARTS = {
+  objects: () => modelVersion.objects,
+  appearance: () => modelVersion.appearance,
+  visibility: () => layerOn.map(Number).join(''),
+  site: () => { const S = state.sun; return [S.lat, S.lon, S.utcOffset, S.north].join(); },
+};
+const modelKey = (...parts) => parts.map((p) => MODEL_PARTS[p]()).join('|');
+
+// Each frame, for an analysis with results: whether they still match their settings (key, from
+// modelKey and the analysis's own settings, or null for nothing to work out), and if not, a new
+// run after a pause (so dragging a slider runs once) or, without auto, a note that the results
+// are out of date. a holds the state: auto, stale, timer, and the keys of the results shown
+// (doneKey), the run going on (runKey), one waiting (pendingKey) and one stopped (stoppedKey).
+// run() starts a run; sync() shows a change of stale.
+function checkAnalysis(a, key, run, sync) {
+  // Settings changed and changed back: the results shown are up to date again.
+  if (key && key === a.doneKey && a.stale && !a.runKey) { a.stale = false; sync(); }
+  if (!key || key === a.doneKey || key === a.runKey || key === a.pendingKey) return;
+  if (!a.auto || key === a.stoppedKey) {
+    if (!a.stale) { a.stale = true; sync(); }
+    return;
+  }
+  a.pendingKey = key;
+  clearTimeout(a.timer);
+  a.timer = setTimeout(run, 150);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Undo and redo, as in Rhino: changes to the model (layer colours, materials and magic materials,
-// object colour and material sources, the north angle, Revert) can be undone. View
+// object colour and material sources and layers, the north angle, Revert) can be undone. View
 // changes, hiding objects, turning layers on or off and the site location (a viewer setting, not
 // part of the model) are not recorded. Each entry keeps the edit state from before the change;
 // undoing swaps it with the current one. Not kept between sessions.
@@ -1227,7 +1290,7 @@ async function restoreEdits(e) {
   if (magicChange) buildLayerTree();
   if (e.north !== undefined) setSun({ north: e.north });
   applyLayerMaterials();
-  if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  refreshMaterialDialog();
   afterBlockChange();
   pushObjectFlags();
 }
@@ -1253,7 +1316,11 @@ function loadEdits() {
   for (const [id, set] of Object.entries(e.blockMagic || {})) if (model.blocks.has(id) && MAGIC_BY_ID[set?.id]) state.blockMagic[id] = set;
   Object.assign(model, { specialOf: layerSpecialId, subSetting: (id) => state.blockSub[id], blockShown: (id) => !state.blockOff.has(id), magicOf: blockMagic });
   // Older saves numbered the material source "by parent" 2; Rhino's number for it is 3.
-  for (const d of Object.values(e.objEdits || {})) if (d.ms === 2) d.ms = 3;
+  for (const d of Object.values(e.objEdits || {})) {
+    if (d.ms === 2) d.ms = 3;
+    // A move to a layer this file doesn't have (or one made for magic blocks) is dropped.
+    if (d.layer !== undefined && !(Number.isInteger(d.layer) && model.layers[d.layer] && !model.layers[d.layer].magic)) delete d.layer;
+  }
   applyObjectEdits(e.objEdits);
   model.savedNorth = Number.isFinite(e.north) && Math.abs(e.north) <= 360 ? e.north : null;
   const n = editCount(), parts = [];
@@ -1343,30 +1410,53 @@ function reportRestored() {
 
 // Layer colour / material dialog -------------------------------------------------------------
 
-let matLayer = -1, matKind = 'material';
-function openMaterialDialog(i, anchor) {
-  const dlg = $('matDialog'), l = model.layers[i], look = layerLook(i);
-  matLayer = i;
+// The layer window edits one layer or several (the selected rows). Where the layers differ, a
+// setting shows as mixed until it is changed, and a change sets only that one setting on each.
+let matLayers = [], matKind = 'material', matMixed = {};
+const matOpen = () => !$('matDialog').hidden && matLayers.length > 0;
+const matWhat = () => (matLayers.length === 1 ? model.layers[matLayers[0]].name : `${matLayers.length} layers`);
+// The value shared by every layer in the window, or undefined when they differ.
+const matSame = (f) => { const v = new Set(matLayers.map(f)); return v.size === 1 ? [...v][0] : undefined; };
+
+// Without an anchor the window stays where it is (a refresh after an undo, a mode change or a new
+// selection).
+function openMaterialDialog(layers, anchor) {
+  const dlg = $('matDialog'), L = model.layers, one = layers.length === 1 ? L[layers[0]] : null;
+  matLayers = layers;
   matKind = showsMaterial() ? 'material' : 'colour';
-  const isMat = matKind === 'material';
-  $('matTitle').textContent = l.name;
-  $('matPath').textContent = l.fullPath.includes('::') ? l.fullPath : '';
+  const isMat = matKind === 'material', first = layers[0];
+  $('matTitle').textContent = one ? one.name : `${layers.length} layers`;
+  const names = layers.map((i) => L[i].name);
+  $('matPath').textContent = one ? (one.fullPath.includes('::') ? one.fullPath : '')
+    : names.slice(0, 4).join(', ') + (names.length > 4 ? ` and ${names.length - 4} more` : '');
+  $('matTitle').title = one ? one.fullPath : names.join(', ');
   for (const id of ['matSpecialRow', 'matSpecialHint', 'matGlossRow', 'matAlphaRow']) $(id).hidden = !isMat;
+  const sel = $('matSpecial');
+  sel.querySelector('option[value=""]')?.remove();
   if (isMat) {
-    const info = layerSpecialInfo(i);
-    $('matSpecial').value = info.auto ? 'auto' : String(info.id);
+    const special = matSame((i) => { const info = layerSpecialInfo(i); return info.auto ? 'auto' : String(info.id); });
+    matMixed = {
+      matSpecial: special === undefined,
+      matColor: matSame((i) => rgbHex(layerLook(i).rgb)) === undefined,
+      matGloss: matSame((i) => layerLook(i).gloss) === undefined,
+      matAlpha: matSame((i) => layerLook(i).alpha) === undefined,
+    };
+    if (matMixed.matSpecial) sel.insertAdjacentHTML('afterbegin', '<option value="" disabled>Mixed</option>');
+    sel.value = special ?? '';
+    const look = layerLook(first);
     $('matColor').value = rgbHex(look.rgb);
     $('matGloss').value = look.gloss;
     $('matAlpha').value = 1 - look.alpha;
-    $('matReset').hidden = !editedMaterialLayers().has(l.id);
+    $('matReset').hidden = !layers.some((i) => editedMaterialLayers().has(L[i].id));
   } else {
-    $('matSource').textContent = 'Display colour, used in Shaded view. ' + (state.layerColor[l.id] ? 'Set in this viewer.' : 'From the file.');
-    $('matColor').value = rgbHex(layerDisplayRgb(i));
-    $('matReset').hidden = !state.layerColor[l.id];
+    matMixed = { matColor: matSame((i) => rgbHex(layerDisplayRgb(i))) === undefined };
+    $('matColor').value = rgbHex(layerDisplayRgb(first));
+    $('matReset').hidden = !layers.some((i) => state.layerColor[L[i].id]);
   }
   syncMaterialDialog();
-  placePopover(dlg, anchor, 'layersPanel');
+  if (anchor) placePopover(dlg, anchor, 'layersPanel');
 }
+const refreshMaterialDialog = () => { if (matOpen()) openMaterialDialog(matLayers); };
 
 // Show a window beside a side panel, level with the row it belongs to.
 function placePopover(dlg, anchor, panel) {
@@ -1423,53 +1513,92 @@ function objectsNotFollowingLayer(i, kind) {
 }
 
 function syncMaterialDialog() {
-  const isMat = matKind === 'material', l = model.layers[matLayer];
+  const isMat = matKind === 'material', L = model.layers, n = matLayers.length, one = n === 1;
+  // "Set in this viewer" for all, some or none of the layers.
+  const setHere = (has) => {
+    const k = matLayers.filter((i) => has(L[i].id)).length;
+    return k === n ? 'Set in this viewer.' : k ? `Set in this viewer on ${k} of ${n}.` : null;
+  };
+  const differ = matMixed.matColor ? ' The colours differ; picking one sets it on all of them.' : '';
   if (isMat) {
-    const info = layerSpecialInfo(matLayer), look = layerLook(matLayer), name = info.id ? SPECIAL[info.id].name : '';
-    // The magic material and why; then where the colour comes from.
-    $('matSpecialHint').textContent = (info.auto ? (info.id ? `Auto: ${name}. ` : '') : '') + specialReason(info) +
-      (info.id && !state.specials ? ' Magic materials are off (Magic in the render mode menu).' : '');
-    $('matSource').textContent = 'Render material, used in Rendered view. ' + (state.layerMat[l.id] ? 'Set in this viewer.'
-      : look.special ? `Colour: the ${name} default.`
-      : l.materialName ? `From the file's material “${l.materialName}”.` : 'No material in the file (default).');
-    $('matColorLabel').textContent = look.special && SPECIAL[look.special].tones ? 'Base colour' : 'Colour';
-    $('matColorRow').title = look.special ? `${name} varies around this colour; any colour keeps the variation.` : '';
+    const first = matLayers[0], info = layerSpecialInfo(first), look = layerLook(first), name = info.id ? SPECIAL[info.id].name : '';
+    const off = !state.specials && matLayers.some((i) => layerSpecialId(i)) ? ' Magic materials are off (Magic in the render mode menu).' : '';
+    if (one) {
+      // The magic material and why; then where the colour comes from.
+      const l = L[first];
+      $('matSpecialHint').textContent = (info.auto ? (info.id ? `Auto: ${name}. ` : '') : '') + specialReason(info) + off;
+      $('matSource').textContent = 'Render material, used in Rendered view. ' + (state.layerMat[l.id] ? 'Set in this viewer.'
+        : look.special ? `Colour: the ${name} default.`
+        : l.materialName ? `From the file's material “${l.materialName}”.` : 'No material in the file (default).');
+    } else {
+      // With Auto, each layer has its own match.
+      const ids = matLayers.map(layerSpecialId), names = [...new Set(ids.filter(Boolean).map((id) => SPECIAL[id].name))];
+      const matched = ids.filter(Boolean).length;
+      $('matSpecialHint').textContent = (matMixed.matSpecial ? 'These layers have different magic material settings.'
+        : !info.auto ? (info.id ? `${name} on all ${n}, chosen in this viewer.` : 'Turned off in this viewer.')
+        : !matched ? 'Auto: none of these layers match a magic material.'
+        : `Auto: ${names.join(', ')} on ${matched === n ? `all ${n}` : `${matched} of ${n}`}.`) + off;
+      $('matSource').textContent = 'Render material, used in Rendered view. ' + (setHere((id) => state.layerMat[id]) || 'From the file.') + differ;
+    }
+    const tones = matLayers.some((i) => { const s = layerLook(i).special; return s && SPECIAL[s].tones; });
+    $('matColorLabel').textContent = tones ? 'Base colour' : 'Colour';
+    $('matColorRow').title = tones ? 'A magic material varies around this colour; any colour keeps the variation.' : '';
+  } else {
+    $('matSource').textContent = 'Display colour, used in Shaded view. ' + (setHere((id) => state.layerColor[id]) || 'From the file.') + differ;
+    $('matColorLabel').textContent = 'Colour';
+    $('matColorRow').title = '';
   }
-  $('matAlphaOut').textContent = Math.round($('matAlpha').value * 100) + '%';
-  $('matGlossOut').textContent = Math.round($('matGloss').value * 100) + '%';
-  const own = objectsNotFollowingLayer(matLayer, matKind);
-  const what = isMat ? 'material' : 'colour';
+  $('matAlphaOut').textContent = matMixed.matAlpha ? 'Mixed' : Math.round($('matAlpha').value * 100) + '%';
+  $('matGlossOut').textContent = matMixed.matGloss ? 'Mixed' : Math.round($('matGloss').value * 100) + '%';
+  const own = matLayers.flatMap((i) => objectsNotFollowingLayer(i, matKind));
+  const what = isMat ? 'material' : 'colour', many = own.length > 1;
   $('matOwn').innerHTML = own.length
-    ? `${own.length.toLocaleString()} object${own.length > 1 ? 's' : ''} on this layer ${own.length > 1 ? 'have their' : 'has its'} own ${what}, so ${own.length > 1 ? 'they are' : 'it is'} not changed here. <button class="link" id="matSelectOwn">Select ${own.length > 1 ? 'them' : 'it'}</button> to set the ${what} source to “By layer”.`
+    ? `${own.length.toLocaleString()} object${many ? 's' : ''} on ${one ? 'this layer' : 'these layers'} ${many ? 'have their' : 'has its'} own ${what}, so ${many ? 'they are' : 'it is'} not changed here. <button class="link" id="matSelectOwn">Select ${many ? 'them' : 'it'}</button> to set the ${what} source to “By layer”.`
     : '';
 }
 
-// Any edit in the dialog becomes this layer's own setting.
+// Any edit in the window becomes each layer's own setting. Only the setting changed is written,
+// so each layer keeps its other settings.
 function onMaterialEdit(e) {
-  const l = model.layers[matLayer], field = e?.target.id || '';
+  const L = model.layers, field = e?.target.id || '';
   const what = matKind === 'colour' ? 'layer colour' : field === 'matSpecial' ? 'magic material' : { matGloss: 'layer gloss', matAlpha: 'layer transparency' }[field] || 'layer material';
-  recordUndo(`Change ${what} (${l.name})`, field === 'matSpecial' ? null : `${matKind}:${l.id}:${field}`);
+  recordUndo(`Change ${what} (${matWhat()})`, field === 'matSpecial' ? null : `${matKind}:${matLayers.map((i) => L[i].id).join(',')}:${field}`);
   if (matKind === 'colour') {
-    state.layerColor[l.id] = hexRgb($('matColor').value);
-  } else if (e && e.target.id === 'matSpecial') {
+    const rgb = hexRgb($('matColor').value);
+    for (const i of matLayers) state.layerColor[L[i].id] = [...rgb];
+  } else if (field === 'matSpecial') {
     // A new magic material starts from its own default colour (other settings are kept).
-    const wasVeg = layerSpecialId(matLayer) === MAT_VEGETATION, v = $('matSpecial').value;
-    if (v === 'auto') delete state.layerSpecial[l.id]; else state.layerSpecial[l.id] = +v;
-    const m = state.layerMat[l.id];
-    if (m) {
-      delete m.rgb;
-      if (m.alpha >= 1 && !m.gloss) delete state.layerMat[l.id];
+    const v = $('matSpecial').value;
+    let veg = false;
+    for (const i of matLayers) {
+      const id = L[i].id, wasVeg = layerSpecialId(i) === MAT_VEGETATION;
+      if (v === 'auto') delete state.layerSpecial[id]; else state.layerSpecial[id] = +v;
+      const m = state.layerMat[id];
+      if (m) {
+        delete m.rgb;
+        if (m.alpha >= 1 && !m.gloss) delete state.layerMat[id];
+      }
+      if (wasVeg !== (layerSpecialId(i) === MAT_VEGETATION)) veg = true;
     }
-    $('matColor').value = rgbHex(layerLook(matLayer).rgb);
     // Foliage uses smoothed normals, which are built with the batches.
-    if (wasVeg !== (layerSpecialId(matLayer) === MAT_VEGETATION)) rebuildModel();
+    if (veg) rebuildModel();
   } else {
-    state.layerMat[l.id] = { rgb: hexRgb($('matColor').value), alpha: 1 - +$('matAlpha').value, gloss: +$('matGloss').value };
+    // A layer without its own colour keeps following the file or its magic material.
+    const key = { matColor: 'rgb', matAlpha: 'alpha', matGloss: 'gloss' }[field];
+    const v = key === 'rgb' ? hexRgb($('matColor').value) : key === 'alpha' ? 1 - +$('matAlpha').value : +$('matGloss').value;
+    for (const i of matLayers) {
+      const id = L[i].id, prev = state.layerMat[id], look = layerLook(i);
+      state.layerMat[id] = { ...(prev?.rgb ? { rgb: prev.rgb } : {}), alpha: look.alpha, gloss: look.gloss, [key]: key === 'rgb' ? [...v] : v };
+    }
   }
-  $('matReset').hidden = matKind === 'colour' ? false : !editedMaterialLayers().has(l.id);
-  if (matKind === 'colour') $('matSource').textContent = 'Display colour, used in Shaded view. Set in this viewer.';
-  syncMaterialDialog();
   applyLayerMaterials();
+  if (field === 'matSpecial') openMaterialDialog(matLayers); // the colours change with it
+  else {
+    matMixed[field] = false;
+    const edited = matKind === 'colour' ? (id) => !!state.layerColor[id] : (id) => editedMaterialLayers().has(id);
+    $('matReset').hidden = !matLayers.some((i) => edited(L[i].id));
+    syncMaterialDialog();
+  }
   if (state.sel.ids.length) showInspector();
 }
 
@@ -1480,25 +1609,28 @@ function bindMaterialDialog() {
   $('matSpecial').addEventListener('change', onMaterialEdit);
   // A drag of a slider or the colour picker is one undo step; it ends with the change event.
   for (const id of ['matColor', 'matGloss', 'matAlpha']) $(id).addEventListener('change', endUndoGroup);
-  const close = () => { $('matDialog').hidden = true; matLayer = -1; endUndoGroup(); };
+  const close = () => { $('matDialog').hidden = true; matLayers = []; endUndoGroup(); };
   $('matClose').addEventListener('click', close);
   $('matDone').addEventListener('click', close);
   $('matReset').addEventListener('click', () => {
-    const id = model.layers[matLayer].id;
-    recordUndo(`Reset layer ${matKind === 'colour' ? 'colour' : 'material'} (${model.layers[matLayer].name})`);
-    if (matKind === 'colour') delete state.layerColor[id];
-    else {
-      const wasVeg = layerSpecialId(matLayer) === MAT_VEGETATION;
+    const L = model.layers;
+    recordUndo(`Reset layer ${matKind === 'colour' ? 'colour' : 'material'} (${matWhat()})`);
+    let veg = false;
+    for (const i of matLayers) {
+      const id = L[i].id;
+      if (matKind === 'colour') { delete state.layerColor[id]; continue; }
+      const wasVeg = layerSpecialId(i) === MAT_VEGETATION;
       delete state.layerMat[id];
       delete state.layerSpecial[id];
-      if (wasVeg !== (layerSpecialId(matLayer) === MAT_VEGETATION)) rebuildModel();
+      if (wasVeg !== (layerSpecialId(i) === MAT_VEGETATION)) veg = true;
     }
+    if (veg) rebuildModel();
     applyLayerMaterials();
-    openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+    openMaterialDialog(matLayers);
   });
   $('matOwn').addEventListener('click', (e) => {
     if (e.target.id !== 'matSelectOwn') return;
-    selectObjects(objectsNotFollowingLayer(matLayer, matKind).filter((id) => !objectOff(id)));
+    selectObjects(matLayers.flatMap((i) => objectsNotFollowingLayer(i, matKind)).filter((id) => !objectOff(id)));
   });
 }
 
@@ -1541,6 +1673,7 @@ async function downloadCopy() {
       a.objectColor = rgba(ai.oc);
       a.materialSource = MS[ai.ms] ?? MS[0];
       a.materialIndex = ai.mi;
+      a.layerIndex = ai.layer;
     }
     // Block sub-element settings: in the file these are the sources of the definition's own objects.
     const idefs = doc.instanceDefinitions();
@@ -1650,8 +1783,8 @@ function resetObjectState() {
 
 let flagsHidden = '';
 function pushObjectFlags() {
-  const hidden = `${state.hidden.size},${state.blockOff.size}`;
-  if (hidden !== flagsHidden) { flagsHidden = hidden; recheckMagicGround(); }
+  const hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.');
+  if (hidden !== flagsHidden) { flagsHidden = hidden; bumpModel('objects'); recheckMagicGround(); }
   objFlags.fill(0);
   for (const id of state.hidden) objFlags[id] |= 1;
   if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
@@ -1784,22 +1917,46 @@ function showInspector() {
 
 function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
+// Record how an object's attributes now differ from the file in state.objEdits.
+function noteObjectEdit(o) {
+  const d = {};
+  for (const k of ['cs', 'ms', 'mi', 'layer']) if (o.ai[k] !== o.ai0[k]) d[k] = o.ai[k];
+  if (rgbHex(o.ai.oc) !== rgbHex(o.ai0.oc)) d.oc = o.ai.oc;
+  if (Object.keys(d).length) state.objEdits[o.id] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.id];
+}
+
 // Change the selected objects' attributes (see resolveLook in extract.js) and rebuild.
 async function setSelectedAttrs(change) {
   const n = state.sel.ids.length;
   recordUndo(`Change ${showsMaterial() ? 'material' : 'colour'} of ${n > 1 ? `${n} objects` : 'object'}`);
   for (const id of state.sel.ids) {
-    const o = model.objects[id];
-    Object.assign(o.ai, change);
-    const d = {};
-    for (const k of ['cs', 'ms', 'mi']) if (o.ai[k] !== o.ai0[k]) d[k] = o.ai[k];
-    if (rgbHex(o.ai.oc) !== rgbHex(o.ai0.oc)) d.oc = o.ai.oc;
-    if (Object.keys(d).length) state.objEdits[o.id] = { ...d, cs: o.ai.cs, ms: o.ai.ms }; else delete state.objEdits[o.id];
+    Object.assign(model.objects[id].ai, change);
+    noteObjectEdit(model.objects[id]);
   }
   await rebuildModel();
   saveEdits();
   showInspector();
-  if (!$('matDialog').hidden && matLayer >= 0) syncMaterialDialog();
+  if (matOpen()) syncMaterialDialog();
+}
+
+// Put the selected objects on layer i. Their colour and material follow it where they come from
+// the layer. Objects that end up on a layer that is off leave the selection, as in Rhino.
+async function moveSelectionToLayer(i) {
+  const ids = state.sel.ids.filter((id) => model.objects[id].ai.layer !== i);
+  if (!ids.length) return;
+  recordUndo(`Move ${ids.length > 1 ? `${ids.length.toLocaleString()} objects` : 'object'} to ${model.layers[i].name}`);
+  for (const id of ids) {
+    model.objects[id].ai.layer = i;
+    noteObjectEdit(model.objects[id]);
+  }
+  await rebuildModel();
+  saveEdits();
+  layerRows.keepShown();
+  const kept = state.sel.ids.filter((id) => layerEffective(model.objects[id].layer));
+  if (kept.length === state.sel.ids.length) showInspector();
+  else if (kept.length) selectObjects(kept);
+  else { state.sel = { ids: [], p: null }; $('inspect').hidden = true; inspectPin = null; pushObjectFlags(); }
+  if (matOpen()) syncMaterialDialog();
 }
 
 function hideSelected() {
@@ -1947,7 +2104,7 @@ function toggleFileDialog(show = $('fileDialog').hidden) {
 
 async function revertChanges() {
   const ok = await Dialog.confirm('Revert changes',
-    'Layer colours, materials and magic materials (back to Auto), object colours and materials, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, block and north angle changes, but not hidden objects or layer visibility.',
+    'Layer colours, materials and magic materials (back to Auto), object colours, materials and layers, block settings, the north angle, hidden objects, and layer and block visibility go back to how they are in the file.\n\nUndo (Ctrl+Z) brings back the colour, material, object layer, block and north angle changes, but not hidden objects or layer visibility.',
     'Revert', { danger: true });
   if (!ok) return;
   const n = editCount(), north = fileNorth();
@@ -2009,6 +2166,8 @@ function applyFileLocation(loc) {
 }
 
 const dayName = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
 
 // The Date and Weather widgets, and the widgets that follow the date and time.
 function syncDateWeather() {
@@ -2019,15 +2178,164 @@ function syncDateWeather() {
 }
 
 function syncDatePanel() {
-  const S = state.sun;
+  const S = state.sun, doy = Math.round(S.doy), datePick = state.dateMode === 'picker', timePick = state.timeMode === 'picker';
   document.querySelector('[data-act="date"]').setAttribute('aria-pressed', String(state.datePanel));
+  document.querySelector('[data-act="time"]').setAttribute('aria-pressed', String(state.timePanel));
   $('dateDay').max = daysInYear(EPW_YEAR);
   $('dateDay').value = S.doy;
   $('dateHour').value = S.hour;
-  $('dateDayOut').textContent = dayName(S.doy);
-  $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
-  $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
-  $('dateSumHour').textContent = fmtHour(S.hour);
+  // The toolbar buttons and the widgets' titles read the date and the time ("9 June", "09:00"),
+  // and the clocks' hands show it.
+  $('dateLabel').textContent = $('dateTitle').textContent = dayFull(doy);
+  $('timeLabel').textContent = $('timeTitle').textContent = fmtClock(S.hour);
+  $('timeZone').textContent = activeLocation() ? fmtUtc(S.utcOffset) : '';
+  const mins = Math.round(S.hour * 60) % 1440;
+  for (const h of document.querySelectorAll('.clock-h')) h.setAttribute('transform', `rotate(${((mins / 2) % 360).toFixed(1)} 12 12)`);
+  for (const m of document.querySelectorAll('.clock-m')) m.setAttribute('transform', `rotate(${(mins % 60) * 6} 12 12)`);
+  $('dateSliderField').hidden = datePick; $('datePicker').hidden = !datePick;
+  $('timeSliderField').hidden = timePick; $('timePicker').hidden = !timePick;
+  drawSunHeads();
+  if (datePick) syncDayPicker();
+  if (timePick) syncTimePicker();
+}
+
+// The Date and Time widgets' title-bar buttons: slider or picker, and for the time, run through the day.
+const HEAD_ICONS = {
+  slider: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.2 6h2M6.8 6h4"/><circle cx="4.9" cy="6" r="1.8"/></svg>',
+  calendar: '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1.75" y="2.5" width="8.5" height="7.75" rx="1"/><path d="M1.75 5.2h8.5M4.2 1.2v2.4M7.8 1.2v2.4"/></svg>',
+  clock: '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.8 1.1"/></svg>',
+  play: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.6 2.3v7.4L9.5 6z"/></svg>',
+  pause: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.3 2.6v6.8M7.7 2.6v6.8"/></svg>',
+};
+function drawSunHeads() {
+  const set = (b, icon, title) => {
+    if (b.dataset.icon !== icon) { b.innerHTML = HEAD_ICONS[icon]; b.dataset.icon = icon; }
+    b.title = title; b.setAttribute('aria-label', title);
+  };
+  const datePick = state.dateMode === 'picker', timePick = state.timeMode === 'picker';
+  set($('dateMode'), datePick ? 'slider' : 'calendar', datePick ? 'Show the slider' : 'Show the calendar');
+  set($('timeMode'), timePick ? 'slider' : 'clock', timePick ? 'Show the slider' : 'Show the clock');
+  set($('timePlay'), sunAnim ? 'pause' : 'play', sunAnim ? 'Stop' : 'Run the time from sunrise to sunset');
+  $('timePlay').classList.toggle('on', !!sunAnim);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The pickers, in the Date and Time widgets' picker mode. A click sets the date or time at once,
+// as the sliders do.
+
+let pickMonth = 1, pickDoy = 0; // the month the calendar shows, and the date it last showed
+
+function syncDayPicker() {
+  const doy = Math.round(state.sun.doy), grid = $('dayPickGrid');
+  // A new date (from the slider, a menu, the file) shows its month; the arrows only browse.
+  if (doy !== pickDoy) { pickDoy = doy; pickMonth = dateFromDayOfYear(EPW_YEAR, doy).month; }
+  $('dayPickMonth').textContent = MONTHS_FULL[pickMonth - 1];
+  if (grid.dataset.month !== String(pickMonth)) {
+    const first = dayOfYear(EPW_YEAR, pickMonth, 1), next = pickMonth === 12 ? daysInYear(EPW_YEAR) + 1 : dayOfYear(EPW_YEAR, pickMonth + 1, 1);
+    grid.innerHTML = '';
+    for (let d = first; d < next; d++) {
+      const b = document.createElement('button');
+      b.dataset.doy = d;
+      b.textContent = d - first + 1;
+      b.setAttribute('aria-label', dayFull(d));
+      grid.appendChild(b);
+    }
+    grid.dataset.month = pickMonth;
+  }
+  for (const b of grid.children) { const on = +b.dataset.doy === doy; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+}
+
+// The time picker is a clock face, as on a phone: the hours in two rings (00 to 11 outside, 12 to
+// 23 inside), then the minutes, to the minute. Click or drag round the face; letting go of an hour moves on to the
+// minutes. The hour and minute at the top switch between them. The arrow keys step the face.
+let clockMode = 'h';
+const CLOCK = { c: 120, face: 116, outer: 96, inner: 64 }; // the dial's SVG geometry
+
+// The time as an hour (0 to 23) and minutes; 24:00 is 23 h and 60 min.
+function pickedTime() {
+  const m = Math.round(state.sun.hour * 60), h = Math.min(23, Math.floor(m / 60));
+  return { h, m: m - h * 60 };
+}
+
+function syncTimePicker() {
+  const { h, m } = pickedTime(), end = m >= 60, hourMode = clockMode === 'h', { c, face, outer, inner } = CLOCK;
+  $('timePickH').textContent = end ? '24' : String(h).padStart(2, '0');
+  $('timePickM').textContent = end ? '00' : String(m).padStart(2, '0');
+  $('timePickH').classList.toggle('on', hourMode); $('timePickH').setAttribute('aria-pressed', String(hourMode));
+  $('timePickM').classList.toggle('on', !hourMode); $('timePickM').setAttribute('aria-pressed', String(!hourMode));
+  const at = (turn, r) => [c + r * Math.sin(turn * 2 * Math.PI), c - r * Math.cos(turn * 2 * Math.PI)];
+  const text = (x, y, s, cls) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="${cls}">${s}</text>`;
+  let labels = '', knob;
+  if (hourMode) {
+    const sel = end ? 0 : h;
+    for (let k = 0; k < 24; k++) {
+      const [x, y] = at((k % 12) / 12, k < 12 ? outer : inner);
+      const cls = k < 12 ? (k === sel ? 'outer on' : 'outer') : (k === sel ? 'inner on' : 'inner');
+      labels += text(x, y, k === 0 ? '00' : k, cls);
+    }
+    knob = { p: at((sel % 12) / 12, sel < 12 ? outer : inner), dot: false };
+  } else {
+    const sel = end ? 0 : m;
+    for (let k = 0; k < 60; k += 5) { const [x, y] = at(k / 60, outer); labels += text(x, y, String(k).padStart(2, '0'), `outer${k === sel ? ' on' : ''}`); }
+    knob = { p: at(sel / 60, outer), dot: sel % 5 !== 0 };
+  }
+  const [kx, ky] = knob.p, dial = $('timePickDial');
+  // The knob goes under the labels, so the chosen one reads white on it.
+  dial.innerHTML = `<circle class="face" cx="${c}" cy="${c}" r="${face}"/><line class="hand" x1="${c}" y1="${c}" x2="${kx.toFixed(1)}" y2="${ky.toFixed(1)}"/>` +
+    `<circle class="hub" cx="${c}" cy="${c}" r="3"/><circle class="knob" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="17"/>` +
+    (knob.dot ? `<circle class="knob-dot" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="2.5"/>` : '') + labels;
+  dial.setAttribute('aria-label', hourMode ? 'Hour' : 'Minute');
+  dial.setAttribute('aria-valuetext', hourMode ? $('timePickH').textContent : $('timePickM').textContent);
+}
+
+// Sets the hour or the minute, keeping the other.
+function setClock(mode, v) {
+  const { h, m } = pickedTime();
+  if (sunAnim) toggleDatePlay();
+  setSun({ hour: mode === 'h' ? v + (m >= 60 ? 0 : m) / 60 : h + v / 60 });
+  saveViewState();
+}
+
+function bindClock() {
+  const dial = $('timePickDial');
+  // The hour or minute under the pointer: by its angle, and for the hours by the ring it is nearer.
+  const valueAt = (e) => {
+    const r = dial.getBoundingClientRect(), s = (2 * CLOCK.c) / r.width;
+    const dx = (e.clientX - r.left) * s - CLOCK.c, dy = (e.clientY - r.top) * s - CLOCK.c;
+    const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
+    if (clockMode === 'm') return Math.round(turn * 60) % 60;
+    const k = Math.round(turn * 12) % 12;
+    return Math.hypot(dx, dy) < (CLOCK.outer + CLOCK.inner) / 2 ? k + 12 : k;
+  };
+  let dragging = false;
+  dial.addEventListener('pointerdown', (e) => { dragging = true; dial.setPointerCapture(e.pointerId); setClock(clockMode, valueAt(e)); });
+  dial.addEventListener('pointermove', (e) => { if (dragging) { const v = valueAt(e), { h, m } = pickedTime(); if (v !== (clockMode === 'h' ? h : m)) setClock(clockMode, v); } });
+  const release = () => { if (!dragging) return; dragging = false; if (clockMode === 'h') { clockMode = 'm'; syncTimePicker(); } };
+  dial.addEventListener('pointerup', release);
+  dial.addEventListener('pointercancel', () => { dragging = false; });
+  dial.addEventListener('keydown', (e) => {
+    const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (step) {
+      const { h, m } = pickedTime();
+      if (clockMode === 'h') setClock('h', (h + step + 24) % 24); else setClock('m', ((m >= 60 ? 0 : m) + step + 60) % 60);
+    } else if (e.key === 'Enter' && clockMode === 'h') { clockMode = 'm'; syncTimePicker(); }
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
+  for (const [id, mode] of [['timePickH', 'h'], ['timePickM', 'm']]) $(id).addEventListener('click', () => { clockMode = mode; syncTimePicker(); dial.focus(); });
+}
+
+function bindPickers() {
+  const pick = (changes) => { if (sunAnim) toggleDatePlay(); setSun(changes); saveViewState(); };
+  $('dayPickGrid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) pick({ doy: +b.dataset.doy }); });
+  const month = (d) => { pickMonth = ((pickMonth - 1 + d + 12) % 12) + 1; syncDayPicker(); };
+  $('dayPickPrev').addEventListener('click', () => month(-1));
+  $('dayPickNext').addEventListener('click', () => month(1));
+  bindClock();
+  // The title bars' buttons: slider or picker, and run the time through the day.
+  $('dateMode').addEventListener('click', () => { state.dateMode = state.dateMode === 'picker' ? 'slider' : 'picker'; pickDoy = 0; savePrefs(); syncDatePanel(); });
+  $('timeMode').addEventListener('click', () => { state.timeMode = state.timeMode === 'picker' ? 'slider' : 'picker'; clockMode = 'h'; savePrefs(); syncDatePanel(); });
+  $('timePlay').addEventListener('click', toggleDatePlay);
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -2045,6 +2353,7 @@ function syncWeatherPanel() {
   $('weatherOn').checked = state.weatherOn;
   $('weatherQuick').setAttribute('aria-pressed', String(state.weatherOn));
   document.querySelector('[data-act="weather"]').setAttribute('aria-pressed', String(state.weatherPanel));
+  syncToolsButton();
   syncViewChecks();
   if (!state.weatherPanel) return;
   const loc = activeLocation(), e = site.epw;
@@ -2123,11 +2432,15 @@ function toggleDatePanel() {
   $('datePanel').hidden = !state.datePanel;
   syncDateWeather();
 }
+function toggleTimePanel() {
+  state.timePanel = !state.timePanel;
+  $('timePanel').hidden = !state.timePanel;
+  syncDateWeather();
+}
 
 // Runs the time through the day: from just before sunrise to just after sunset at the location.
 function toggleDatePlay() {
-  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; $('datePlay').classList.remove('on'); $('datePlay').textContent = '▶'; return; }
-  $('datePlay').classList.add('on'); $('datePlay').textContent = '❚❚';
+  if (sunAnim) { cancelAnimationFrame(sunAnim); sunAnim = 0; drawSunHeads(); return; }
   let last = performance.now();
   const step = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -2139,6 +2452,7 @@ function toggleDatePlay() {
     sunAnim = requestAnimationFrame(step);
   };
   sunAnim = requestAnimationFrame(step);
+  drawSunHeads();
 }
 
 function bindDateWeather() {
@@ -2161,14 +2475,12 @@ function bindDateWeather() {
     };
     return open;
   };
-  const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
   // Each slider's whole field takes the menu, and so does the minimised widget's reading in the
   // title bar, in place of its lock menu.
   const onMenu = (ids, show) => {
     for (const id of ids) ($(id).closest('.field') || $(id)).addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); show(e); });
   };
-  onMenu(['dateDay', 'dateSumDay'], (e) => {
+  onMenu(['dateDay', 'dateTitle'], (e) => {
     const fixed = [[3, 21, 'equinox'], [6, 21, 'solstice'], [9, 23, 'equinox'], [12, 21, 'solstice']].map(([m, d, what]) => {
       const v = dayOfYear(EPW_YEAR, m, d);
       return { v, label: `${dayFull(v)} · ${what}` };
@@ -2176,13 +2488,13 @@ function bindDateWeather() {
     presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
       go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
   });
-  onMenu(['dateHour', 'dateSumHour'], (e) => {
+  onMenu(['dateHour', 'timeTitle'], (e) => {
     const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
-    const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
+    const fixed = noon != null ? [{ v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }] : [];
     presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
       go: (m) => setSun({ hour: m / 60 }) })([e.clientX, e.clientY]);
   });
-  $('datePlay').addEventListener('click', toggleDatePlay);
+  bindPickers();
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherAdd').addEventListener('click', () => (activeLocation() ? openWeatherDialog() : openLocationDialog()));
@@ -2195,7 +2507,7 @@ function bindDateWeather() {
   syncDateWeather();
 }
 
-// The Weather widget: the sun and the weather file at the Date widget's date and time, and what to show.
+// The Weather widget: the sun and the weather file at the Date and Time widgets' date and time, and what to show.
 function toggleWeatherPanel() {
   state.weatherPanel = !state.weatherPanel;
   $('weatherPanel').hidden = !state.weatherPanel;
@@ -2327,7 +2639,7 @@ function openWeatherDialog() {
     el('epw').innerHTML = epwStatusHtml();
     el('pick').textContent = e ? 'Replace…' : 'Choose EPW file…';
     el('remove').hidden = !e;
-    el('note').textContent = `The weather file gives the weather in the Weather widget at the Date widget's date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
+    el('note').textContent = `The weather file gives the weather in the Weather widget at the Date and Time widgets' date and time. A new one with a latitude and longitude also sets the site location (see Set location). ${!model
       ? 'It belongs to the open model; with none open, it is cleared when one is opened.'
       : model.handle ? `It belongs to ${model.name} and comes back when you reopen it from Recent files.`
         : `It belongs to ${model.name} while it is open.`}`;
@@ -2421,7 +2733,7 @@ function openResultsDialog() {
 // The toolbar's Results menu: one item for each kind of result there is.
 let resultsList = null, resultsMenu = null;
 function bindResultsMenu() {
-  // An item's checkbox shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
+  // An item's eye shows or hides what it draws, like its panel's switch; the rest of it opens or closes the panel.
   resultsList = new ChoiceList({ label: 'Results', onPick: (id, e) => {
     if (e.target.closest('.box')) { if (id === 'streamlines') setStreamlinesOn(!state.streamlines.on); else setMapsOn(!state.maps.on); }
     else if (id === 'streamlines') toggleStreamlinesPanel();
@@ -2432,8 +2744,8 @@ function bindResultsMenu() {
 }
 function fillResultsMenu() {
   const items = [];
-  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: true });
-  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: true });
+  if (state.streamlines.lines.length) items.push({ id: 'streamlines', label: 'CFD streamlines', toggle: 'eye' });
+  if (state.maps.list.length) items.push({ id: 'map', label: 'CFD map', toggle: 'eye' });
   resultsList.setGroups(items.length ? [{ items }] : []);
   syncResultsMenu();
 }
@@ -2493,7 +2805,7 @@ function fillStreamlines() {
     row.dataset.key = key;
     if (parent) row.dataset.parent = parent;
     row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
-    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
+    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox" class="eye" aria-label="Show" title="Show or hide"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
     row.querySelector('.layer-name').textContent = label;
     row.querySelector('.caret').addEventListener('click', () => {
       if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
@@ -2567,7 +2879,7 @@ function fillMaps() {
     top.className = 'layer-row';
     top.title = `${m.map.name} in ${m.file.name}`;
     top.dataset.key = m.key;
-    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox"><span class="layer-name"></span>`;
+    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox" class="eye" aria-label="Show this map" title="Show or hide"><span class="layer-name"></span>`;
     top.querySelector('.layer-name').textContent = m.label;
     top.querySelector('.caret').addEventListener('click', () => {
       if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
@@ -2847,32 +3159,22 @@ const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
 const fmtMetres = (m) => `${m} m`;
 const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
 
-// The days and hours tested: the chosen spans round the Date widget's date and time.
+// The days and hours tested: the chosen spans round the Date and Time widgets' date and time.
 const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy, EPW_YEAR), hours: exposureHours(expo.timeSpan, state.sun.hour) });
 
 // The settings a surface and a run depend on, or null when there is nothing to work out.
 function exposureKeys() {
   if (!model || expo.layer < 0 || !activeLocation()) return null;
-  const S = state.sun, hidden = [...state.hidden].join('.') + '/' + [...state.blockOff].join('.'), { days, hours } = exposurePeriod();
-  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, hidden].join('|');
-  return { surface, run: [surface, days[0], days.length, hours, expo.step, S.lat, S.lon, S.utcOffset, S.north, layerOn.map(Number).join('')].join('|') };
+  const { days, hours } = exposurePeriod();
+  // The surface is the layer's objects. The shadows on it come from every visible object that is
+  // not too transparent, so they also depend on the materials.
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, modelKey('objects')].join('|');
+  return { surface, run: [surface, days[0], days.length, hours, expo.step, modelKey('visibility', 'appearance', 'site')].join('|') };
 }
 
-// Each frame, and on a change in the panel: whether the results still match the settings, and if not, a new run (after a
-// pause, so that dragging a slider runs once) or, without Update automatically, a note that the
-// results are out of date.
+// Each frame, and on a change in the panel (see checkAnalysis).
 function checkExposure() {
-  const k = expo.on ? exposureKeys() : null;
-  // Settings changed and changed back: the results shown are up to date again.
-  if (k && k.run === expo.doneKey && expo.stale && !expo.runKey) { expo.stale = false; syncExposurePanel(); }
-  if (!k || k.run === expo.doneKey || k.run === expo.runKey || k.run === expo.pendingKey) return;
-  if (!expo.auto || k.run === expo.stoppedKey) {
-    if (!expo.stale) { expo.stale = true; syncExposurePanel(); }
-    return;
-  }
-  expo.pendingKey = k.run;
-  clearTimeout(expo.timer);
-  expo.timer = setTimeout(runExposure, 150);
+  checkAnalysis(expo, expo.on ? exposureKeys()?.run : null, runExposure, syncExposurePanel);
 }
 
 async function runExposure() {
@@ -3003,7 +3305,7 @@ function syncExposureProgress() {
 
 function syncExposurePanel() {
   if (!exposureBound) return;
-  $('btnTools').setAttribute('aria-pressed', String(expo.panel));
+  syncToolsButton();
   if (!expo.panel) return;
   const located = !!activeLocation();
   $('exposureRead').hidden = located;
@@ -3042,13 +3344,18 @@ function syncExposurePanel() {
   setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
 }
 
+// The Tools button is pressed while any widget it opens is open.
+function syncToolsButton() {
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+}
+
 function showExposureHelp() {
   Dialog.open({ title: 'Sun exposure', html: true, width: 440, body: `<p>How often each part of a layer’s objects can see the sun over a period, ignoring cloud: the share of the times tested, while the sun is up, that the sun reaches it.</p>
     <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
-    <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date widget (press S), shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
+    <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date and Time widgets, shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
     <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
-    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Date widget.</p>
+    <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Time widget.</p>
     <p>With <b>Update automatically</b> off, the results stay as they are while you change the settings, which keeps long periods quick to set up. Tick it again to calculate.</p>
     <p>The results are not kept: they go when the model is closed.</p>` });
 }
@@ -3057,7 +3364,13 @@ function bindExposurePanel() {
   toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
   toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
-  toolsMenu.body.append(toolsList.el);
+  // Weather, thermal comfort and lights: the toolbar's controls for them, their on/off icons
+  // included, live in this menu, above the analysis tools.
+  const widgets = document.createElement('div'), rule = document.createElement('hr');
+  widgets.className = 'tool-widgets';
+  widgets.append($('weatherCombo'), document.querySelector('[data-act="comfort"]'), $('lightsCombo'));
+  rule.className = 'tool-rule';
+  toolsMenu.body.append(widgets, rule, toolsList.el);
   $('exposureClose').addEventListener('click', () => expo.panel && toggleExposurePanel());
   $('exposureHelp').addEventListener('click', showExposureHelp);
   $('exposureRead').addEventListener('click', (e) => { if (e.target.closest('.link')) openLocationDialog(); });
@@ -3457,6 +3770,7 @@ function toggleLightsPanel() {
   state.lightsPanel = !state.lightsPanel;
   $('lightsPanel').hidden = !state.lightsPanel;
   document.querySelector('[data-act="lights"]').setAttribute('aria-pressed', String(state.lightsPanel));
+  syncToolsButton();
   syncLightsPanel();
 }
 
@@ -3493,7 +3807,7 @@ function syncLightsPanel() {
 function showLightsHelp() {
   Dialog.open({ title: 'Lights', html: true, width: 360, body: `<p>The Rhino file's point and spot lights, lamps you add and the walker's torch light the model; they show best at night.</p>
     <p><kbd>B</kbd> adds a lamp just off the surface under the cursor · <kbd>Shift</kbd>+<kbd>B</kbd> removes the lamps you added · <kbd>T</kbd> switches the torch on and off while walking.</p>
-    <p>The switch at the top (or the bulb on the toolbar's Lights button) turns the file's and added lights on and off. While on, the ticked lights shine; with none ticked, all of them do. The torch has its own checkbox.</p>
+    <p>The switch at the top (or the bulb on the Lights button in the Tools menu) turns the file's and added lights on and off. While on, the ticked lights shine; with none ticked, all of them do. The torch has its own checkbox.</p>
     <p>Up to ${MAX_LAMPS} lights shine at once: the torch first, then the list in order. The torch and about four lamps also cast shadows.</p>` });
 }
 
@@ -3522,8 +3836,55 @@ function bindLightsPanel() {
   });
 }
 
+// Widget shortcuts. A click (or keyboard focus) in a widget that has shortcuts makes it the active
+// widget, marked on its title bar; a click in the view, or in a widget without them, ends that.
+// Keys go to the active widget first, and on to the model when it doesn't use them.
+const widgetKeys = new Map(); // panel id -> (keydown event) => true when the widget used the key
+let activeWidget = null;
+function setActiveWidget(p) {
+  if (p === activeWidget) return;
+  activeWidget?.classList.remove('active-widget');
+  activeWidget = p;
+  p?.classList.add('active-widget');
+}
+function bindWidgetKeys() {
+  widgetKeys.set('layersPanel', rowListKeys(layerRows, (layers, row) => openMaterialDialog(layers, row)));
+  widgetKeys.set('blocksPanel', rowListKeys(blockRows, (ids, row) => openBlockDialog(ids, row)));
+  const pick = (e) => {
+    const p = e.target.closest?.('.side .panel');
+    if (p) setActiveWidget(widgetKeys.has(p.id) ? p : null);
+    else if (e.target === canvas) setActiveWidget(null);
+  };
+  window.addEventListener('pointerdown', pick, true);
+  window.addEventListener('focusin', pick, true);
+}
+function widgetKey(e) {
+  if (!activeWidget) return false;
+  if (activeWidget.hidden || !activeWidget.offsetParent) { setActiveWidget(null); return false; }
+  return !!widgetKeys.get(activeWidget.id)?.(e);
+}
+
+// Shortcuts for a list of rows (Layers, Blocks): Ctrl+A all the rows, the arrows move the selection
+// (Shift: extend it), Space shows or hides the selected rows (as clicking the first one's eye),
+// Enter opens their window, Esc clears the selection.
+function rowListKeys(rows, open) {
+  return (e) => {
+    const k = e.key, ctrl = e.ctrlKey || e.metaKey, sel = rows.list();
+    const first = sel.length ? rows.rows.find((r) => r.key === sel[0]) : null;
+    if (ctrl && !e.altKey && k.toLowerCase() === 'a') { rows.all(); return true; }
+    if (ctrl || e.altKey) return false;
+    if (k === 'ArrowDown' || k === 'ArrowUp') { rows.step(k === 'ArrowDown' ? 1 : -1, e.shiftKey); return true; }
+    if (k === ' ' && first) { first.row.querySelector('.eye').click(); return true; }
+    if (k === 'Enter' && first) { open(sel, first.row); return true; }
+    if (k === 'Escape' && sel.length) { rows.set([]); return true; }
+    return false;
+  };
+}
+
 function onKey(e) {
-  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+  // A checkbox or radio button with the focus (as after clicking an eye) doesn't take the keys.
+  const typing = !!e.target.matches?.('input:not([type="checkbox"], [type="radio"]), select, textarea');
+  if (!typing && model && !walker.active && !driver.active && widgetKey(e)) { e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && model) {
     const k = e.key.toLowerCase();
     if (k === 'z' || k === 'y') { e.preventDefault(); stepHistory(k === 'y' || e.shiftKey); return; }
@@ -3821,10 +4182,10 @@ function enterVehicle() {
 
 function showDriveHelp() {
   Dialog.open({ title: 'Driving', html: true, width: 420, body: `<p><b>Drive</b> in the camera list, or <kbd>5</kbd>, starts driving: click where the car should start. It faces the way the camera looks. Until you click you can still move the view; <kbd>Esc</kbd> cancels. Closing this panel does not stop you: pick Drive again to bring it back.</p>
-    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · braking while steering pulls the handbrake, to slide round · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>M</kbd> sounds · <kbd>F</kbd> gets out · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
+    <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · braking while steering pulls the handbrake, to slide round · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>M</kbd> sounds · <kbd>F</kbd> gets out · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly (as does driving off the model, or into water, which holds nothing up) · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
     <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
-    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine, crashes and the horn · <b>Music</b>: the car radio while you drive: 80s synthwave, two old-school West Coast hip hop tracks or 90s shooter metal. <b>Change track</b> picks another at random.</p>
+    <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine, crashes and the horn · <b>Music</b>: the car radio while you drive, a track at random each time you start: 80s synthwave, two old-school West Coast hip hop tracks or 90s shooter metal. <b>Change track</b> picks another at random.</p>
     <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car, or press <kbd>F</kbd> within 5 m of it, to drive it again. Stopping walking takes the car away too.</p>` });
 }
 
@@ -3949,7 +4310,7 @@ function sunState(r) {
 }
 
 // The Thermal comfort panel ---------------------------------------------------------------------
-// UTCI at the camera from the weather file at the Date widget's date and time: air temperature and
+// UTCI at the camera from the weather file at the Date and Time widgets' date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised when the camera is in sunlight by
 // the direct sun on the person (SolarCal) and by sun-warmed surroundings (a placeholder).
@@ -3959,6 +4320,7 @@ function toggleComfortPanel() {
   C.panel = !C.panel;
   $('comfortPanel').hidden = !C.panel;
   document.querySelector('[data-act="comfort"]').setAttribute('aria-pressed', String(C.panel));
+  syncToolsButton();
   if (C.panel) { syncComfortPanel(); checkSunlight(); }
 }
 
@@ -4060,7 +4422,7 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
-    <p>It is estimated at the camera, at the Date widget's date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
+    <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> is taken to be the air temperature in shade. In sunlight two things are added: the direct sun on the person (the SolarCal method, for a standing person turned side-on to the sun), and the warmth of sunlit ground and walls nearby, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Together they make a sunlit spot about 15 to 27 °C warmer in radiant temperature than a shaded one in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI. Surfaces heating up and cooling down over the day, their materials, the sky and reflected light are not counted.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
@@ -4114,7 +4476,7 @@ function toggleSpecials() {
   state.specials = !state.specials;
   savePrefs();
   applyLayerMaterials(false);
-  if (!$('matDialog').hidden && matLayer >= 0 && matKind === 'material') openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  if (matKind === 'material') refreshMaterialDialog();
   if (state.sel.ids.length) showInspector();
   syncToolbar();
 }
@@ -4126,7 +4488,7 @@ function setMode(m) {
   if (!model || wasMat === showsMaterial()) return;
   // Swatches, the layer dialog and the inspector switch between display colour and material.
   buildLayerTree.refresh?.();
-  if (!$('matDialog').hidden && matLayer >= 0) openMaterialDialog(matLayer, document.querySelector('.layer-row .swatch') || $('matDialog'));
+  refreshMaterialDialog();
   if (state.sel.ids.length) showInspector();
 }
 function toggle(key) {
@@ -4264,8 +4626,10 @@ function bindUi() {
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
+  document.querySelector('[data-act="time"]').addEventListener('click', toggleTimePanel);
   bindCompass();
   $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
+  $('timeClose').addEventListener('click', () => state.timePanel && toggleTimePanel());
   $('layersClose').addEventListener('click', () => state.layers && toggle('layers'));
   $('layersHelp').addEventListener('click', showLayersHelp);
   bindLayerMenu();
@@ -4281,11 +4645,11 @@ function bindUi() {
   bindFileDialog();
   bindDateWeather();
   // Each widget's title carries its toolbar button's icon.
-  for (const [btn, panel] of [['[data-act="date"]', 'datePanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
+  for (const [btn, panel] of [['[data-act="date"]', 'datePanel'], ['[data-act="time"]', 'timePanel'], ['#weatherQuick', 'weatherPanel'], ['[data-act="comfort"]', 'comfortPanel'],
     ['#lightsQuick', 'lightsPanel'], ['[data-toggle="layers"]', 'layersPanel'], ['[data-toggle="blocks"]', 'blocksPanel'], ['#btnResults', 'streamlinesPanel'], ['#btnResults', 'mapPanel']]) {
     const title = $(panel).querySelector('.panel-head > span');
     title.classList.add('panel-title');
-    title.prepend(document.querySelector(`.toolbar ${btn} svg`).cloneNode(true));
+    title.prepend(document.querySelector(`${btn} svg`).cloneNode(true));
   }
   bindLightsPanel();
   bindComfortPanel();
@@ -4304,6 +4668,7 @@ function bindUi() {
   bindWalkPanel();
   bindDrivePanel();
   bindPointer();
+  bindWidgetKeys();
   window.addEventListener('pagehide', saveViewState);
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewState(); });
   syncToolbar();

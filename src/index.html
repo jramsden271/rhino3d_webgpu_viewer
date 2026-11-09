@@ -33,14 +33,15 @@
     <span class="sep"></span>
     <button class="btn toggle camera-btn mode-btn" id="btnMode"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10.2 5.9A6.4 6.4 0 0 0 5.9 10.2l3.3 1c.1-2 .4-3.7 1-5.3z" style="fill:currentColor;stroke:none"/></svg><span id="modeName">Rendered</span></button>
     <span class="sep"></span>
-    <button class="btn toggle" data-act="date" title="Date: the date and time for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Date</button>
+    <button class="btn toggle" data-act="date" title="Date: the date for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span id="dateLabel">Date</span></button>
+    <button class="btn toggle" data-act="time" title="Time: the time of day for the sun and the weather"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="clock-h" d="M12 12V7.6"/><path class="clock-m" d="M12 12V5.6"/></svg><span id="timeLabel">Time</span></button>
     <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: everything ticked in the Weather widget's View section"><svg viewBox="0 0 24 24" aria-hidden="true" class="wx-icon"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather: the sun, sky, clouds and weather at the Date widget's date and time">Weather</button></span>
     <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
     <button class="btn toggle" id="btnResults" hidden><svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16c2-7 4-9 6-6s3 2 5-3"/></svg><span>Results</span></button>
-    <button class="btn toggle" id="btnTools" title="Tools for analysing the model"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
+    <button class="btn toggle" id="btnTools" title="Tools: weather, thermal comfort, lights and sun exposure"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5L3.6 17.2a1.8 1.8 0 0 0 2.6 2.6l5.7-5.7a4 4 0 0 0 5-5.2l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>Tools</button>
     <button class="btn icon" data-act="help" title="Controls (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01"/></svg></button>
   </nav>
 
@@ -112,7 +113,7 @@
   <aside id="mapPanel" class="chrome panel layers-panel" hidden aria-label="CFD map" data-min>
     <div class="panel-head">
       <span>CFD map</span>
-      <span class="panel-actions"><label class="switch" title="Show the ticked maps, or none"><input type="checkbox" id="mapOn"><span></span></label><button class="x" id="mapClose" aria-label="Close CFD map" title="Close">×</button></span>
+      <span class="panel-actions"><label class="switch" title="Show the maps with an open eye, or none"><input type="checkbox" id="mapOn"><span></span></label><button class="x" id="mapClose" aria-label="Close CFD map" title="Close">×</button></span>
     </div>
     <div id="mapList" class="layer-tree" data-full></div>
     <div class="res-foot">
@@ -126,17 +127,33 @@
 
   <section id="datePanel" class="chrome panel sun-panel" hidden aria-label="Date" data-min>
     <div class="panel-head">
-      <span>Date<span class="panel-sum" id="dateSum" data-min-only><span id="dateSumDay" title="Right-click for the solstices and equinoxes, or your own dates"></span> · <span id="dateSumHour" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times"></span></span></span>
-      <span class="panel-actions"><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
+      <span><span id="dateTitle" title="Right-click for the solstices and equinoxes, or your own dates"></span></span>
+      <span class="panel-actions"><button class="x" id="dateMode"></button><button class="x" id="dateClose" aria-label="Close the Date widget" title="Close (S)">×</button></span>
     </div>
     <div class="sun-body" data-full>
-      <div class="field" title="Right-click for the solstices and equinoxes, or your own dates">
-        <div class="field-label"><span>Date</span><output id="dateDayOut"></output></div>
-        <input type="range" id="dateDay" min="1" max="365" step="1">
+      <div class="field" id="dateSliderField" title="Right-click for the solstices and equinoxes, or your own dates"><input type="range" id="dateDay" min="1" max="365" step="1" aria-label="Date"></div>
+      <div class="pick-body" id="datePicker">
+        <div class="pick-month">
+          <button class="pick-nav" id="dayPickPrev" aria-label="Previous month" title="Previous month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+          <span id="dayPickMonth" aria-live="polite"></span>
+          <button class="pick-nav" id="dayPickNext" aria-label="Next month" title="Next month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="pick-grid pick-days" id="dayPickGrid"></div>
       </div>
-      <div class="field" title="Right-click for 10:00, 12:00, solar noon and 15:00, or your own times">
-        <div class="field-label"><span>Time</span><span><output id="dateTimeOut"></output><button id="datePlay" class="play" title="Animate through the day">▶</button></span></div>
-        <input type="range" id="dateHour" min="0" max="24" step="0.0833">
+    </div>
+  </section>
+  <section id="timePanel" class="chrome panel sun-panel" hidden aria-label="Time" data-min>
+    <div class="panel-head">
+      <span><span id="timeTitle" title="Right-click for solar noon, or your own times"></span><span class="panel-sum" id="timeZone"></span></span>
+      <span class="panel-actions"><button class="x" id="timePlay"></button><button class="x" id="timeMode"></button><button class="x" id="timeClose" aria-label="Close the Time widget" title="Close">×</button></span>
+    </div>
+    <div class="sun-body" data-full>
+      <div class="field" id="timeSliderField" title="Right-click for solar noon, or your own times"><input type="range" id="dateHour" min="0" max="24" step="0.0833" aria-label="Time"></div>
+      <div class="pick-body" id="timePicker">
+        <div class="clock-head">
+          <button class="clock-part" id="timePickH" title="Choose the hour"></button><span class="clock-colon">:</span><button class="clock-part" id="timePickM" title="Choose the minute"></button>
+        </div>
+        <svg class="clock-dial" id="timePickDial" viewBox="0 0 240 240" tabindex="0" role="slider" aria-label="Hour"></svg>
       </div>
     </div>
   </section>
@@ -176,7 +193,7 @@
       <div id="comfortRead" class="utci-read"></div>
       <div id="comfortSun" class="sun-state" data-full></div>
       <div class="field" data-full>
-        <div class="field-label"><button class="field-toggle" id="comfortToggle" aria-controls="comfortDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button><output id="comfortWhen" title="Date and time from the Date widget"></output></div>
+        <div class="field-label"><button class="field-toggle" id="comfortToggle" aria-controls="comfortDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button><output id="comfortWhen" title="Date and time from the Date and Time widgets"></output></div>
         <div id="comfortDetails" class="field-details" hidden>
           <div class="field">
             <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
@@ -209,7 +226,7 @@
       </div>
       <div class="field" data-full>
         <div class="field-label"><span>Time span</span><output id="exposureHoursOut"></output></div>
-        <select class="exposure-span" id="exposureTimeSpan" aria-label="Time span" title="The times tested each day, round the Date widget's time (S). Both ends are included"></select>
+        <select class="exposure-span" id="exposureTimeSpan" aria-label="Time span" title="The times tested each day, round the Time widget's time. Both ends are included"></select>
       </div>
       <label class="field-label exposure-inline" data-full><span>Interval</span><select class="exposure-span" id="exposureStep" title="Time between the times tested"></select></label>
       <label class="field-label exposure-inline" data-full><span>Grid spacing</span><select class="exposure-span" id="exposureSpacing" title="Most distance between the points tested on the surfaces. Closer is finer, and slower"></select></label>
@@ -279,7 +296,6 @@
       <label class="field-row" id="matGlossRow">Gloss <span class="range"><input type="range" id="matGloss" min="0" max="1" step="0.05"><output id="matGlossOut"></output></span></label>
       <label class="field-row" id="matAlphaRow">Transparency <span class="range"><input type="range" id="matAlpha" min="0" max="0.9" step="0.05"><output id="matAlphaOut"></output></span></label>
       <div class="fine note" id="matOwn"></div>
-      <div class="fine">Applies to objects whose source is “By layer”. Remembered in this browser; to save a .3dm copy, click the file name (top left).</div>
       <div class="pop-actions"><button class="link" id="matReset">Reset to file</button><button class="btn primary" id="matDone">Done</button></div>
     </div>
   </div>
@@ -327,7 +343,7 @@
         <div class="fine" id="fileChanges"></div>
       </div>
       <div class="pop-actions">
-        <button class="btn" id="btnRevert" title="Undo material settings, hidden objects and layer visibility changes">Revert changes</button>
+        <button class="btn" id="btnRevert" title="Undo colour, material and object layer changes, hidden objects and layer visibility">Revert changes</button>
         <button class="btn primary" id="btnDownload"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download .3dm</button>
       </div>
     </div>
@@ -338,6 +354,7 @@
   <div id="walkPlaceHint" class="chrome walk-hint" hidden>Click where to start walking · drag to move the view · <kbd>Esc</kbd> to cancel</div>
   <div class="walk-frame"></div>
   <div id="walkFade" class="walk-fade"></div>
+  <div id="driveSplash" class="drive-splash" hidden>Splash!</div>
 
   <div id="drop" class="overlay drop">
     <div id="devLabel" class="dev-label" hidden>Developer mode</div>
@@ -377,12 +394,12 @@
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location, and the sun-and-cloud button next to it the weather file, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>
         <dt>Messages</dt><dd>The bell (top left) keeps the messages about this model, until you dismiss them or open another model</dd>
-        <dt>Colours</dt><dd>Click a layer's square in the Layers panel: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
-        <dt>Blocks</dt><dd>The Blocks widget lists the blocks in use · its checkbox hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
+        <dt>Colours</dt><dd>Double-click a layer in the Layers panel, or right-click it for Edit colour or Edit material: display colour in Shaded view, material and magic material in Rendered view · <b>Magic ✨</b> in the render mode menu turns magic materials on or off · select an object to change its own colour or material source</dd>
+        <dt>Blocks</dt><dd>The Blocks widget lists the blocks in use · its eye hides every copy of a block · its tag chooses a magic block to replace it, and where its sub-elements get their colour and material · right-click for more</dd>
         <dt>Focus</dt><dd>Double-click a surface · double-click empty space to zoom extents</dd>
         <dt>Results</dt><dd>The file icon at the top left adds results files to the model · once one is read, <b>Results</b> on the toolbar opens what it holds · <b>CFD streamlines</b> lists them, coloured by the Lawson comfort criteria · <b>CFD map</b> lists the maps with a choice of result for each · hold the mouse over a map to read its results</dd>
         <dt>Compass</dt><dd>Bottom left: points to north, from the file's north angle · drag it to rotate the view · click the <b>N</b> or a tick to face north, east, south or west</dd>
-        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects</dd>
+        <dt>Undo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo (colour, material and north angle changes; not views, hiding, layer visibility or the location) · <kbd>Ctrl</kbd>+<kbd>A</kbd> select all visible objects (in a clicked Layers or Blocks widget: all its rows; see its ?)</dd>
         <dt>Keys</dt><dd><kbd>F</kbd> extents · <kbd>1</kbd> Top · <kbd>2</kbd> Elevation · <kbd>3</kbd> Perspective · <kbd>4</kbd> Walk · <kbd>M</kbd> shading mode · <kbd>E</kbd> edges · <kbd>C</kbd> curves · <kbd>K</kbd> Blocks · <kbd>O</kbd> ambient occlusion · <kbd>X</kbd> x-ray · <kbd>L</kbd> layers · <kbd>S</kbd> date · <kbd>G</kbd> lights · <kbd>U</kbd> thermal comfort (UTCI) · <kbd>B</kbd> add a lamp at the cursor</dd>
       </dl>
   </template>

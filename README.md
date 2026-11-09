@@ -41,17 +41,17 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Rotate the view | Drag the compass (bottom left) | |
 | Face north, east, south or west | Compass: click the N or a tick | |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
-| Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Lights | `G` · `B` · `Shift+B` |
-| Thermal comfort panel (UTCI at the camera) | Toolbar: UTCI | `U` |
+| Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Tools → Lights | `G` · `B` · `Shift+B` |
+| Thermal comfort panel (UTCI at the camera) | Toolbar: Tools → UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
-| Layers · Blocks · Date widget | Toolbar | `L` · `K` · `S` |
-| Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
+| Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
+| Weather widget · all its View items on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
-| Select all visible objects | | `Ctrl+A` |
+| Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
 
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
@@ -119,7 +119,7 @@ walking for a torch: a spot light held at chest height that points where you loo
 shadows (see [Lights](#lights)).
 
 **Undo and redo** cover changes to the model, as in Rhino: layer colours, materials and magic
-materials, object colour and material sources, the north angle and Revert.
+materials, object colour and material sources, moves to another layer, the north angle and Revert.
 View changes, date and time, hiding objects, turning layers on or off and the site location
 (a viewer setting, not part of the model) are not recorded. Dragging a slider or colour
 picker is one step. The history starts afresh each time a file is opened.
@@ -129,17 +129,32 @@ containing what you type. In Layers, a matching layer shows with the layers abov
 a collapsed one.
 
 In the Layers and Blocks widgets, click a row to select it, Ctrl-click to add or remove a row, and
-Shift-click to select a run of rows. A checkbox or right-click on a selected row acts on all the
-selected rows.
+Shift-click to select a run of rows. An eye (open when shown, closed when hidden) or right-click
+on a selected row acts on all the selected rows. Show/hide ticks are drawn as an eye throughout,
+in the CFD results lists and the Results menu too.
 
-In the Layers panel, Shift-click a checkbox to isolate that layer. Layers start with the
+Clicking in the Layers or Blocks widget gives it the keyboard first (its title is underlined), until
+you click in the view: `Ctrl+A` selects all its rows, the up and down arrows move the selection
+(`Shift` extends it), `Space` shows or hides the selected rows, `Enter` opens their window and
+`Esc` clears the selection. Other keys, such as `F` or `Ctrl+Z`, still reach the model.
+
+In the Layers panel, Shift-click an eye to isolate that layer. Layers start with the
 visibility saved in the file. Right-click a layer for:
 
 - **Select objects**: the visible objects on that layer (the count is shown).
 - **Select sublayer objects**: the visible objects on that layer and all its sub-layers
   (only for layers with sub-layers).
+- **Move selection to this layer**: puts the selected objects on that layer (the count is those
+  not already on it). Their colour and material follow the new layer where they come from the
+  layer. A block instance moves on its own; the objects inside the block keep their layers, as in
+  Rhino. Objects moved to a layer that is off leave the selection. Only layers that hold objects
+  are listed, so a move goes to one of those.
+- **Edit material** (**Edit colour** in Shaded view): the window below, for the selected layers.
 
-Double-click a layer's row to open its colour or material window, as its square does.
+Double-click a layer's row to open its colour or material window; the square only shows it. Opened
+from a selected row, the window sets all the selected layers at once: a change sets only the
+setting changed, so each layer keeps its other settings, and a setting that differs between them
+shows as Mixed until it is changed. The window follows the selection while it is open.
 
 The Blocks widget appears for models with blocks. It lists each block definition that has an
 instance, including those only used inside other blocks, with its number of copies in the model
@@ -149,8 +164,8 @@ instance, including those only used inside other blocks, with its number of copi
 - **Select sub-blocks**: adds every block inside it, at any depth, to the selected rows.
 - **Sub-element setting**: as clicking its tag or double-clicking its row.
 
-Unticking a block hides every copy of it, like turning a layer off: a copy shows only if it and
-every block around it are ticked. A row is dimmed when none of its copies can show because of the
+Closing a block's eye hides every copy of it, like turning a layer off: a copy shows only if it
+and every block around it are shown. A row is dimmed when none of its copies can show because of the
 blocks around it. Block visibility is separate from **Unhide all**, is remembered with the view,
 and is not undoable or saved in a copy.
 
@@ -177,7 +192,7 @@ none. Hiding or showing what is below moves it to match. Trees also get their ow
 leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
 The tag then reads "magic", and the sub-element setting doesn't apply.
 
-The Layers, Blocks and Date widgets close with their × button or from the toolbar. The first
+The Layers, Blocks, Date and Time widgets close with their × button or from the toolbar. The first
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
@@ -208,7 +223,7 @@ The order, and each widget's state and lock, are remembered for every model.
 
 **Magic materials** give common site elements a look a plain colour cannot: animated water,
 glass reflecting the sky, foliage that varies from tree to tree. Each layer has one, set in
-its material dialog (click the layer's square in Rendered view):
+its material dialog (double-click the layer's row in Rendered view):
 
 - **Auto** (the default): the layer is matched by name. The layer's own name is tried first,
   then its parent layers' names, then the name of its render material. The match is shown as
@@ -273,7 +288,8 @@ pause after 15 seconds idle.
 
 **Layer colours and materials.** Each layer's square in the Layers panel shows what that view
 uses: in Shaded (and Clay) view, the layer's **display colour**; in Rendered view, its
-**material**. Click it to change that one:
+**material**. Double-click the row, or right-click it and choose **Edit colour** or
+**Edit material**, to change that one:
 
 - In Shaded view: the display colour.
 - In Rendered view: the magic material (see above), colour, gloss and transparency.
@@ -313,8 +329,8 @@ objects, triangles, curves, block instances, layers, location, anything not show
 changes made in the viewer. It also has the model's **north angle**, as in Rhino: degrees
 anticlockwise from the model's +X axis to north, so 90 means +Y is north. It comes from the
 file's Sun settings or Earth anchor point, or is 90 when the file sets neither. From there,
-**Download .3dm** saves a copy with your colour and material changes, and **Revert changes**
-puts everything (layer colours and materials, object colours and materials, the north angle,
+**Download .3dm** saves a copy with your colour, material and layer changes, and **Revert changes**
+puts everything (layer colours and materials, object colours, materials and layers, the north angle,
 hidden objects and layer visibility) back to how it is in the file. The cameras stay where they are.
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
@@ -361,16 +377,16 @@ file, a copy of each is kept with the model and comes back when you reopen it fr
 so to update one, remove it and add the new version.
 
 Once a file has been read, **Results** appears on the toolbar. In its menu, each item opens or closes
-its panel, and is coloured while the panel is open; the item's checkbox is the same as the switch on
+its panel, and is coloured while the panel is open; the item's eye is the same as the switch on
 that panel's title bar, showing or hiding what it draws. **CFD streamlines** opens a panel listing the streamlines in the file, with the polylines of each nested under it, as sub-layers
-are under a layer. Each has a checkbox, and unticking a streamline hides all its polylines; the
-switch on the panel's title bar shows what is ticked or nothing. They're drawn as polylines in the file's coordinates,
+are under a layer. Each has an eye, and closing a streamline's eye hides all its polylines; the
+switch on the panel's title bar shows those with an open eye, or nothing. They're drawn as polylines in the file's coordinates,
 scaled to the model's units, with each segment coloured by the velocity at its start, on the Lawson
 comfort criteria.
 
 Its **CFD map** item opens a panel for results on a surface, drawn from the file's nodes and faces,
 which needs no change to the model. Each map has its results nested under it, one chosen at a time,
-and a checkbox to hide it; the switch on the title bar shows what is ticked or nothing. Below the
+and an eye to hide it; the switch on the title bar shows those with an open eye, or nothing. Below the
 list are the colour scale's legend and **Move up or down**, from 10 m down to 100 m up. Hold the mouse over
 a map and a panel follows it with every result at that spot, worked out between the nodes. Faces
 touching a node that lacks the chosen result are left out, rather than shown in a colour that means
@@ -399,18 +415,25 @@ A CFD streamlines file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z
 `[Lines]` (pairs of node numbers) sections. Parsers live in `src/results.js`: each file goes to
 each parser in turn until one recognises it.
 
-### The Date and Weather widgets
+### The Date, Time and Weather widgets
 
-Click **Date** on the toolbar (or press `S`) for the **Date widget**: the date and local time that
-the sun, the sky, the weather and the Thermal comfort widget all follow. Right-click the date
-slider to jump to a solstice or equinox, or the time slider for 10:00, 12:00, solar noon or 15:00.
-The **+** in either menu adds the date or time showing to it, kept on this machine for every
-model, and the **×** beside an added one removes it. Press ▶ to run the time from sunrise to sunset. The date has no year: sun positions change too
+The toolbar's **Date** and **Time** buttons show the date and the time (for example **9 June** and
+**09:00**). Click them (or press `S` for the date) for the **Date** and **Time widgets**: the date
+and local time that the sun, the sky, the weather and the Thermal comfort widget all follow. Each
+widget's title shows its value, and the Time widget's its offset from UTC and a clock whose hands
+show the time. A button in each title bar switches between a slider and a picker: for the date, a
+calendar a month at a time; for the time, a clock face, as on a phone. Pick the hour (00 to 11
+round the outside, 12 to 23 inside) and it moves on to the minutes, to the minute (labelled every
+5). Click or drag round the face, or use the arrow keys. A click sets the date or time at once.
+Right-click the date (its title or slider) to jump to a solstice or equinox, or the time for solar
+noon. The **+** in either menu adds the date or time showing to it, kept in this browser for every
+model and project, and the **×** beside an added one removes it. ▶ in the Time widget's title bar
+runs the time from sunrise to sunset. The date has no year: sun positions change too
 little from year to year to matter here (2017 is used). When the file has Rhino Sun settings, they
 set the starting date and time. The time is the location's clock time, shown with its offset from
 UTC (e.g. UTC+3 for Qatar).
 
-Click **Weather** on the toolbar for the **Weather widget**, at the Date widget's date and time.
+Click **Tools → Weather** on the toolbar for the **Weather widget**, at the Date and Time widgets' date and time.
 Its title has the weather file's sun and cloud icon and, without a weather file, an **Add EPW**
 link (or **Set location** without a location either: the location dialog takes a weather file
 too). Readings, three to a row, each with an icon (hover for more):
@@ -437,7 +460,7 @@ greyed out, and its tooltip says why:
   dims the sun and sets how bright the sky's light is (see below).
 - **Sun path diagram** (needs a location, in perspective views).
 
-The switch on the widget's title bar, and the sun and cloud icon on the toolbar's Weather button,
+The switch on the widget's title bar, and the sun and cloud icon on the Weather button in the Tools menu,
 turn all of View off and on again without changing the ticks. The ticks, the switch and the date
 and time are remembered for each model in this browser.
 
@@ -492,7 +515,7 @@ to, so these last only while they are open.
 ## Sun and shadows
 
 Tick **Sun** under View in the Weather widget to light the model by the sun with cast shadows, at
-the Date widget's date and time. In perspective views the sky shows the sun itself, and both
+the Date and Time widgets' date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
 and time, so they turn through the night) and the model is lit by a dim blue night light.
@@ -524,9 +547,9 @@ always in sun (magma), and are not kept: they last until the settings change or 
   up, such as a closed solid or a wall, keeps its own sides); **Flip sides** tests the other side.
   **Ground/roof only** keeps just the faces within 45° of straight up (turned up, before any flip),
   leaving out walls and the like. While picking, a marker follows the surface under the cursor.
-- **Date span** and **Time span** are periods round the Date widget's date and time, shown beside each,
+- **Date span** and **Time span** are periods round the Date and Time widgets' date and time, shown beside each,
   both ends included. Every day in the dates is tested at the times, every **Interval** (5 to 60
-  minutes), and the results follow the Date widget.
+  minutes), and the results follow the Date and Time widgets.
   - Date span: Single day; 1 week (±3 days: 15 August gives 12-18 August); 1 month (±15 days);
     3 months (±45 days); Calendar month (the whole month of the date); All year. The rolling
     periods run on round the end of the year, so 1 week round 2 January starts on 30 December.
@@ -537,7 +560,9 @@ always in sun (magma), and are not kept: they last until the settings change or 
   needed in Rhino. Edges sharper than 40° keep a normal for each side. A new layer starts at the
   finest spacing that gives about 200,000 points.
 - What casts shadows is what is shown: hide a layer or an object and the results update without
-  it. Materials more than 40% transparent do not cast shadows, as for the sun.
+  it. Materials more than 40% transparent do not cast shadows, as for the sun. Any change to the
+  model (hidden objects, layers, moves between layers, materials, blocks, location or north)
+  marks the results out of date, or recalculates them with Update automatically.
 - Under the results: the area analysed, and how much of it is in sun and shaded on average over
   the period (in m² and %, weighted by area).
 - **Update automatically** recalculates soon after any change. Off, the results stay as they are
@@ -551,8 +576,8 @@ pass tests every point against it, blending the four texels round it.
 
 ## Thermal comfort
 
-Click **UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
-Universal Thermal Climate Index (UTCI) at the camera, at the Date widget's date and time, and
+Click **Tools → UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
+Universal Thermal Climate Index (UTCI) at the camera, at the Date and Time widgets' date and time, and
 shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
 file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
 
@@ -612,7 +637,7 @@ comfort study.
 ## Lights
 
 Point and spot lights light the model in any shading mode; they show best at night. Click
-**Lights** (or press `G`) to open the Lights panel, which lists:
+**Tools → Lights** (or press `G`) to open the Lights panel, which lists:
 
 - **Torch**: the walker's torch, on and off with the checkbox or `T` in pedestrian mode.
 - **From the Rhino file**: the file's point and spot lights, with their position, colour,
@@ -623,7 +648,7 @@ Point and spot lights light the model in any shading mode; they show best at nig
   cursor (towards you). × removes one, `Shift+B` all of them. They are not saved with the file.
 
 The panel's **?** button repeats the keys and limits. The switch in the panel's title, or the
-bulb icon on the toolbar's Lights button (yellow and filled while on), turns the file's and
+bulb icon on the Lights button in the Tools menu (yellow and filled while on), turns the file's and
 added lights on and off together. While they are on, the ticked lights shine, or all of them
 when none is ticked; a lamp added while some are ticked is ticked too. The torch has its own
 checkbox. Up to 8 lights shine at once (the torch first, then the list in order); the panel
