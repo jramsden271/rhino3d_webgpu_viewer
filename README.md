@@ -47,7 +47,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
 | Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
-| Layers · Blocks · Date widget | Toolbar | `L` · `K` · `S` |
+| Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
 | Weather widget · all its View items on or off | Toolbar: Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
@@ -192,7 +192,7 @@ none. Hiding or showing what is below moves it to match. Trees also get their ow
 leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
 The tag then reads "magic", and the sub-element setting doesn't apply.
 
-The Layers, Blocks and Date widgets close with their × button or from the toolbar. The first
+The Layers, Blocks, Date and Time widgets close with their × button or from the toolbar. The first
 two can be open together, sharing the height the other panels leave. Drag the left edge of any of
 these panels to widen the column they share (double-click the edge for the default); the width is remembered.
 
@@ -415,23 +415,25 @@ A CFD streamlines file is a `.csv` with `[Name]`, `[Data]` (node number, X, Y, Z
 `[Lines]` (pairs of node numbers) sections. Parsers live in `src/results.js`: each file goes to
 each parser in turn until one recognises it.
 
-### The Date and Weather widgets
+### The Date, Time and Weather widgets
 
-The toolbar button shows the date and time (for example **9 June, 09:00**). Click it (or press `S`)
-for the **Date widget**: the date and local time that the sun, the sky, the weather and the Thermal
-comfort widget all follow. Right-click the date slider to jump to a solstice or equinox, or the time
-slider for solar noon. **Choose date…** at the top of the date menu opens a
-calendar beside the widget, a month at a time; **Choose time…** opens a clock face, as on a phone: pick
-the hour (00 to 11 round the outside, 12 to 23 inside), and it moves on to the minutes, to the minute (labelled every 5). Click or drag round the face, or
-use the arrow keys. A click sets the
-date or time at once.
-The **+** in either menu adds the date or time showing to it, kept in this browser for every
-model and project, and the **×** beside an added one removes it. Press ▶ to run the time from sunrise to sunset. The date has no year: sun positions change too
+The toolbar's **Date** and **Time** buttons show the date and the time (for example **9 June** and
+**09:00**). Click them (or press `S` for the date) for the **Date** and **Time widgets**: the date
+and local time that the sun, the sky, the weather and the Thermal comfort widget all follow. Each
+widget's title shows its value, and the Time widget's its offset from UTC and a clock whose hands
+show the time. A button in each title bar switches between a slider and a picker: for the date, a
+calendar a month at a time; for the time, a clock face, as on a phone. Pick the hour (00 to 11
+round the outside, 12 to 23 inside) and it moves on to the minutes, to the minute (labelled every
+5). Click or drag round the face, or use the arrow keys. A click sets the date or time at once.
+Right-click the date (its title or slider) to jump to a solstice or equinox, or the time for solar
+noon. The **+** in either menu adds the date or time showing to it, kept in this browser for every
+model and project, and the **×** beside an added one removes it. ▶ in the Time widget's title bar
+runs the time from sunrise to sunset. The date has no year: sun positions change too
 little from year to year to matter here (2017 is used). When the file has Rhino Sun settings, they
 set the starting date and time. The time is the location's clock time, shown with its offset from
 UTC (e.g. UTC+3 for Qatar).
 
-Click **Weather** on the toolbar for the **Weather widget**, at the Date widget's date and time.
+Click **Weather** on the toolbar for the **Weather widget**, at the Date and Time widgets' date and time.
 Its title has the weather file's sun and cloud icon and, without a weather file, an **Add EPW**
 link (or **Set location** without a location either: the location dialog takes a weather file
 too). Readings, three to a row, each with an icon (hover for more):
@@ -513,7 +515,7 @@ to, so these last only while they are open.
 ## Sun and shadows
 
 Tick **Sun** under View in the Weather widget to light the model by the sun with cast shadows, at
-the Date widget's date and time. In perspective views the sky shows the sun itself, and both
+the Date and Time widgets' date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
 and time, so they turn through the night) and the model is lit by a dim blue night light.
@@ -545,9 +547,9 @@ always in sun (magma), and are not kept: they last until the settings change or 
   up, such as a closed solid or a wall, keeps its own sides); **Flip sides** tests the other side.
   **Ground/roof only** keeps just the faces within 45° of straight up (turned up, before any flip),
   leaving out walls and the like. While picking, a marker follows the surface under the cursor.
-- **Date span** and **Time span** are periods round the Date widget's date and time, shown beside each,
+- **Date span** and **Time span** are periods round the Date and Time widgets' date and time, shown beside each,
   both ends included. Every day in the dates is tested at the times, every **Interval** (5 to 60
-  minutes), and the results follow the Date widget.
+  minutes), and the results follow the Date and Time widgets.
   - Date span: Single day; 1 week (±3 days: 15 August gives 12-18 August); 1 month (±15 days);
     3 months (±45 days); Calendar month (the whole month of the date); All year. The rolling
     periods run on round the end of the year, so 1 week round 2 January starts on 30 December.
@@ -575,7 +577,7 @@ pass tests every point against it, blending the four texels round it.
 ## Thermal comfort
 
 Click **UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
-Universal Thermal Climate Index (UTCI) at the camera, at the Date widget's date and time, and
+Universal Thermal Climate Index (UTCI) at the camera, at the Date and Time widgets' date and time, and
 shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
 file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
 

@@ -103,13 +103,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 /* The widget that takes the keys first (see bindWidgetKeys in main.js). */
 .panel.active-widget > .panel-head > span:first-child { text-decoration: underline 2px var(--accent); text-underline-offset: 4px; }
 .panel-sum { margin-left: 10px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
-/* The minimised Date widget: a calendar and the date, a clock (its hands at the time) and the time. */
-.date-sum { display: inline-flex; align-items: center; gap: 14px; font-variant-numeric: tabular-nums; vertical-align: middle; }
-.date-sum-part { display: inline-flex; align-items: center; gap: 6px; }
-.date-sum-part svg { width: 15px; height: 15px; flex: none; }
-/* Minimised, the calendar goes with the date (its right-click), in place of the title's icon. */
-#datePanel.min .panel-title > svg { display: none; }
-.date-sum-part #dateClockH { stroke-width: 2.1; }
+.clock-h { stroke-width: 2.3; }
 .x.win.locked { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25); cursor: default; }
 .panel.dragging { z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3); }
 .side.reordering, .side.reordering * { cursor: grabbing !important; }
@@ -226,9 +220,10 @@ button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-s
 .range input { flex: 1; accent-color: var(--accent); min-width: 0; }
 .range output { width: 34px; text-align: right; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pop-actions { display: flex; justify-content: space-between; align-items: center; }
-/* Date and time pickers, beside the Date widget. */
-.popover.picker { width: 262px; }
-.pick-now { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* The Date and Time widgets: a slider, or a picker (a calendar, a clock face). */
+.pick-body { display: flex; flex-direction: column; gap: 10px; }
+.pick-body[hidden], #dateSliderField[hidden], #timeSliderField[hidden] { display: none; }
+#timeZone { margin-left: 0; }
 .pick-month { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
 .pick-nav { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; }
 .pick-nav:hover { background: var(--hover); }
