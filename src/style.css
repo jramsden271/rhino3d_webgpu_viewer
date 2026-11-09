@@ -224,6 +224,8 @@ button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-s
 .pick-body { display: flex; flex-direction: column; gap: 10px; }
 .pick-body[hidden], #dateSliderField[hidden], #timeSliderField[hidden] { display: none; }
 #timeZone { margin-left: 0; }
+/* Minimised, there is no slider or picker to switch between. */
+.panel.min :is(#dateMode, #timeMode) { display: none; }
 .pick-month { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
 .pick-nav { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; }
 .pick-nav:hover { background: var(--hover); }
