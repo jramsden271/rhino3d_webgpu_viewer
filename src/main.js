@@ -2183,8 +2183,12 @@ function syncDatePanel() {
   $('dateHour').value = S.hour;
   $('dateDayOut').textContent = dayName(S.doy);
   $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
-  $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
-  $('dateSumHour').textContent = fmtHour(S.hour);
+  // The minimised widget's reading, with a clock whose hands show the time.
+  $('dateSumDay').lastChild.textContent = dayName(S.doy);
+  $('dateSumHour').lastChild.textContent = fmtHour(S.hour);
+  const mins = Math.round(S.hour * 60) % 1440;
+  $('dateClockH').setAttribute('transform', `rotate(${((mins / 2) % 360).toFixed(1)} 12 12)`);
+  $('dateClockM').setAttribute('transform', `rotate(${(mins % 60) * 6} 12 12)`);
   // The toolbar button reads the date and time, as "9 June, 09:00".
   $('dateLabel').textContent = `${dayFull(Math.round(S.doy))}, ${fmtClock(S.hour)}`;
   if (!$('dayDialog').hidden) syncDayPicker();
