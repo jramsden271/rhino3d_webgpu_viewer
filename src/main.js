@@ -2224,11 +2224,18 @@ function syncDayPicker() {
   for (const b of grid.children) { const on = +b.dataset.doy === doy; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
 }
 
+// The time picker is a clock face, as on a phone: the hours in two rings (00 to 11 outside, 12 to
+// 23 inside), then the minutes. Click or drag round the face; letting go of an hour moves on to the
+// minutes. The hour and minute at the top switch between them. The arrow keys step the face.
+let clockMode = 'h';
+const CLOCK = { c: 120, face: 116, outer: 96, inner: 64 }; // the dial's SVG geometry
+
 function openTimePicker() {
   $('dayDialog').hidden = true;
+  clockMode = 'h';
   syncTimePicker();
   placePopover($('timeDialog'), $('datePanel'), 'datePanel');
-  $('timePickHours').querySelector('.on')?.focus();
+  $('timePickDial').focus();
 }
 
 // The time as an hour (0 to 23) and minutes; 24:00 is 23 h and 60 min.
@@ -2238,22 +2245,75 @@ function pickedTime() {
 }
 
 function syncTimePicker() {
-  const hours = $('timePickHours'), mins = $('timePickMinutes'), { h, m } = pickedTime();
-  if (!hours.children.length) {
-    const cell = (text, data) => { const b = document.createElement('button'); b.textContent = text; Object.assign(b.dataset, data); return b; };
-    for (let k = 0; k < 24; k++) hours.appendChild(cell(String(k).padStart(2, '0'), { h: k }));
-    for (let k = 0; k < 60; k += 5) mins.appendChild(cell(':' + String(k).padStart(2, '0'), { m: k }));
-  }
-  $('timePickNow').textContent = activeLocation() ? `${fmtClock(state.sun.hour)} ${fmtUtc(state.sun.utcOffset)}` : fmtClock(state.sun.hour);
-  // Hours with the sun down all through them are shaded.
+  const { h, m } = pickedTime(), end = m >= 60, hourMode = clockMode === 'h', { c, face, outer, inner } = CLOCK;
+  $('timePickH').textContent = end ? '24' : String(h).padStart(2, '0');
+  $('timePickM').textContent = end ? '00' : String(m).padStart(2, '0');
+  $('timePickH').classList.toggle('on', hourMode); $('timePickH').setAttribute('aria-pressed', String(hourMode));
+  $('timePickM').classList.toggle('on', !hourMode); $('timePickM').setAttribute('aria-pressed', String(!hourMode));
+  // Hours with the sun down all through them are dimmed.
   const p = activeLocation() ? sunPosition() : null, up = p && p.sunrise != null && p.sunset != null;
-  for (const b of hours.children) {
-    const k = +b.dataset.h, on = k === h;
-    b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
-    b.classList.toggle('night', !!up && (k + 1 <= p.sunrise || k >= p.sunset));
+  const at = (turn, r) => [c + r * Math.sin(turn * 2 * Math.PI), c - r * Math.cos(turn * 2 * Math.PI)];
+  const text = (x, y, s, cls) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="${cls}">${s}</text>`;
+  let labels = '', knob;
+  if (hourMode) {
+    const sel = end ? 0 : h;
+    for (let k = 0; k < 24; k++) {
+      const [x, y] = at((k % 12) / 12, k < 12 ? outer : inner);
+      const cls = [k < 12 ? 'outer' : 'inner', k === sel ? 'on' : '', up && (k + 1 <= p.sunrise || k >= p.sunset) ? 'night' : ''].join(' ');
+      labels += text(x, y, k === 0 ? '00' : k, cls);
+    }
+    knob = { p: at((sel % 12) / 12, sel < 12 ? outer : inner), dot: false };
+  } else {
+    const sel = end ? 0 : m;
+    for (let k = 0; k < 60; k += 5) { const [x, y] = at(k / 60, outer); labels += text(x, y, String(k).padStart(2, '0'), `outer${k === sel ? ' on' : ''}`); }
+    knob = { p: at(sel / 60, outer), dot: sel % 5 !== 0 };
   }
-  for (const b of mins.children) { const on = +b.dataset.m === m; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
-  $('timePickNote').textContent = up ? `Shaded hours: the sun is down (sunrise ${fmtHour(p.sunrise)}, sunset ${fmtHour(p.sunset)}).` : '';
+  const [kx, ky] = knob.p, dial = $('timePickDial');
+  // The knob goes under the labels, so the chosen one reads white on it.
+  dial.innerHTML = `<circle class="face" cx="${c}" cy="${c}" r="${face}"/><line class="hand" x1="${c}" y1="${c}" x2="${kx.toFixed(1)}" y2="${ky.toFixed(1)}"/>` +
+    `<circle class="hub" cx="${c}" cy="${c}" r="3"/><circle class="knob" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="17"/>` +
+    (knob.dot ? `<circle class="knob-dot" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="2.5"/>` : '') + labels;
+  dial.setAttribute('aria-label', hourMode ? 'Hour' : 'Minute');
+  dial.setAttribute('aria-valuetext', hourMode ? $('timePickH').textContent : $('timePickM').textContent);
+  const zone = activeLocation() ? `Local time, ${fmtUtc(state.sun.utcOffset)}. ` : '';
+  $('timePickNote').textContent = zone + (up && hourMode ? `Dimmed hours: the sun is down (sunrise ${fmtHour(p.sunrise)}, sunset ${fmtHour(p.sunset)}).` : '');
+}
+
+// Sets the hour or the minute, keeping the other.
+function setClock(mode, v) {
+  const { h, m } = pickedTime();
+  if (sunAnim) toggleDatePlay();
+  setSun({ hour: mode === 'h' ? v + (m >= 60 ? 0 : m) / 60 : h + v / 60 });
+  saveViewState();
+}
+
+function bindClock() {
+  const dial = $('timePickDial');
+  // The hour or minute under the pointer: by its angle, and for the hours by the ring it is nearer.
+  const valueAt = (e) => {
+    const r = dial.getBoundingClientRect(), s = (2 * CLOCK.c) / r.width;
+    const dx = (e.clientX - r.left) * s - CLOCK.c, dy = (e.clientY - r.top) * s - CLOCK.c;
+    const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
+    if (clockMode === 'm') return Math.round(turn * 60) % 60;
+    const k = Math.round(turn * 12) % 12;
+    return Math.hypot(dx, dy) < (CLOCK.outer + CLOCK.inner) / 2 ? k + 12 : k;
+  };
+  let dragging = false;
+  dial.addEventListener('pointerdown', (e) => { dragging = true; dial.setPointerCapture(e.pointerId); setClock(clockMode, valueAt(e)); });
+  dial.addEventListener('pointermove', (e) => { if (dragging) { const v = valueAt(e), { h, m } = pickedTime(); if (v !== (clockMode === 'h' ? h : m)) setClock(clockMode, v); } });
+  const release = () => { if (!dragging) return; dragging = false; if (clockMode === 'h') { clockMode = 'm'; syncTimePicker(); } };
+  dial.addEventListener('pointerup', release);
+  dial.addEventListener('pointercancel', () => { dragging = false; });
+  dial.addEventListener('keydown', (e) => {
+    const step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (step) {
+      const { h, m } = pickedTime();
+      if (clockMode === 'h') setClock('h', (h + step + 24) % 24); else setClock('m', ((m >= 60 ? 0 : m) + step + 60) % 60);
+    } else if (e.key === 'Enter' && clockMode === 'h') { clockMode = 'm'; syncTimePicker(); }
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
+  for (const [id, mode] of [['timePickH', 'h'], ['timePickM', 'm']]) $(id).addEventListener('click', () => { clockMode = mode; syncTimePicker(); dial.focus(); });
 }
 
 function closePickers() { $('dayDialog').hidden = true; $('timeDialog').hidden = true; }
@@ -2264,14 +2324,7 @@ function bindPickers() {
   const month = (d) => { pickMonth = ((pickMonth - 1 + d + 12) % 12) + 1; syncDayPicker(); };
   $('dayPickPrev').addEventListener('click', () => month(-1));
   $('dayPickNext').addEventListener('click', () => month(1));
-  $('timePickHours').addEventListener('click', (e) => {
-    const b = e.target.closest('button'), { m } = pickedTime();
-    if (b) pick({ hour: +b.dataset.h + (m >= 60 ? 0 : m) / 60 });
-  });
-  $('timePickMinutes').addEventListener('click', (e) => {
-    const b = e.target.closest('button'), { h } = pickedTime();
-    if (b) pick({ hour: h + +b.dataset.m / 60 });
-  });
+  bindClock();
   for (const id of ['dayPickClose', 'dayPickDone', 'timePickClose', 'timePickDone']) $(id).addEventListener('click', closePickers);
 }
 

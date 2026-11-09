@@ -301,11 +301,10 @@
   <div id="timeDialog" class="chrome popover picker" hidden role="dialog" aria-labelledby="timePickTitle">
     <div class="panel-head"><span id="timePickTitle">Choose time</span><span class="panel-actions"><button class="x" id="timePickClose" aria-label="Close" title="Close">×</button></span></div>
     <div class="pop-body">
-      <div class="pick-now" id="timePickNow"></div>
-      <div class="pick-label">Hour</div>
-      <div class="pick-grid pick-hours" id="timePickHours"></div>
-      <div class="pick-label">Minute</div>
-      <div class="pick-grid pick-minutes" id="timePickMinutes"></div>
+      <div class="clock-head">
+        <button class="clock-part" id="timePickH" title="Choose the hour"></button><span class="clock-colon">:</span><button class="clock-part" id="timePickM" title="Choose the minute"></button>
+      </div>
+      <svg class="clock-dial" id="timePickDial" viewBox="0 0 240 240" tabindex="0" role="slider" aria-label="Hour"></svg>
       <div class="fine" id="timePickNote"></div>
       <div class="pop-actions"><span></span><button class="btn primary" id="timePickDone">Done</button></div>
     </div>
