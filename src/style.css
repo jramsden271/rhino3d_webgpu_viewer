@@ -219,6 +219,22 @@ button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-s
 .range input { flex: 1; accent-color: var(--accent); min-width: 0; }
 .range output { width: 34px; text-align: right; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pop-actions { display: flex; justify-content: space-between; align-items: center; }
+/* Date and time pickers, beside the Date widget. */
+.popover.picker { width: 262px; }
+.pick-now { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pick-month { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
+.pick-nav { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; }
+.pick-nav:hover { background: var(--hover); }
+.pick-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pick-label { font-size: 11.5px; color: var(--muted); margin-bottom: -4px; }
+.pick-grid { display: grid; gap: 3px; }
+.pick-days { grid-template-columns: repeat(7, 1fr); }
+.pick-hours, .pick-minutes { grid-template-columns: repeat(6, 1fr); }
+.pick-grid button { height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.pick-grid button:hover { background: var(--hover); }
+.pick-grid button.night { color: var(--muted); background: var(--hover); }
+.pick-grid button.on { background: var(--accent); color: #fff; font-weight: 600; }
+.pick-grid button:focus-visible, .pick-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .pop-actions .link[hidden] { visibility: hidden; display: inline; }
 
 .inspect { position: absolute; top: 0; left: 0; width: max-content; min-width: 300px; max-width: min(800px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; z-index: 4; padding: 0 0 8px; }

@@ -1472,7 +1472,7 @@ function setSideWidth(w) {
   state.sideWidth = Math.round(Math.max(SIDE_WIDTH, Math.min(w, window.innerWidth * 0.6)));
   document.querySelector('.side').style.setProperty('--side-width', state.sideWidth + 'px');
   // Windows beside the column move with it.
-  for (const [dlg, panel] of [[$('matDialog'), $('layersPanel')], [$('blockDialog'), $('blocksPanel')]]) {
+  for (const [dlg, panel] of [[$('matDialog'), $('layersPanel')], [$('blockDialog'), $('blocksPanel')], [$('dayDialog'), $('datePanel')], [$('timeDialog'), $('datePanel')]]) {
     if (!dlg.hidden && !panel.hidden) dlg.style.left = Math.max(12, panel.getBoundingClientRect().left - dlg.offsetWidth - 10) + 'px';
   }
 }
@@ -2164,6 +2164,8 @@ function applyFileLocation(loc) {
 }
 
 const dayName = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
+const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
 
 // The Date and Weather widgets, and the widgets that follow the date and time.
 function syncDateWeather() {
@@ -2183,6 +2185,94 @@ function syncDatePanel() {
   $('dateTimeOut').textContent = activeLocation() ? `${fmtHour(S.hour)} ${fmtUtc(S.utcOffset)}` : fmtHour(S.hour);
   $('dateSumDay').textContent = dayName(S.doy); // the minimised widget's reading
   $('dateSumHour').textContent = fmtHour(S.hour);
+  // The toolbar button reads the date and time, as "9 June, 09:00".
+  $('dateLabel').textContent = `${dayFull(Math.round(S.doy))}, ${fmtClock(S.hour)}`;
+  if (!$('dayDialog').hidden) syncDayPicker();
+  if (!$('timeDialog').hidden) syncTimePicker();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Date and time pickers: windows beside the Date widget, opened from its right-click menus
+// (Choose date…, Choose time…). A click sets the date or time at once, as the sliders do.
+
+let pickMonth = 1; // the month the date picker shows
+
+function openDayPicker() {
+  $('timeDialog').hidden = true;
+  pickMonth = dateFromDayOfYear(EPW_YEAR, Math.round(state.sun.doy)).month;
+  syncDayPicker();
+  placePopover($('dayDialog'), $('datePanel'), 'datePanel');
+  $('dayPickGrid').querySelector('.on')?.focus();
+}
+
+function syncDayPicker() {
+  const doy = Math.round(state.sun.doy), grid = $('dayPickGrid');
+  $('dayPickNow').textContent = dayFull(doy);
+  $('dayPickMonth').textContent = MONTHS_FULL[pickMonth - 1];
+  if (grid.dataset.month !== String(pickMonth)) {
+    const first = dayOfYear(EPW_YEAR, pickMonth, 1), next = pickMonth === 12 ? daysInYear(EPW_YEAR) + 1 : dayOfYear(EPW_YEAR, pickMonth + 1, 1);
+    grid.innerHTML = '';
+    for (let d = first; d < next; d++) {
+      const b = document.createElement('button');
+      b.dataset.doy = d;
+      b.textContent = d - first + 1;
+      b.setAttribute('aria-label', dayFull(d));
+      grid.appendChild(b);
+    }
+    grid.dataset.month = pickMonth;
+  }
+  for (const b of grid.children) { const on = +b.dataset.doy === doy; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+}
+
+function openTimePicker() {
+  $('dayDialog').hidden = true;
+  syncTimePicker();
+  placePopover($('timeDialog'), $('datePanel'), 'datePanel');
+  $('timePickHours').querySelector('.on')?.focus();
+}
+
+// The time as an hour (0 to 23) and minutes; 24:00 is 23 h and 60 min.
+function pickedTime() {
+  const m = Math.round(state.sun.hour * 60), h = Math.min(23, Math.floor(m / 60));
+  return { h, m: m - h * 60 };
+}
+
+function syncTimePicker() {
+  const hours = $('timePickHours'), mins = $('timePickMinutes'), { h, m } = pickedTime();
+  if (!hours.children.length) {
+    const cell = (text, data) => { const b = document.createElement('button'); b.textContent = text; Object.assign(b.dataset, data); return b; };
+    for (let k = 0; k < 24; k++) hours.appendChild(cell(String(k).padStart(2, '0'), { h: k }));
+    for (let k = 0; k < 60; k += 5) mins.appendChild(cell(':' + String(k).padStart(2, '0'), { m: k }));
+  }
+  $('timePickNow').textContent = activeLocation() ? `${fmtClock(state.sun.hour)} ${fmtUtc(state.sun.utcOffset)}` : fmtClock(state.sun.hour);
+  // Hours with the sun down all through them are shaded.
+  const p = activeLocation() ? sunPosition() : null, up = p && p.sunrise != null && p.sunset != null;
+  for (const b of hours.children) {
+    const k = +b.dataset.h, on = k === h;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('night', !!up && (k + 1 <= p.sunrise || k >= p.sunset));
+  }
+  for (const b of mins.children) { const on = +b.dataset.m === m; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+  $('timePickNote').textContent = up ? `Shaded hours: the sun is down (sunrise ${fmtHour(p.sunrise)}, sunset ${fmtHour(p.sunset)}).` : '';
+}
+
+function closePickers() { $('dayDialog').hidden = true; $('timeDialog').hidden = true; }
+
+function bindPickers() {
+  const pick = (changes) => { if (sunAnim) toggleDatePlay(); setSun(changes); saveViewState(); };
+  $('dayPickGrid').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) pick({ doy: +b.dataset.doy }); });
+  const month = (d) => { pickMonth = ((pickMonth - 1 + d + 12) % 12) + 1; syncDayPicker(); };
+  $('dayPickPrev').addEventListener('click', () => month(-1));
+  $('dayPickNext').addEventListener('click', () => month(1));
+  $('timePickHours').addEventListener('click', (e) => {
+    const b = e.target.closest('button'), { m } = pickedTime();
+    if (b) pick({ hour: +b.dataset.h + (m >= 60 ? 0 : m) / 60 });
+  });
+  $('timePickMinutes').addEventListener('click', (e) => {
+    const b = e.target.closest('button'), { h } = pickedTime();
+    if (b) pick({ hour: h + +b.dataset.m / 60 });
+  });
+  for (const id of ['dayPickClose', 'dayPickDone', 'timePickClose', 'timePickDone']) $(id).addEventListener('click', closePickers);
 }
 
 // The View ticks: each disabled, with why in its tooltip, when it cannot show.
@@ -2276,6 +2366,7 @@ function setSun(changes) {
 function toggleDatePanel() {
   state.datePanel = !state.datePanel;
   $('datePanel').hidden = !state.datePanel;
+  if (!state.datePanel) closePickers();
   syncDateWeather();
 }
 
@@ -2303,21 +2394,19 @@ function bindDateWeather() {
   // Right-click the date or time slider for its usual values, and the user's own. Those are kept
   // for this machine, for every model; + adds the value showing, × removes one. Values are whole
   // numbers: the day of the year, or the minute of the day.
-  const presetMenu = ({ key, fixed, now, name, go, valid }) => {
+  const presetMenu = ({ key, fixed, now, name, go, valid, choose }) => {
     const load = () => { try { return JSON.parse(localStorage.getItem(key) || '[]').filter(valid); } catch (err) { return []; } };
     const save = (list) => { try { localStorage.setItem(key, JSON.stringify(list)); } catch (err) { /* storage unavailable */ } };
     const at = (label, v) => ({ label, run: () => { go(v); saveViewState(); } });
     const open = (pos) => {
       const mine = load(), has = mine.includes(now) || fixed.some((f) => f.v === now);
-      const items = fixed.map((f) => at(f.label, f.v));
+      const items = [choose, ...(fixed.length ? ['-'] : []), ...fixed.map((f) => at(f.label, f.v))];
       if (mine.length) items.push('-', ...mine.map((v) => ({ ...at(name(v), v), remove: () => { save(load().filter((w) => w !== v)); open(pos); } })));
       showMenu('Go to', items, pos, { add: { label: '+', title: has ? `${name(now)} is already in this list` : `Add ${name(now)} to this list`, disabled: has,
         run: () => { save([...load(), now].sort((a, b) => a - b)); open(pos); } } });
     };
     return open;
   };
-  const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayFull = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS_FULL[month - 1]}`; };
   // Each slider's whole field takes the menu, and so does the minimised widget's reading in the
   // title bar, in place of its lock menu.
   const onMenu = (ids, show) => {
@@ -2329,15 +2418,16 @@ function bindDateWeather() {
       return { v, label: `${dayFull(v)} · ${what}` };
     });
     presetMenu({ key: '3dm-viewer-dates', fixed, now: Math.round(state.sun.doy), name: dayFull, valid: (d) => d >= 1 && d <= 365,
-      go: (doy) => setSun({ doy }) })([e.clientX, e.clientY]);
+      go: (doy) => setSun({ doy }), choose: { label: 'Choose date…', run: openDayPicker } })([e.clientX, e.clientY]);
   });
   onMenu(['dateHour', 'dateSumHour'], (e) => {
     const noon = activeLocation() ? sunPosition().noon : null, clock = (m) => fmtClock(m / 60);
-    const fixed = [{ v: 600, label: '10:00' }, { v: 720, label: '12:00' }, noon != null && { v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }, { v: 900, label: '15:00' }].filter(Boolean);
+    const fixed = noon != null ? [{ v: Math.round(noon * 60), label: `Solar noon · ${fmtHour(noon)}` }] : [];
     presetMenu({ key: '3dm-viewer-times', fixed, now: Math.round(state.sun.hour * 60), name: clock, valid: (m) => m >= 0 && m <= 1440,
-      go: (m) => setSun({ hour: m / 60 }) })([e.clientX, e.clientY]);
+      go: (m) => setSun({ hour: m / 60 }), choose: { label: 'Choose time…', run: openTimePicker } })([e.clientX, e.clientY]);
   });
   $('datePlay').addEventListener('click', toggleDatePlay);
+  bindPickers();
   document.querySelector('[data-act="weather"]').addEventListener('click', toggleWeatherPanel);
   $('weatherClose').addEventListener('click', () => state.weatherPanel && toggleWeatherPanel());
   $('weatherAdd').addEventListener('click', () => (activeLocation() ? openWeatherDialog() : openLocationDialog()));
@@ -3743,7 +3833,7 @@ function onKey(e) {
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; closePickers(); selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
