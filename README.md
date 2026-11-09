@@ -422,8 +422,7 @@ for the **Date widget**: the date and local time that the sun, the sky, the weat
 comfort widget all follow. Right-click the date slider to jump to a solstice or equinox, or the time
 slider for solar noon. **Choose date…** at the top of the date menu opens a
 calendar beside the widget, a month at a time; **Choose time…** opens a clock face, as on a phone: pick
-the hour (00 to 11 round the outside, 12 to 23 inside, with the hours the sun is down dimmed), and
-it moves on to the minutes, to the minute (labelled every 5). Click or drag round the face, or
+the hour (00 to 11 round the outside, 12 to 23 inside), and it moves on to the minutes, to the minute (labelled every 5). Click or drag round the face, or
 use the arrow keys. A click sets the
 date or time at once.
 The **+** in either menu adds the date or time showing to it, kept in this browser for every

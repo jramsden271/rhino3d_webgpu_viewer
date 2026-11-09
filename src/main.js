@@ -2225,7 +2225,7 @@ function syncDayPicker() {
 }
 
 // The time picker is a clock face, as on a phone: the hours in two rings (00 to 11 outside, 12 to
-// 23 inside), then the minutes. Click or drag round the face; letting go of an hour moves on to the
+// 23 inside), then the minutes, to the minute. Click or drag round the face; letting go of an hour moves on to the
 // minutes. The hour and minute at the top switch between them. The arrow keys step the face.
 let clockMode = 'h';
 const CLOCK = { c: 120, face: 116, outer: 96, inner: 64 }; // the dial's SVG geometry
@@ -2235,7 +2235,7 @@ function openTimePicker() {
   clockMode = 'h';
   syncTimePicker();
   placePopover($('timeDialog'), $('datePanel'), 'datePanel');
-  $('timePickDial').focus();
+  $('timePickDial').focus({ focusVisible: false }); // for the arrow keys, without a focus ring
 }
 
 // The time as an hour (0 to 23) and minutes; 24:00 is 23 h and 60 min.
@@ -2250,8 +2250,6 @@ function syncTimePicker() {
   $('timePickM').textContent = end ? '00' : String(m).padStart(2, '0');
   $('timePickH').classList.toggle('on', hourMode); $('timePickH').setAttribute('aria-pressed', String(hourMode));
   $('timePickM').classList.toggle('on', !hourMode); $('timePickM').setAttribute('aria-pressed', String(!hourMode));
-  // Hours with the sun down all through them are dimmed.
-  const p = activeLocation() ? sunPosition() : null, up = p && p.sunrise != null && p.sunset != null;
   const at = (turn, r) => [c + r * Math.sin(turn * 2 * Math.PI), c - r * Math.cos(turn * 2 * Math.PI)];
   const text = (x, y, s, cls) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="${cls}">${s}</text>`;
   let labels = '', knob;
@@ -2259,7 +2257,7 @@ function syncTimePicker() {
     const sel = end ? 0 : h;
     for (let k = 0; k < 24; k++) {
       const [x, y] = at((k % 12) / 12, k < 12 ? outer : inner);
-      const cls = [k < 12 ? 'outer' : 'inner', k === sel ? 'on' : '', up && (k + 1 <= p.sunrise || k >= p.sunset) ? 'night' : ''].join(' ');
+      const cls = k < 12 ? (k === sel ? 'outer on' : 'outer') : (k === sel ? 'inner on' : 'inner');
       labels += text(x, y, k === 0 ? '00' : k, cls);
     }
     knob = { p: at((sel % 12) / 12, sel < 12 ? outer : inner), dot: false };
@@ -2275,8 +2273,7 @@ function syncTimePicker() {
     (knob.dot ? `<circle class="knob-dot" cx="${kx.toFixed(1)}" cy="${ky.toFixed(1)}" r="2.5"/>` : '') + labels;
   dial.setAttribute('aria-label', hourMode ? 'Hour' : 'Minute');
   dial.setAttribute('aria-valuetext', hourMode ? $('timePickH').textContent : $('timePickM').textContent);
-  const zone = activeLocation() ? `Local time, ${fmtUtc(state.sun.utcOffset)}. ` : '';
-  $('timePickNote').textContent = zone + (up && hourMode ? `Dimmed hours: the sun is down (sunrise ${fmtHour(p.sunrise)}, sunset ${fmtHour(p.sunset)}).` : '');
+  $('timePickNote').textContent = activeLocation() ? `Local time, ${fmtUtc(state.sun.utcOffset)}.` : '';
 }
 
 // Sets the hour or the minute, keeping the other.
