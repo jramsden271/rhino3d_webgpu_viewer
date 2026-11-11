@@ -306,21 +306,24 @@ async function extractModel(rhino, doc, onProgress, origin = null, scale = 1) {
 // The scene for several files shown together: each part's layers, materials, block definitions, objects
 // and lights come after the ones before them, with their layer and material numbers moved along. The
 // parts share one origin (see extractModel). Batches are built by the caller.
-function mergeScenes(parts, names) {
+// keys: one per part, the key its ids are given (a project's file id, which stays the same when other files are
+// turned off or added), or null for the part's number when there are several parts and no ids otherwise.
+function mergeScenes(parts, names, keys = null) {
   const sum = (a, b) => { for (const k of Object.keys(b)) a[k] = (a[k] || 0) + b[k]; return a; };
   const multi = names.length > 1;
-  // With several files, Rhino's ids (layers, objects, block definitions) are only unique within one file,
-  // so each gets its file's number in front. The original id stays as `guid` on objects and layers.
+  // Rhino's ids (layers, objects, block definitions) are only unique within one file, so each gets its file's
+  // key in front. The original id stays as `guid` on objects and layers.
+  const fileKeys = parts.map((_, k) => (keys ? String(keys[k]) : multi ? String(k) : null));
   const out = { origin: parts[0].origin, units: parts[0].units, layers: [], materials: [], magicLayers: {}, defs: new Map(),
     items: [], lights: [], views: parts[0].views || [], locations: parts.map((p, k) => ({ name: names[k], location: p.location })),
-    location: parts.find((p) => p.location)?.location ?? null,
+    location: parts.find((p) => p.location)?.location ?? null, fileKeys,
     stats: { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {}, lights: {} } };
   parts.forEach((p, k) => {
-    const pre = (id) => (multi ? `${k}:${id}` : id);
+    const pre = (id) => (fileKeys[k] != null ? `${fileKeys[k]}:${id}` : id);
     // With several files, each file's top layers sit under a layer named for the file, so the Layers
     // panel shows one group per file (like the magic block layers, it is a layer with no objects of its own).
     const root = multi ? out.layers.length : -1;
-    if (root >= 0) out.layers.push({ index: root, id: `file-${k}`, guid: null, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
+    if (root >= 0) out.layers.push({ index: root, id: `file-${fileKeys[k]}`, guid: null, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
       visible: true, material: -1, count: 0, parent: -1, materialName: '', materialRgb: DEFAULT_MATERIAL.rgb, materialAlpha: 1, fileRoot: true });
     const lOff = out.layers.length, mOff = out.materials.length;
     const shiftAi = (ai) => { if (!ai) return; if (ai.layer >= 0) ai.layer += lOff; if (ai.mi >= 0) ai.mi += mOff; };
@@ -328,7 +331,8 @@ function mergeScenes(parts, names) {
       out.layers.push({ ...l, id: pre(l.id), guid: l.id, file: k, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
         material: l.material >= 0 ? l.material + mOff : l.material, fullPath: multi ? `${names[k]}::${l.fullPath}` : l.fullPath });
     }
-    for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length });
+    // srcIndex: the material's number in its own file, for writing changes back to it.
+    for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length, srcIndex: m.index, file: k });
     // The magic block layers (by key) are the first file's: each later file's are left in the layers, unused.
     if (k === 0) out.magicLayers = Object.fromEntries(Object.entries(p.magicLayers).map(([key, i]) => [key, i + lOff]));
     for (const it of p.items) {

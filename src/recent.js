@@ -5,19 +5,21 @@
 // Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle, off }],
+//   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle, off }
+//                                              or, from a zip, { id, name, size, zip (its handle), entry (its path), off }],
 //                                              custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
 //                                        Returns { project, file }: the project's id and the file's id.
 //   await Recent.put(projectId, name, entries)    files opened into a project, made if new. Returns its id.
+//   await Recent.create(project)                  a whole project (one opened from a zip) added at the top
 //   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project. Returns the file's id.
 //   await Recent.setFileOn(projectId, fileId, on) turns a file in or out of the project's view
 //   await Recent.detach(projectId, fileId)        takes a 3dm file off a project
 //   await Recent.remove(index)           removes a project (its results copies with it)
-//   await Recent.link(handle, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
+//   await Recent.link(projectId, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
 //                                 attached weather files (epws: [{ id, name, bytes }]), the one used as weather data source
 //                                 (weather: its id), which location source it uses and results files (any of them)
-//   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset } | null, city: { lat, lon, utcOffset, name } | null,
+//   await Recent.links(projectId) -> { custom: { lat, lon, utcOffset } | null, city: { lat, lon, utcOffset, name } | null,
 //                                      epws: [{ id, name, bytes }], weather: id | null,
 //                                      use: 'custom' | 'city' | 'file' | 'file:<n>' | 'epw:<id>' | null, results: [{ id, name, size }] }
 //   await Recent.saveState(projectId, state), Recent.loadState(projectId)  the project's changes and view
@@ -158,6 +160,16 @@ const Recent = {
     });
   },
 
+  // A whole project added at the top, as one opened from a zip is (with a new id: ids do not travel).
+  create(project) {
+    if (!this.supported) return Promise.resolve(null);
+    return this.serial(async () => {
+      const list = await this.list();
+      await this.save([{ opened: Date.now(), ...project }, ...list]);
+      return project.id;
+    });
+  },
+
   // Takes a 3dm file off a project.
   detach(projectId, fileId) {
     return this.serial(async () => {
@@ -173,9 +185,10 @@ const Recent = {
     return hit ? hit[0] : -1;
   },
 
-  link(handle, changes) {
+  // A project's settings, by its id (a project opened from a zip has no file handles to find it by).
+  link(projectId, changes) {
     return this.serial(async () => {
-      const list = await this.list(), i = await this.find(list, handle);
+      const list = await this.list(), i = list.findIndex((p) => p.id === projectId);
       if (i < 0) return;
       Object.assign(list[i], changes);
       if (changes.epws) delete list[i].epw; // replaced by the list: the old single weather file goes
@@ -183,8 +196,8 @@ const Recent = {
     });
   },
 
-  async links(handle) {
-    const list = await this.list(), i = await this.find(list, handle), r = list[i] || {};
+  async links(projectId) {
+    const list = await this.list(), r = list.find((p) => p.id === projectId) || {};
     const old = r.epws ? null : r.epw; // saved before weather files were a list
     const custom = r.custom && !r.custom.name ? r.custom : null;
     const city = r.city || (r.custom?.name ? r.custom : null);

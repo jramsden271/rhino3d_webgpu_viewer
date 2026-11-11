@@ -3,6 +3,13 @@
 const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
+// What is kept where:
+//   This machine (localStorage), for every project: the preferences below (render options, walk and drive,
+//   comfort, colour scales, cloud speed, panel width, date and time controls), the dates and times added to
+//   the date and time sliders, and the widget layout (widgets.js).
+//   The project (recent.js, and project.json in a project zip): its files and which are active, its location
+//   and weather choices, its weather and results files, and the changes made to its model and how it is
+//   viewed (readStored). Lamps added in the viewer are not kept.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
 const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode })); } catch (e) { /* storage unavailable */ } };
 
@@ -411,8 +418,8 @@ async function attachRhinoFiles(entries) {
 
 // The custom location, city, weather files and choice of location linked to a model come back with it.
 // Returns what came back, for a notice.
-async function restoreLinks(handle) {
-  const { custom, city, epws, weather, use, results: bound } = await Recent.links(handle), back = [];
+async function restoreLinks(projectId) {
+  const { custom, city, epws, weather, use, results: bound } = await Recent.links(projectId), back = [];
   const inRange = (p) => Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 && Math.abs(p.utcOffset) <= 14;
   if (custom && inRange(custom)) { site.custom = { lat: +custom.lat, lon: +custom.lon, utcOffset: +custom.utcOffset, name: null }; back.push(`custom location ${fmtCoords(custom.lat, custom.lon)}`); }
   if (city && inRange(city)) { site.city = { lat: +city.lat, lon: +city.lon, utcOffset: +city.utcOffset, name: typeof city.name === 'string' ? city.name : null }; back.push(`city ${site.city.name || fmtCoords(city.lat, city.lon)}`); }
@@ -482,7 +489,9 @@ async function openScene(sources, opts = {}) {
   clearNotices();
   try {
     let m, reader;
-    if (sources.length === 1) {
+    // In a project, ids carry the project file's id (see mergeScenes), so its saved settings still find them
+    // when files are added or turned off; so even one file goes through the merge.
+    if (sources.length === 1 && !opts.projectId) {
       ({ m, reader } = await readWithReader(first.name, first.bytes, null, true));
     } else {
       const parts = [];
@@ -491,7 +500,7 @@ async function openScene(sources, opts = {}) {
         parts.push(r.m);
         reader ??= r.reader;
       }
-      m = mergeScenes(parts, sources.map((s) => s.name.replace(/\.3dm$/i, '')));
+      m = mergeScenes(parts, sources.map((s) => s.name.replace(/\.3dm$/i, '')), opts.projectId ? sources.map((s) => s.key) : null);
       showBusy('Building batches', 0.9);
       await new Promise((r) => setTimeout(r, 20));
       m.batches = buildBatches(m);
@@ -507,7 +516,7 @@ async function openScene(sources, opts = {}) {
     model.bytes = sources.length === 1 ? first.bytes : null; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.locations ??= [{ name: first.name, location: m.location }]; // a scene of several files has one per file
-    model.sources = sources.map(({ name, handle }) => ({ name, handle })); // for a combined copy (exportCombined)
+    model.sources = sources.map(({ name, handle, key, zip, entry }) => ({ name, handle, key, zip, entry })); // for a combined copy (exportCombined)
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     model.blocks = blockTable(m);
     model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
@@ -545,7 +554,7 @@ async function openScene(sources, opts = {}) {
     await settleMagicGround();
     Object.assign(site, { custom: null, city: null, epws: [], epw: null, use: null }); // never carried over to another model
     results = [];
-    const back = handle ? await restoreLinks(handle) : [];
+    const back = opts.projectId ? await restoreLinks(opts.projectId) : [];
     syncResults();
     applyFileLocation(m.location);
     if (model.savedNorth != null) setSun({ north: model.savedNorth });
@@ -1745,46 +1754,10 @@ async function downloadCopy() {
     await new Promise((r) => setTimeout(r, 20));
     const rhino = await getRhino(model.reader);
     const doc = rhino.File3dm.fromByteArray(model.bytes);
-    const mats = doc.materials(), lt = doc.layers(), objs = doc.objects();
     const rgba = (c) => ({ r: Math.round(c[0] * 255), g: Math.round(c[1] * 255), b: Math.round(c[2] * 255), a: 255 });
-    for (const [id, c] of Object.entries(state.layerColor)) { const layer = lt.findId(id); if (layer) layer.color = rgba(c); }
-    for (const id of editedMaterialLayers()) {
-      const layer = lt.findId(id), i = model.layers.findIndex((l) => l.id === id);
-      if (!layer || i < 0) continue;
-      const m = new rhino.Material(), sp = layerSpecialId(i), set = state.layerMat[id];
-      const o = { rgb: set?.rgb || (sp ? SPECIAL[sp].rgb : model.layers[i].materialRgb), alpha: set ? set.alpha : sp ? 1 : model.layers[i].materialAlpha, gloss: set?.gloss || 0 };
-      // Materials with a magic material are named after it, so the viewer recognises them again.
-      m.name = sp ? `${SPECIAL[sp].name} – ${layer.name}` : `${layer.name} (viewer)`;
-      m.diffuseColor = rgba(o.rgb);
-      m.transparency = 1 - o.alpha;
-      m.shine = Math.round(o.gloss * 255);
-      m.reflectivity = o.gloss * 0.5;
-      mats.add(m);
-      layer.renderMaterialIndex = mats.count - 1;
-    }
-    const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
-    const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
-    // Objects whose attributes changed.
-    for (const it of model.objects) {
-      if (!state.objEdits[it.id]) continue;
-      const o = objs.findId(it.id);
-      if (!o) continue;
-      const a = o.attributes(), ai = it.ai;
-      a.colorSource = CS[ai.cs] ?? CS[0];
-      a.objectColor = rgba(ai.oc);
-      a.materialSource = MS[ai.ms] ?? MS[0];
-      a.materialIndex = ai.mi;
-      a.layerIndex = ai.layer;
-    }
-    // Block sub-element settings: in the file these are the sources of the definition's own objects.
-    const idefs = doc.instanceDefinitions();
-    for (const [id, set] of Object.entries(state.blockSub)) {
-      const src = SUB_SOURCES[set];
-      for (const oid of idefs.findId(id)?.getObjectIds() || []) {
-        const a = objs.findId(oid)?.attributes();
-        if (a) { a.colorSource = CS[src.cs]; a.materialSource = MS[src.ms]; }
-      }
-    }
+    // Layer colours and materials, object sources and block sub-element settings (the same as a combined copy).
+    // Materials with a magic material are named after it, so the viewer recognises them again.
+    applyViewerEdits(rhino, doc, 0);
     const keptNested = writeMagicBlocks(rhino, doc, rgba);
     showBusy('Saving', 0.8);
     await new Promise((r) => setTimeout(r, 20));
@@ -1809,7 +1782,7 @@ async function downloadCopy() {
 // file (colours, materials, object and block settings) are written into its part. Each file is read again
 // from its handle, as the viewer keeps no copy of the bytes. Magic blocks and lights are not written.
 async function exportCombined() {
-  const missing = model.sources.filter((s) => !s.handle).map((s) => s.name);
+  const missing = model.sources.filter((s) => !s.handle && !s.zip).map((s) => s.name);
   if (missing.length) { notice(`A combined copy needs every file to be one the viewer can read again. ${missing.join(', ')} ${missing.length > 1 ? 'were' : 'was'} added without a file handle.`, true); return; }
   try {
     const rhino = await getRhino(model.reader), n = model.sources.length;
@@ -1819,7 +1792,9 @@ async function exportCombined() {
       const s = model.sources[k];
       showBusy(`Adding ${s.name} (${k + 1} of ${n})`, 0.1 + (0.8 * k) / n);
       await new Promise((r) => setTimeout(r, 20));
-      const src = rhino.File3dm.fromByteArray(new Uint8Array(await (await s.handle.getFile()).arrayBuffer()));
+      const blob = await projectFileBlob(s);
+      if (!blob) throw new Error(`permission to read ${s.name} was not given`);
+      const src = rhino.File3dm.fromByteArray(new Uint8Array(await blob.arrayBuffer()));
       try {
         applyViewerEdits(rhino, src, k);
         addFileTo(rhino, master, src, s.name, (METRES_PER_UNIT[enumName(src.settings().modelUnitSystem)] || 1) / (METRES_PER_UNIT[model.units] || 1));
@@ -1845,20 +1820,29 @@ async function exportCombined() {
   }
 }
 
-// The viewer's changes that belong to one file of the model, written into that file as it is read (before
-// it is copied). Ids in the model are the file's number and its own id (see mergeScenes).
+// The viewer's changes that belong to one file of the model (k: its place in the model), written into that
+// file's document. In a merged model, ids carry the file's key and layer and material numbers run on from the
+// files before (see mergeScenes): here they are turned back into the file's own. A model read on its own
+// keeps the file's ids and numbers.
 function applyViewerEdits(rhino, src, k) {
   const rgba = (c) => ({ r: Math.round(c[0] * 255), g: Math.round(c[1] * 255), b: Math.round(c[2] * 255), a: 255 });
   const lt = src.layers(), mats = src.materials(), objs = src.objects();
-  const mine = (l) => l.file === k && l.guid;
+  const pre = model.fileKeys?.[k] != null ? `${model.fileKeys[k]}:` : '';
+  const guidOf = (x) => x.guid ?? x.id, fileOf = (x) => x.file ?? 0;
+  const mine = (x) => !!x && !x.fileRoot && !x.magic && fileOf(x) === k && !!guidOf(x);
+  const layerAt = new Map();
+  for (let i = 0; i < lt.count; i++) layerAt.set(lt.get(i).id, i);
+  const fileLayer = (i) => (mine(model.layers[i]) ? layerAt.get(guidOf(model.layers[i])) ?? null : null);
+  const fileMaterial = (mi) => (mi >= 0 ? model.materials[mi]?.srcIndex ?? mi : mi);
   for (const [id, c] of Object.entries(state.layerColor)) {
     const l = model.layers.find((x) => x.id === id);
-    if (mine(l || {})) { const layer = lt.findId(l.guid); if (layer) layer.color = rgba(c); }
+    if (mine(l)) { const layer = lt.findId(guidOf(l)); if (layer) layer.color = rgba(c); }
   }
   for (const id of editedMaterialLayers()) {
     const L = model.layers.find((x) => x.id === id);
-    if (!mine(L || {})) continue;
-    const i = model.layers.indexOf(L), layer = lt.findId(L.guid);
+    if (!mine(L)) continue;
+    const i = model.layers.indexOf(L), layer = lt.findId(guidOf(L));
+    if (!layer) continue;
     const sp = layerSpecialId(i), set = state.layerMat[id];
     const o = { rgb: set?.rgb || (sp ? SPECIAL[sp].rgb : L.materialRgb), alpha: set ? set.alpha : sp ? 1 : L.materialAlpha, gloss: set?.gloss || 0 };
     const m = new rhino.Material();
@@ -1873,22 +1857,22 @@ function applyViewerEdits(rhino, src, k) {
   const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
   const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
   for (const it of model.objects) {
-    if (it.file !== k || !state.objEdits[it.id]) continue;
-    const o = objs.findId(it.guid);
+    if (fileOf(it) !== k || !state.objEdits[it.id]) continue;
+    const o = objs.findId(guidOf(it));
     if (!o) continue;
-    const a = o.attributes(), ai = it.ai;
+    const a = o.attributes(), ai = it.ai, layer = fileLayer(ai.layer);
     a.colorSource = CS[ai.cs] ?? CS[0];
     a.objectColor = rgba(ai.oc);
     a.materialSource = MS[ai.ms] ?? MS[0];
-    a.materialIndex = ai.mi;
-    a.layerIndex = ai.layer;
+    a.materialIndex = fileMaterial(ai.mi);
+    if (layer != null) a.layerIndex = layer; // a move to another file's layer is not written
   }
-  // Only the block sub-element settings of this file's definitions (their ids carry the file's number).
+  // Only the block sub-element settings of this file's definitions (their ids carry the file's key).
   const idefs = src.instanceDefinitions();
   for (const [id, set] of Object.entries(state.blockSub)) {
-    if (!id.startsWith(`${k}:`)) continue;
+    if (pre && !id.startsWith(pre)) continue;
     const src2 = SUB_SOURCES[set];
-    for (const oid of idefs.findId(id.slice(`${k}:`.length))?.getObjectIds() || []) {
+    for (const oid of idefs.findId(id.slice(pre.length))?.getObjectIds() || []) {
       const a = objs.findId(oid)?.attributes();
       if (a) { a.colorSource = CS[src2.cs]; a.materialSource = MS[src2.ms]; }
     }
@@ -2021,10 +2005,10 @@ function writeMagicBlocks(rhino, doc, rgba) {
     names.add(name);
     const defId = idefs.get(idefs.add(name, '', '', '', [0, 0, 0], meshes, attrs)).id;
     for (const it of items) {
-      const o = objs.findId(it.id);
+      const o = objs.findId(it.guid ?? it.id);
       if (!o) continue;
       const a = o.attributes(), p = it.magicXf, xf = new rhino.Transform(1);
-      objs.delete(it.id);
+      objs.delete(it.guid ?? it.id);
       for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) xf[`m${r}${c}`] = p[r * 4 + c] + (c === 3 ? model.origin[r] : 0);
       objs.addInstanceObject(new rhino.InstanceReference(defId, xf), a);
     }
@@ -2851,13 +2835,13 @@ function applyLocation() {
   redraw();
 }
 
-// Save a change to the open model's links. Typing saves once the typing pauses.
-let linkTimer = 0, linkPending = null; // { handle, changes }
+// Save a change to the open project's settings. Typing saves once the typing pauses.
+let linkTimer = 0, linkPending = null; // { projectId, changes }
 function linkToModel(changes, delay = 0) {
-  const h = model?.handle;
-  if (!h) return;
-  if (linkPending && linkPending.handle !== h) flushLinks();
-  linkPending = { handle: h, changes: { ...linkPending?.changes, ...changes } };
+  const id = model?.projectId;
+  if (!id) return;
+  if (linkPending && linkPending.projectId !== id) flushLinks();
+  linkPending = { projectId: id, changes: { ...linkPending?.changes, ...changes } };
   clearTimeout(linkTimer);
   if (delay) linkTimer = setTimeout(flushLinks, delay); else flushLinks();
 }
@@ -2865,7 +2849,7 @@ function flushLinks() {
   clearTimeout(linkTimer);
   const p = linkPending;
   linkPending = null;
-  if (p) Recent.link(p.handle, p.changes).then(renderRecent);
+  if (p) Recent.link(p.projectId, p.changes).then(renderRecent);
 }
 
 // The location source picked in the Set location list. A weather file's location also makes it the
@@ -2984,7 +2968,7 @@ async function addResultsFile(file) {
   results.push({ id, name: file.name, size: file.size, ...parsed });
   syncResults();
   notice(`${file.name}: ${parsed.parser.name}.`, false, 3000);
-  if (m.handle) {
+  if (m.projectId) {
     try { await Recent.putResult(id, bytes); }
     catch (e) { notice(`${file.name} could not be stored with this model, so it won't come back when you reopen it.`, true); return; }
     if (m === model) linkToModel({ results: resultLinks() });
@@ -4950,12 +4934,15 @@ const canAttach = (name) => /\.(3dm|epw)$/i.test(name) || resultParsersFor(name)
 // a new one. Its name: the folder's, the first Rhino file's, or Untitled. Rhino files go in by handle, and
 // weather and results files are attached once the model is open.
 async function openEntries(entries, folderName = null) {
-  if (entries.some(({ file }) => /\.zip$/i.test(file.name))) notice('Opening a project from a zip is not available yet.', true);
+  // A zip opens as a project of its own.
+  const zips = entries.filter(({ file }) => /\.zip$/i.test(file.name));
+  for (const z of zips) await openZip(z.handle, z.file);
   const valid = entries.filter(({ file }) => canAttach(file.name));
-  if (!valid.length) { if (!entries.some(({ file }) => /\.zip$/i.test(file.name))) notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files.', true); return; }
+  if (!valid.length) { if (!zips.length) notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files, or a project zip.', true); return; }
   const rhino = valid.filter(({ file }) => /\.3dm$/i.test(file.name)), other = valid.filter((e) => !rhino.includes(e));
-  if (!current.blank) newProject();
-  const name = folderName || rhino[0]?.file.name || UNTITLED;
+  // Files go into the open project while it has no model to show (a blank one, or one with no Rhino files yet).
+  if (model) newProject();
+  const name = current.blank ? folderName || rhino[0]?.file.name || UNTITLED : current.name;
   current.name = name;
   showProjectName();
   if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
@@ -4972,7 +4959,7 @@ async function openEntries(entries, folderName = null) {
 async function pickFiles() {
   if (!Recent.supported) { $('fileInput').click(); return; }
   let handles;
-  try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files', accept: { 'application/octet-stream': [...OPEN_TYPES(), '.zip'] } }] }); }
+  try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files, and project zips', accept: { 'application/octet-stream': [...OPEN_TYPES(), '.zip'] } }] }); }
   catch (e) { return; } // cancelled
   openEntries(await Promise.all(handles.map(async (handle) => ({ handle, file: await handle.getFile() }))));
 }
@@ -4990,6 +4977,156 @@ async function openFolder(dir) {
   openEntries(entries, dir.name);
 }
 
+// Project zips --------------------------------------------------------------------------------
+// A project saved as a zip holds a copy of each of its files and a project.json with its settings, so it opens
+// the same wherever the viewer runs. A zip is only read: opening one makes a new project (with a new id) that
+// reads its Rhino files from the zip in place; what changes after that is kept in the project, and Save as zip
+// writes a new zip. A zip that is not a saved project opens as a project of the files in it.
+//
+// project.json: { format: '3dm-viewer-project', version: 1, name, saved,
+//   files: [{ id, name, path, off }]   Rhino files. Their ids are kept: the saved changes and view refer to them.
+//   epws: [{ id, name, path, off }], weather (an epws id), use (the location source), custom, city,
+//   results: [{ name, path, off }], state: { edits, view } (see readStored) }
+
+const PROJECT_FORMAT = '3dm-viewer-project';
+const safeFileName = (name) => name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Project';
+
+// Where to save a file: asked first, while the click that asked for it still counts (the browser allows the
+// question only then), so a long write can follow. Null if cancelled; 'download' where the browser cannot ask.
+async function chooseSaveTarget(name, description, type, ext) {
+  if (!window.showSaveFilePicker) return 'download';
+  try { return await window.showSaveFilePicker({ suggestedName: name, types: [{ description, accept: { [type]: [ext] } }] }); }
+  catch (e) { if (e.name === 'AbortError') return null; throw e; }
+}
+async function saveBlobTo(target, blob, name) {
+  if (target === 'download') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    return;
+  }
+  const w = await target.createWritable();
+  await w.write(blob);
+  await w.close();
+}
+
+async function saveProjectZip() {
+  if (!model?.projectId) { notice('There is nothing to save: open some files into the project first.', true); return; }
+  const project = (await Recent.list()).find((p) => p.id === model.projectId);
+  if (!project) return;
+  const zipName = `${safeFileName(project.name.replace(/\.3dm$/i, ''))}.zip`;
+  const target = await chooseSaveTarget(zipName, 'Project zip', 'application/zip', '.zip');
+  if (!target) return;
+  saveViewState();
+  flushStore();
+  flushLinks();
+  await Recent.serial(async () => {}); // settings changed just before are saved first
+  const fresh = (await Recent.list()).find((p) => p.id === project.id) || project;
+  const used = new Set();
+  const pathFor = (dir, name) => {
+    let p = `${dir}/${name}`;
+    for (let n = 2; used.has(p.toLowerCase()); n++) p = `${dir}/${name.replace(/(\.[^.]*)?$/, (ext) => ` (${n})${ext}`)}`;
+    used.add(p.toLowerCase());
+    return p;
+  };
+  const json = { format: PROJECT_FORMAT, version: 1, name: fresh.name, saved: new Date().toISOString(), files: [], epws: [], results: [],
+    weather: fresh.weather ?? null, use: fresh.use ?? null, custom: fresh.custom ?? null, city: fresh.city ?? null, state: model.stored || {} };
+  const entries = [];
+  try {
+    for (const f of fresh.files) {
+      showBusy(`Reading ${f.name}`, 0.02);
+      const blob = await projectFileBlob(f);
+      if (!blob) { notice(`Permission to read ${f.name} was not given, so the zip was not saved.`, true); return; }
+      const path = pathFor('models', f.name);
+      json.files.push({ id: f.id, name: f.name, path, off: !!f.off });
+      entries.push({ name: path, data: blob });
+    }
+    for (const e of fresh.epws || []) {
+      const path = pathFor('weather', e.name);
+      json.epws.push({ id: e.id, name: e.name, path, off: !!e.off });
+      entries.push({ name: path, data: e.bytes });
+    }
+    for (const r of fresh.results || []) {
+      const bytes = await Recent.resultBytes(r.id);
+      if (!bytes) continue;
+      const path = pathFor('results', r.name);
+      json.results.push({ name: r.name, path, off: !!r.off });
+      entries.push({ name: path, data: bytes });
+    }
+    entries.unshift({ name: 'project.json', data: JSON.stringify(json, null, 1) });
+    const zip = await Zip.write(entries, (f, name) => showBusy(name ? `Adding ${name} to the zip` : 'Finishing the zip', 0.05 + 0.85 * f));
+    showBusy(`Saving ${zipName}`, 0.95);
+    await saveBlobTo(target, zip, zipName);
+    notice(`Saved ${target === 'download' ? zipName : target.name}.`, false, 4000);
+  } catch (e) {
+    console.error(e);
+    notice(`Could not save the project as a zip: ${e.message || e}`, true);
+  } finally {
+    hideBusy();
+  }
+}
+
+// Opens a zip as a new project. handle: the zip's file handle, which the project keeps to read its Rhino files
+// from; without one (a browser that cannot keep it), the zip's Rhino files open for this session only.
+async function openZip(handle, file = null) {
+  try {
+    file ??= await handle.getFile();
+    showBusy(`Reading ${file.name}`, 0.02);
+    const entries = await Zip.entries(file), byPath = new Map(entries.map((e) => [e.name, e]));
+    const bytesOf = async (e) => new Uint8Array(await (await Zip.read(file, e)).arrayBuffer());
+    let json = null;
+    if (byPath.has('project.json')) {
+      try { json = JSON.parse(new TextDecoder().decode(await bytesOf(byPath.get('project.json')))); } catch (e) { json = null; }
+      if (json?.format !== PROJECT_FORMAT) json = null;
+    }
+    if (json?.version > 1) notice(`${file.name} was saved by a newer version of the viewer: some of its settings may not come back.`, true);
+    const leaf = (p) => p.split('/').pop();
+    const listed = (test) => entries.filter((e) => test(e.name)).map((e) => ({ id: Recent.newId(), name: leaf(e.name), path: e.name, off: false }));
+    const fileList = (json ? json.files || [] : listed((n) => /\.3dm$/i.test(n))).filter((f) => byPath.has(f.path));
+    const epwList = (json ? json.epws || [] : listed((n) => /\.epw$/i.test(n))).filter((e) => byPath.has(e.path));
+    const resList = (json ? json.results || [] : listed((n) => resultParsersFor(n).length > 0)).filter((r) => byPath.has(r.path));
+    if (!fileList.length && !epwList.length && !resList.length) { notice(`${file.name} has no Rhino, weather or results files in it.`, true); return; }
+    const name = file.name.replace(/\.zip$/i, '');
+    if (!handle || !Recent.supported) {
+      if (!fileList.length) { notice(`${file.name} has no Rhino files in it.`, true); return; }
+      notice(`This browser cannot keep ${file.name}, so it is open for this session only.`, false, 6000);
+      const sources = [];
+      for (const f of fileList) if (!f.off) sources.push({ name: f.name, bytes: await bytesOf(byPath.get(f.path)), handle: null });
+      await openScene(sources);
+      return;
+    }
+    // The weather and results files are copied into the project (they are small); the Rhino files stay in the zip.
+    const id = Recent.newId();
+    const epws = [];
+    for (const e of epwList) epws.push({ id: e.id, name: e.name, bytes: await bytesOf(byPath.get(e.path)), off: !!e.off });
+    const results = [];
+    for (const r of resList) {
+      const rid = newId(), z = byPath.get(r.path);
+      await Recent.putResult(rid, await bytesOf(z));
+      results.push({ id: rid, name: r.name, size: z.size, off: !!r.off });
+    }
+    const files = fileList.map((f) => ({ id: f.id, name: f.name, size: byPath.get(f.path).size, zip: handle, entry: f.path, off: !!f.off }));
+    const epwIds = new Set(epws.map((e) => e.id));
+    const use = typeof json?.use === 'string' && (!json.use.startsWith('epw:') || epwIds.has(json.use.slice(4))) ? json.use : null;
+    const weather = epwIds.has(json?.weather) ? json.weather : epws.find((e) => !e.off)?.id ?? null;
+    await Recent.create({ id, name, files, epws, weather, use, custom: json?.custom ?? null, city: json?.city ?? null, results });
+    if (json?.state && typeof json.state === 'object') await Recent.saveState(id, json.state);
+    if (model) newProject();
+    current = { id, name, blank: false };
+    showProjectName();
+    if (files.length) await showProject(id);
+    else notice(`${name} has no Rhino files yet: attach one to see the model.`, false, 6000);
+    renderRecent();
+  } catch (e) {
+    console.error(e);
+    notice(`Could not open ${file?.name || 'the zip'}: ${e.message || e}`, true);
+  } finally {
+    hideBusy();
+  }
+}
+
 // The projects menu: built once, filled each time it opens (and when the list changes while it is open).
 let projectsMenu = null;
 function bindProjectsMenu() {
@@ -4998,8 +5135,9 @@ function bindProjectsMenu() {
   projectsMenu.body.innerHTML = `
     <div class="proj-actions">
       <button class="btn small" data-act="new" title="A new, blank project">New</button>
-      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project">Open files…</button>
+      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project, or a project zip">Open files…</button>
       <button class="btn small" data-act="folder" title="Open the files in a folder as a new project, named after it">Open folder…</button>
+      <button class="btn small" data-act="zip" title="Save this project, with a copy of each of its files and its settings, as a zip that opens anywhere">Save as zip…</button>
     </div>
     <input type="search" class="proj-filter" placeholder="Filter projects and files" aria-label="Filter projects by name or file name">
     <div class="proj-list" role="list"></div>
@@ -5009,7 +5147,7 @@ function bindProjectsMenu() {
     </div>`;
   const filter = projectsMenu.body.querySelector('.proj-filter');
   filter.addEventListener('input', renderRecent);
-  const act = { new: newProject, open: pickFiles, folder: () => openFolder(), demo: openDemo, settings: openSettings };
+  const act = { new: newProject, open: pickFiles, folder: () => openFolder(), zip: saveProjectZip, demo: openDemo, settings: openSettings };
   projectsMenu.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -5062,26 +5200,33 @@ async function openDemo() {
   await openBytes('Demo.3dm', Uint8Array.from(atob(DEMO_3DM), (c) => c.charCodeAt(0)));
 }
 
+// A project file's contents as a Blob: its own file, or its entry in the zip the project was opened from (read
+// in place: nothing is unpacked). Null when the browser was not given permission to read it.
+async function projectFileBlob(f) {
+  const h = f.zip || f.handle;
+  if (!h) return null;
+  if ((await h.queryPermission({ mode: 'read' })) !== 'granted' && (await h.requestPermission({ mode: 'read' })) !== 'granted') return null;
+  const file = await h.getFile();
+  if (!f.zip) return file;
+  const e = (await Zip.entries(file)).find((x) => x.name === f.entry);
+  if (!e) throw Object.assign(new Error(`${f.entry} is not in ${file.name}`), { name: 'NotFoundError' });
+  return Zip.read(file, e);
+}
+
 // Opens a project: all its Rhino files, together as one model. given: a file already read, { file, fileId },
 // so it is not read again. The browser asks once per session before it can read a file again.
 async function showProject(projectId, given = null) {
   const project = (await Recent.list()).find((p) => p.id === projectId);
   if (!project) return;
-  const files = project.files.filter((f) => !f.off && (f.handle || (given && f.id === given.fileId)));
+  const files = project.files.filter((f) => !f.off && (f.handle || f.zip || (given && f.id === given.fileId)));
   if (!files.length) { notice(`Nothing in ${project.name} is active. Tick a file in Attach files to show it.`, true); renderRecent(); return; }
   try {
     const sources = [];
     for (const f of files) {
-      if (given && f.id === given.fileId) {
-        sources.push({ name: f.name, bytes: new Uint8Array(await given.file.arrayBuffer()), handle: f.handle ?? null });
-        continue;
-      }
-      if ((await f.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await f.handle.requestPermission({ mode: 'read' })) !== 'granted') {
-        notice(`Permission to read ${f.name} was not given, so it is not in the view.`, true);
-        continue;
-      }
-      showBusy(`Reading ${f.name}`, 0.02);
-      sources.push({ name: f.name, bytes: new Uint8Array(await (await f.handle.getFile()).arrayBuffer()), handle: f.handle });
+      let blob = given && f.id === given.fileId ? given.file : null;
+      if (!blob) { showBusy(`Reading ${f.name}`, 0.02); blob = await projectFileBlob(f); }
+      if (!blob) { notice(`Permission to read ${f.name} was not given, so it is not in the view.`, true); continue; }
+      sources.push({ key: f.id, name: f.name, bytes: new Uint8Array(await blob.arrayBuffer()), handle: f.handle ?? null, zip: f.zip ?? null, entry: f.entry ?? null });
     }
     if (!sources.length) { hideBusy(); return; }
     const stored = (await Recent.loadState(projectId)) || {};
@@ -5160,7 +5305,11 @@ function bindUi() {
     const handles = await Promise.all(asked.map((p) => Promise.resolve(p).catch(() => null)));
     const dir = handles.find((h) => h?.kind === 'directory');
     if (dir) { openFolder(dir); return; }
-    const entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null }));
+    let entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null }));
+    // A project zip opens as a new project.
+    for (const z of entries.filter(({ file }) => /\.zip$/i.test(file.name))) await openZip(z.handle, z.file);
+    entries = entries.filter(({ file }) => !/\.zip$/i.test(file.name));
+    if (!entries.length) return;
     if (!model) { openEntries(entries); return; }
     const rhino = entries.filter(({ file }) => /\.3dm$/i.test(file.name));
     if (rhino.length) await attachRhinoFiles(rhino);
