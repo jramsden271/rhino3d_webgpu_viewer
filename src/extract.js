@@ -312,10 +312,15 @@ function mergeScenes(parts, names) {
     items: [], lights: [], views: [], location: parts.find((p) => p.location)?.location ?? null,
     stats: { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {}, lights: {} } };
   parts.forEach((p, k) => {
+    // With several files, each file's top layers sit under a layer named for the file, so the Layers
+    // panel shows one group per file (like the magic block layers, it is a layer with no objects of its own).
+    const root = names.length > 1 ? out.layers.length : -1;
+    if (root >= 0) out.layers.push({ index: root, id: `file-${k}`, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
+      visible: true, material: -1, count: 0, parent: -1, materialName: '', materialRgb: DEFAULT_MATERIAL.rgb, materialAlpha: 1, file: true });
     const lOff = out.layers.length, mOff = out.materials.length;
     const shiftAi = (ai) => { if (!ai) return; if (ai.layer >= 0) ai.layer += lOff; if (ai.mi >= 0) ai.mi += mOff; };
     for (const l of p.layers) {
-      out.layers.push({ ...l, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : -1,
+      out.layers.push({ ...l, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
         material: l.material >= 0 ? l.material + mOff : l.material, fullPath: names.length > 1 ? `${names[k]}::${l.fullPath}` : l.fullPath });
     }
     for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length });
