@@ -4965,9 +4965,9 @@ const OPEN_TYPES = () => [...new Set(['.3dm', '.epw', ...RESULT_PARSERS.flatMap(
 const canAttach = (name) => /\.(3dm|epw)$/i.test(name) || resultParsersFor(name).length > 0;
 
 // Files opened with Open (or dropped on a blank project) start a project: the blank one that is open, or
-// a new one. Its name: the folder's, the first Rhino file's, or Untitled. Rhino files go in by handle, and
-// weather and results files are attached once the model is open.
-async function openEntries(entries, folderName = null) {
+// a new one. Its name: the first Rhino file's, or Untitled. Rhino files go in by handle, and weather and
+// results files are attached once the model is open.
+async function openEntries(entries) {
   // A zip opens as a project of its own.
   const zips = entries.filter(({ file }) => /\.zip$/i.test(file.name));
   for (const z of zips) await openZip(z.handle, z.file);
@@ -4976,7 +4976,7 @@ async function openEntries(entries, folderName = null) {
   const rhino = valid.filter(({ file }) => /\.3dm$/i.test(file.name)), other = valid.filter((e) => !rhino.includes(e));
   // Files go into the open project while it has no model to show (a blank one, or one with no Rhino files yet).
   if (model) newProject();
-  const name = current.blank ? folderName || rhino[0]?.file.name || UNTITLED : current.name;
+  const name = current.blank ? rhino[0]?.file.name || UNTITLED : current.name;
   current.name = name;
   showProjectName();
   if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
@@ -4996,19 +4996,6 @@ async function pickFiles() {
   try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files, and project zips', accept: { 'application/octet-stream': [...OPEN_TYPES(), '.zip'] } }] }); }
   catch (e) { return; } // cancelled
   openEntries(await Promise.all(handles.map(async (handle) => ({ handle, file: await handle.getFile() }))));
-}
-
-// A folder: the files in it (not in folders inside it) that can be opened. They stay where they are.
-async function openFolder(dir) {
-  if (!dir) {
-    if (!window.showDirectoryPicker) { notice('Opening a folder needs Chrome or Edge.', true); return; }
-    try { dir = await window.showDirectoryPicker({ mode: 'read' }); } catch (e) { return; } // cancelled
-  }
-  const entries = [];
-  for await (const h of dir.values()) if (h.kind === 'file' && canAttach(h.name)) entries.push({ handle: h, file: await h.getFile() });
-  if (!entries.length) { notice(`${dir.name} has no Rhino, weather or results files in it.`, true); return; }
-  entries.sort((a, b) => a.file.name.localeCompare(b.file.name));
-  openEntries(entries, dir.name);
 }
 
 // Project zips --------------------------------------------------------------------------------
@@ -5179,9 +5166,7 @@ function bindProjectsMenu() {
   projectsMenu.body.innerHTML = `
     <div class="proj-actions">
       <button class="btn small" data-act="new" title="A new, blank project">New</button>
-      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project, or a project zip">Open files…</button>
-      <button class="btn small" data-act="folder" title="Open the files in a folder as a new project, named after it">Open folder…</button>
-      <button class="btn small" data-act="zip" title="Save this project, with a copy of each of its files and its settings, as a zip that opens anywhere">Save as zip…</button>
+      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project, or a project zip">Open files…</button>      <button class="btn small" data-act="zip" title="Save this project, with a copy of each of its files and its settings, as a zip that opens anywhere">Save as zip…</button>
     </div>
     <input type="search" class="proj-filter" placeholder="Filter projects and files" aria-label="Filter projects by name or file name">
     <div class="proj-list" role="list"></div>
@@ -5191,7 +5176,7 @@ function bindProjectsMenu() {
     </div>`;
   const filter = projectsMenu.body.querySelector('.proj-filter');
   filter.addEventListener('input', renderRecent);
-  const act = { new: newProject, open: pickFiles, folder: () => openFolder(), zip: saveProjectZip, demo: openDemo, settings: openSettings };
+  const act = { new: newProject, open: pickFiles, zip: saveProjectZip, demo: openDemo, settings: openSettings };
   projectsMenu.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -5356,7 +5341,7 @@ function bindUi() {
     if (hasFiles(e)) e.preventDefault();
     else if (!editable(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; }
   });
-  // Dropped files are added to the open project; on a blank project they start it. A folder opens as a new project.
+  // Dropped files are added to the open project; on a blank project they start it. Folders are not opened.
   window.addEventListener('drop', async (e) => {
     if (!hasFiles(e)) { if (!editable(e)) e.preventDefault(); return; }
     e.preventDefault(); depth = 0; drop.classList.remove('over');
@@ -5365,9 +5350,11 @@ function bindUi() {
     const files = [...e.dataTransfer.files], items = [...e.dataTransfer.items].filter((i) => i.kind === 'file');
     const asked = Recent.supported ? items.map((i) => i.getAsFileSystemHandle?.()) : [];
     const handles = await Promise.all(asked.map((p) => Promise.resolve(p).catch(() => null)));
-    const dir = handles.find((h) => h?.kind === 'directory');
-    if (dir) { openFolder(dir); return; }
-    let entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null }));
+    // A folder is left out: its files are what to drop (or open with Open files).
+    const dirs = handles.filter((h) => h?.kind === 'directory');
+    if (dirs.length) notice(`Folders can't be opened (${dirs.map((d) => d.name).join(', ')}): drop the files in ${dirs.length > 1 ? 'them' : 'it'} instead, or use Open files.`, true);
+    let entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null })).filter((_, i) => handles[i]?.kind !== 'directory');
+    if (!entries.length) return;
     // A project zip opens as a new project.
     for (const z of entries.filter(({ file }) => /\.zip$/i.test(file.name))) await openZip(z.handle, z.file);
     entries = entries.filter(({ file }) => !/\.zip$/i.test(file.name));
