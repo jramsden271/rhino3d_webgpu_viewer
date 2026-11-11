@@ -1219,15 +1219,17 @@ function writeStored(kind, value) {
 }
 let storePending = null, storeTimer = 0;
 function queueStore(projectId, stored) {
+  if (storePending && storePending.projectId !== projectId) flushStore(); // another project's save is written, not dropped
   storePending = { projectId, stored };
   clearTimeout(storeTimer);
   storeTimer = setTimeout(flushStore, 300);
 }
+// Writes the save that is waiting, if any. Resolves once it is written.
 function flushStore() {
   clearTimeout(storeTimer);
   const p = storePending;
   storePending = null;
-  if (p) Recent.saveState(p.projectId, p.stored);
+  return p ? Recent.saveState(p.projectId, p.stored) : Promise.resolve();
 }
 addEventListener('pagehide', flushStore);
 
@@ -5285,6 +5287,10 @@ async function showProject(projectId, given = null) {
       sources.push({ key: f.id, name: f.name, bytes: new Uint8Array(await blob.arrayBuffer()), handle: f.handle ?? null, zip: f.zip ?? null, entry: f.entry ?? null });
     }
     if (!sources.length) { hideBusy(); return; }
+    // The view open now is saved, and written, before the project's saved state is read: reopening the
+    // project that is open must find the view as it is, not the one saved before it.
+    saveViewState();
+    await flushStore();
     const stored = (await Recent.loadState(projectId)) || {};
     await openScene(sources, { projectId, stored });
     if (model?.projectId === projectId) { current = { id: projectId, name: project.name, blank: false }; showProjectName(); }
