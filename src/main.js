@@ -376,12 +376,19 @@ async function openFile(file, handle = null) {
   if (resultParsersFor(file.name).length) { addResultsFile(file); return; }
   if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
-  // The file's project (new, or the one it belongs to) is the one the model is open in.
-  const projectId = await Recent.add(handle, file);
-  renderRecent();
-  await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), handle);
-  if (model) model.projectId = projectId;
-  attachDialog?.refresh();
+  try {
+    // The file's project (new, or the one it belongs to) is the one the model is open in.
+    const projectId = await Recent.add(handle, file);
+    renderRecent();
+    await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), handle);
+    if (model) model.projectId = projectId;
+    attachDialog?.refresh();
+  } catch (e) {
+    // Errors here used to leave the welcome screen up with nothing said: say what went wrong.
+    console.error(e);
+    hideBusy();
+    notice(`Could not open ${file.name}: ${e.message || e}`, true);
+  }
 }
 
 // A 3dm file attached from the Attach files dialog: it joins the open model's project, and is opened
