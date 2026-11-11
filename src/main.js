@@ -5231,7 +5231,8 @@ async function renderRecent() {
     row.querySelector('.proj-name').textContent = r.name;
     row.querySelector('.proj-info').textContent = [`${n} file${n === 1 ? '' : 's'}`, `opened ${date(r.opened)}`].join(' · ');
     row.querySelector('.proj-open').title = [r.name, ...fileNames(r)].join('\n');
-    row.querySelector('.proj-open').addEventListener('click', () => { projectsMenu.close(); openRecent(r); });
+    // The menu stays open, so one project after another can be looked at.
+    row.querySelector('.proj-open').addEventListener('click', () => openRecent(r));
     row.querySelector('.x').addEventListener('click', async () => { await Recent.remove(list.indexOf(r)); renderRecent(); });
     box.append(row);
   }
