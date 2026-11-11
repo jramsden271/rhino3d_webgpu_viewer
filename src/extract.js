@@ -321,11 +321,11 @@ function mergeScenes(parts, names) {
     // panel shows one group per file (like the magic block layers, it is a layer with no objects of its own).
     const root = multi ? out.layers.length : -1;
     if (root >= 0) out.layers.push({ index: root, id: `file-${k}`, guid: null, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
-      visible: true, material: -1, count: 0, parent: -1, materialName: '', materialRgb: DEFAULT_MATERIAL.rgb, materialAlpha: 1, file: true });
+      visible: true, material: -1, count: 0, parent: -1, materialName: '', materialRgb: DEFAULT_MATERIAL.rgb, materialAlpha: 1, fileRoot: true });
     const lOff = out.layers.length, mOff = out.materials.length;
     const shiftAi = (ai) => { if (!ai) return; if (ai.layer >= 0) ai.layer += lOff; if (ai.mi >= 0) ai.mi += mOff; };
     for (const l of p.layers) {
-      out.layers.push({ ...l, id: pre(l.id), guid: l.id, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
+      out.layers.push({ ...l, id: pre(l.id), guid: l.id, file: k, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
         material: l.material >= 0 ? l.material + mOff : l.material, fullPath: multi ? `${names[k]}::${l.fullPath}` : l.fullPath });
     }
     for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length });

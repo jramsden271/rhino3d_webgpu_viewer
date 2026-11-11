@@ -410,11 +410,11 @@ async function restoreLinks(handle) {
   if (custom && inRange(custom)) { site.custom = { lat: +custom.lat, lon: +custom.lon, utcOffset: +custom.utcOffset, name: null }; back.push(`custom location ${fmtCoords(custom.lat, custom.lon)}`); }
   if (city && inRange(city)) { site.city = { lat: +city.lat, lon: +city.lon, utcOffset: +city.utcOffset, name: typeof city.name === 'string' ? city.name : null }; back.push(`city ${site.city.name || fmtCoords(city.lat, city.lon)}`); }
   for (const d of epws) {
-    try { const e = EPW.fromBytes(d.bytes, d.name); Object.assign(e, { id: d.id, bytes: d.bytes }); site.epws.push(e); }
+    try { const e = EPW.fromBytes(d.bytes, d.name); Object.assign(e, { id: d.id, bytes: d.bytes, off: !!d.off }); site.epws.push(e); }
     catch (err) { notice(`Could not read ${d.name}, a weather file linked to this model: ${err.message}`, true); }
   }
   if (site.epws.length) back.push(site.epws.length === 1 ? `weather file ${site.epws[0].fileName}` : `${site.epws.length} weather files`);
-  site.epw = site.epws.find((e) => e.id === weather) ?? null;
+  site.epw = site.epws.find((e) => e.id === weather && !e.off) ?? null;
   if (['custom', 'city', 'file'].includes(use) || use?.startsWith('file:') || (use?.startsWith('epw:') && epwById(use.slice(4)))) site.use = use;
   for (const r of bound) {
     try {
@@ -498,6 +498,7 @@ async function openScene(sources) {
     model.bytes = sources.length === 1 ? first.bytes : null; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.locations ??= [{ name: first.name, location: m.location }]; // a scene of several files has one per file
+    model.sources = sources.map(({ name, handle }) => ({ name, handle })); // for a combined copy (exportCombined)
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     model.blocks = blockTable(m);
     model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
@@ -1697,6 +1698,7 @@ function bindMaterialDialog() {
 // colours, a Rhino material for each layer set in the viewer, object colour/material sources,
 // block sub-element settings and magic blocks (writeMagicBlocks).
 async function downloadCopy() {
+  if (model?.sources?.length > 1) return exportCombined();
   if (!model || !model.bytes) return;
   try {
     showBusy('Writing a copy of the .3dm with your changes', 0.3);
@@ -1759,6 +1761,180 @@ async function downloadCopy() {
     notice(`Could not write the file: ${e.message || e}`, true);
   } finally {
     hideBusy();
+  }
+}
+
+// A combined copy of the Rhino files in view: one .3dm, in the first file's units. Each file goes in under a
+// layer named for it, with its layers, materials, block definitions and objects; the viewer's changes to a
+// file (colours, materials, object and block settings) are written into its part. Each file is read again
+// from its handle, as the viewer keeps no copy of the bytes. Magic blocks and lights are not written.
+async function exportCombined() {
+  const missing = model.sources.filter((s) => !s.handle).map((s) => s.name);
+  if (missing.length) { notice(`A combined copy needs every file to be one the viewer can read again. ${missing.join(', ')} ${missing.length > 1 ? 'were' : 'was'} added without a file handle.`, true); return; }
+  try {
+    const rhino = await getRhino(model.reader), n = model.sources.length;
+    const master = new rhino.File3dm();
+    master.settings().modelUnitSystem = rhino.UnitSystem[model.units];
+    for (let k = 0; k < n; k++) {
+      const s = model.sources[k];
+      showBusy(`Adding ${s.name} (${k + 1} of ${n})`, 0.1 + (0.8 * k) / n);
+      await new Promise((r) => setTimeout(r, 20));
+      const src = rhino.File3dm.fromByteArray(new Uint8Array(await (await s.handle.getFile()).arrayBuffer()));
+      try {
+        applyViewerEdits(rhino, src, k);
+        addFileTo(rhino, master, src, s.name, (METRES_PER_UNIT[enumName(src.settings().modelUnitSystem)] || 1) / (METRES_PER_UNIT[model.units] || 1));
+      } finally {
+        src.delete();
+      }
+    }
+    showBusy('Saving', 0.95);
+    await new Promise((r) => setTimeout(r, 20));
+    const out = master.toByteArray();
+    master.delete();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([out], { type: 'application/octet-stream' }));
+    a.download = `${model.sources.map((s) => s.name.replace(/\.3dm$/i, '')).join(' + ')} - combined.3dm`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    notice('Magic blocks and Rhino lights are not written to a combined copy.', false, 6000);
+  } catch (e) {
+    console.error(e);
+    notice(`Could not write the combined file: ${e.message || e}`, true);
+  } finally {
+    hideBusy();
+  }
+}
+
+// The viewer's changes that belong to one file of the model, written into that file as it is read (before
+// it is copied). Ids in the model are the file's number and its own id (see mergeScenes).
+function applyViewerEdits(rhino, src, k) {
+  const rgba = (c) => ({ r: Math.round(c[0] * 255), g: Math.round(c[1] * 255), b: Math.round(c[2] * 255), a: 255 });
+  const lt = src.layers(), mats = src.materials(), objs = src.objects();
+  const mine = (l) => l.file === k && l.guid;
+  for (const [id, c] of Object.entries(state.layerColor)) {
+    const l = model.layers.find((x) => x.id === id);
+    if (mine(l || {})) { const layer = lt.findId(l.guid); if (layer) layer.color = rgba(c); }
+  }
+  for (const id of editedMaterialLayers()) {
+    const L = model.layers.find((x) => x.id === id);
+    if (!mine(L || {})) continue;
+    const i = model.layers.indexOf(L), layer = lt.findId(L.guid);
+    const sp = layerSpecialId(i), set = state.layerMat[id];
+    const o = { rgb: set?.rgb || (sp ? SPECIAL[sp].rgb : L.materialRgb), alpha: set ? set.alpha : sp ? 1 : L.materialAlpha, gloss: set?.gloss || 0 };
+    const m = new rhino.Material();
+    m.name = sp ? `${SPECIAL[sp].name} – ${L.name}` : `${L.name} (viewer)`;
+    m.diffuseColor = rgba(o.rgb);
+    m.transparency = 1 - o.alpha;
+    m.shine = Math.round(o.gloss * 255);
+    m.reflectivity = o.gloss * 0.5;
+    mats.add(m);
+    layer.renderMaterialIndex = mats.count - 1;
+  }
+  const CS = [rhino.ObjectColorSource.ColorFromLayer, rhino.ObjectColorSource.ColorFromObject, rhino.ObjectColorSource.ColorFromMaterial, rhino.ObjectColorSource.ColorFromParent];
+  const MS = { 0: rhino.ObjectMaterialSource.MaterialFromLayer, 1: rhino.ObjectMaterialSource.MaterialFromObject, 3: rhino.ObjectMaterialSource.MaterialFromParent };
+  for (const it of model.objects) {
+    if (it.file !== k || !state.objEdits[it.id]) continue;
+    const o = objs.findId(it.guid);
+    if (!o) continue;
+    const a = o.attributes(), ai = it.ai;
+    a.colorSource = CS[ai.cs] ?? CS[0];
+    a.objectColor = rgba(ai.oc);
+    a.materialSource = MS[ai.ms] ?? MS[0];
+    a.materialIndex = ai.mi;
+    a.layerIndex = ai.layer;
+  }
+  // Only the block sub-element settings of this file's definitions (their ids carry the file's number).
+  const idefs = src.instanceDefinitions();
+  for (const [id, set] of Object.entries(state.blockSub)) {
+    if (!id.startsWith(`${k}:`)) continue;
+    const src2 = SUB_SOURCES[set];
+    for (const oid of idefs.findId(id.slice(`${k}:`.length))?.getObjectIds() || []) {
+      const a = objs.findId(oid)?.attributes();
+      if (a) { a.colorSource = CS[src2.cs]; a.materialSource = MS[src2.ms]; }
+    }
+  }
+}
+
+// Adds every object of one file to the combined file, with the file's layers (under a layer named for it),
+// materials and block definitions renumbered. scale: the file's units in the combined file's units.
+function addFileTo(rhino, master, src, name, scale) {
+  const mats = master.materials(), lt = master.layers(), idefs = master.instanceDefinitions(), objs = master.objects();
+  const rgba = (c) => ({ r: Math.round(c[0] * 255), g: Math.round(c[1] * 255), b: Math.round(c[2] * 255), a: 255 });
+  // Materials: each one is added, and the file's material numbers point at the new ones.
+  const matMap = [];
+  const srcMats = src.materials();
+  for (let i = 0; i < srcMats.count; i++) { mats.add(srcMats.get(i)); matMap[i] = mats.count - 1; }
+  // The file's layers sit under one layer named for it.
+  const root = new rhino.Layer();
+  root.name = name;
+  root.color = rgba([0.5, 0.5, 0.5]);
+  const rootIndex = lt.add(root), rootId = lt.get(rootIndex).id;
+  const srcLayers = src.layers(), byId = new Map(), layerMap = new Map(), layerIds = new Map();
+  for (let i = 0; i < srcLayers.count; i++) byId.set(srcLayers.get(i).id, i);
+  const addLayer = (i) => {
+    if (layerMap.has(i)) return layerMap.get(i);
+    const l = srcLayers.get(i), nl = new rhino.Layer();
+    nl.name = l.name;
+    nl.color = l.color;
+    nl.visible = l.visible;
+    nl.renderMaterialIndex = l.renderMaterialIndex >= 0 && matMap[l.renderMaterialIndex] !== undefined ? matMap[l.renderMaterialIndex] : -1;
+    const p = byId.has(l.parentLayerId) ? addLayer(byId.get(l.parentLayerId)) : null;
+    nl.parentLayerId = p == null ? rootId : layerIds.get(p);
+    const at = lt.add(nl);
+    layerIds.set(at, lt.get(at).id);
+    layerMap.set(i, at);
+    return at;
+  };
+  for (let i = 0; i < srcLayers.count; i++) addLayer(i);
+  const layerOf = (i) => (layerMap.has(i) ? layerMap.get(i) : rootIndex);
+  const remapAttrs = (a) => {
+    a.layerIndex = layerOf(a.layerIndex);
+    if (a.materialIndex >= 0) a.materialIndex = matMap[a.materialIndex] ?? -1;
+    return a;
+  };
+  const scaled = (g) => { if (scale !== 1) g.transform(rhino.Transform.scale([0, 0, 0], scale)); return g; };
+  // A placement with its translation in the combined file's units (the block's own geometry is scaled as well).
+  const placement = (g) => { const x = g.xform; if (scale !== 1) { x.m03 *= scale; x.m13 *= scale; x.m23 *= scale; } return x; };
+  // Block definitions: nested ones first, so every reference points at a definition already added.
+  const names = new Set();
+  for (let i = 0; i < idefs.count; i++) names.add(idefs.get(i).name);
+  const srcDefs = src.instanceDefinitions(), defMap = new Map();
+  const addDef = (sid) => {
+    if (defMap.has(sid)) return defMap.get(sid);
+    const def = srcDefs.findId(sid);
+    if (!def) return -1;
+    const geos = [], attrs = [];
+    for (const oid of def.getObjectIds()) {
+      const o = src.objects().findId(oid);
+      if (!o) continue;
+      let g = o.geometry();
+      if ('parentIdefId' in g) {
+        const nd = addDef(g.parentIdefId);
+        if (nd < 0) continue;
+        g = new rhino.InstanceReference(idefs.get(nd).id, placement(g));
+      } else g = scaled(g);
+      geos.push(g);
+      attrs.push(remapAttrs(o.attributes()));
+    }
+    const base = def.name || 'Block';
+    let uniq = base;
+    for (let n = 2; names.has(uniq); n++) uniq = `${base} (${n})`;
+    names.add(uniq);
+    const at = idefs.add(uniq, '', '', '', [0, 0, 0], geos, attrs);
+    defMap.set(sid, at);
+    return at;
+  };
+  // Objects: the top-level ones of the file.
+  for (let i = 0; i < src.objects().count; i++) {
+    const o = src.objects().get(i), a = o.attributes();
+    if (a.isInstanceDefinitionObject) continue;
+    let g = o.geometry();
+    if ('parentIdefId' in g) {
+      const nd = addDef(g.parentIdefId);
+      if (nd < 0) continue;
+      g = new rhino.InstanceReference(idefs.get(nd).id, placement(g));
+    } else g = scaled(g);
+    objs.add(g, remapAttrs(a));
   }
 }
 
@@ -2607,10 +2783,11 @@ function locationOf(use) {
   if (use === 'custom') return site.custom && { ...site.custom, name: null, kind: 'custom', use };
   if (use === 'city') return site.city && { ...site.city, kind: 'city', use };
   if (use?.startsWith('epw:')) {
-    const e = epwById(use.slice(4))?.location;
+    const ep = epwById(use.slice(4)), e = ep && !ep.off ? ep.location : null;
     return e?.known ? { lat: e.lat, lon: e.lon, utcOffset: e.utcOffset ?? Math.round(e.lon / 15), name: e.name, kind: 'epw', use } : null;
   }
   const k = use === 'file' ? 0 : use?.startsWith('file:') ? +use.slice(5) : -1;
+
   const f = k >= 0 ? model?.locations?.[k]?.location : null;
   return f ? { lat: f.lat, lon: f.lon, utcOffset: f.utcOffset, name: null, kind: 'file', use: fileUse(k) } : null;
 }
@@ -2680,7 +2857,7 @@ function setWeather(epw) {
 }
 
 // The weather files as the model keeps them: a copy of each, with its id.
-const epwLinks = () => site.epws.map((e) => ({ id: e.id, name: e.fileName, bytes: e.bytes }));
+const epwLinks = () => site.epws.map((e) => ({ id: e.id, name: e.fileName, bytes: e.bytes, off: !!e.off }));
 
 // A weather file (EPW) attached from the Attach files dialog or dropped onto the window. A new one
 // becomes the weather data source, and sets the location straight away when it has one.
@@ -2729,7 +2906,7 @@ function openWeatherDialog() {
   el('list').append(list.el);
   el('attach').addEventListener('click', openAttachDialog);
   const refresh = () => {
-    list.setGroups([{ items: site.epws.map((e) => ({ id: e.id, label: e.fileName, sub: epwSub(e), title: `Weather from ${e.fileName}` })) }]);
+    list.setGroups([{ items: site.epws.filter((e) => !e.off).map((e) => ({ id: e.id, label: e.fileName, sub: epwSub(e), title: `Weather from ${e.fileName}` })) }]);
     list.setActive(site.epw?.id ?? '');
     el('list').hidden = !site.epws.length;
     el('empty').hidden = !!site.epws.length;
@@ -2743,7 +2920,16 @@ function openWeatherDialog() {
 // ---------------------------------------------------------------------------------------------
 // Results files (results.js)
 
-const resultLinks = () => results.map(({ id, name, size }) => ({ id, name, size }));
+const resultLinks = () => results.map(({ id, name, size, off }) => ({ id, name, size, off: !!off }));
+
+// A results file is active (used in the view) unless it is turned off in the Attach files dialog.
+function setResultOn(id, on) {
+  const r = results.find((x) => x.id === id);
+  if (!r) return;
+  r.off = !on;
+  linkToModel({ results: resultLinks() });
+  syncResults();
+}
 
 async function addResultsFile(file) {
   if (!model) { notice(`Open a model first, then add ${file.name} to it.`, true); return; }
@@ -2777,7 +2963,7 @@ function syncResults() {
   const names = [...site.epws.map((e) => e.fileName), ...results.map((r) => r.name)];
   $('btnResultsFiles').classList.toggle('set', names.length > 0);
   $('btnResultsFiles').title = names.length ? `Attached: ${names.join(', ')}` : 'Attach files: weather (EPW) and results files';
-  $('btnResults').hidden = !results.some((r) => r.data);
+  $('btnResults').hidden = !results.some((r) => r.data && !r.off);
   fillStreamlines();
   fillMaps();
   fillResultsMenu();
@@ -2819,23 +3005,36 @@ function openAttachDialog() {
     for (const h of handles) route(await h.getFile(), h);
   });
   el('input').addEventListener('change', () => { const files = [...el('input').files]; el('input').value = ''; files.forEach((f) => route(f, null)); });
-  const row = (name, detail, remove, title) => {
+  // A row: its name and detail, a Remove button (remove), and a checkbox (toggle: { label, title, on, change }).
+  const row = (name, detail, remove, toggle) => {
     const r = document.createElement('div');
     r.className = 'res-row';
     r.innerHTML = `<div><div>${escapeHtml(name)}</div><div class="fine">${detail}</div></div>${remove ? `<button class="x" aria-label="Remove ${escapeHtml(name)}" title="Remove">×</button>` : ''}`;
     if (remove) r.querySelector('.x').addEventListener('click', remove);
+    if (toggle) {
+      const label = document.createElement('label'), box = document.createElement('input');
+      label.className = 'fine'; label.title = toggle.title;
+      box.type = 'checkbox'; box.checked = toggle.on;
+      box.addEventListener('change', () => toggle.change(box.checked));
+      label.append(box, ' ' + toggle.label);
+      r.querySelector('.fine').append(' · ', label);
+    }
     return r;
   };
   const refresh = async () => {
     const project = model?.projectId ? (await Recent.list()).find((p) => p.id === model.projectId) : null;
     // Every Rhino file of the model is in its view; a file's layers are shown or hidden in the Layers panel.
     // The last one cannot be taken off, as the view would have nothing in it.
+    // Active: a Rhino file is in the view; a weather file is offered as a location or weather source.
     const many = (project?.files.length || 0) > 1;
-    const rhino = (project?.files || []).map((f) => row(f.name, 'Rhino file in the view', many ? () => detachRhinoFile(f.id) : null));
+    const rhino = (project?.files || []).map((f) => row(f.name, 'Rhino file', many ? () => detachRhinoFile(f.id) : null,
+      { label: 'In view', title: 'Show this file in the view, with the others that are in view', on: !f.off, change: (on) => setRhinoFileOn(f.id, on) }));
     el('list').replaceChildren(
       ...rhino,
-      ...site.epws.map((e) => row(e.fileName, `Weather file · ${escapeHtml(epwSub(e))}`, () => removeEpw(e.id))),
-      ...results.map((r) => row(r.name, r.parser ? `${escapeHtml(r.parser.name)} · ${escapeHtml(r.parser.describe(r.data))}` : 'Not recognised by any parser', () => removeResultsFile(r.id))),
+      ...site.epws.map((e) => row(e.fileName, `Weather file · ${escapeHtml(epwSub(e))}`, () => removeEpw(e.id),
+        { label: 'Active', title: 'Offer this file as a location and weather source', on: !e.off, change: (on) => setEpwOn(e.id, on) })),
+      ...results.map((r) => row(r.name, r.parser ? `${escapeHtml(r.parser.name)} · ${escapeHtml(r.parser.describe(r.data))}` : 'Not recognised by any parser', () => removeResultsFile(r.id),
+        { label: 'Active', title: 'Show these results in the view', on: !r.off, change: (on) => setResultOn(r.id, on) })),
     );
     if (!rhino.length && !site.epws.length && !results.length) el('list').innerHTML = '<div class="fine">Nothing attached yet.</div>';
   };
@@ -2901,7 +3100,7 @@ function setStreamlinesOn(on) {
 }
 
 function fillStreamlines() {
-  const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines') : [];
+  const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines' && !r.off) : [];
   const all = files.flatMap((file) => file.data.streamlines.map((line) => ({ file, line })));
   const wind = ColourScales.preferred('windSpeed');
   const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed)) : null;
@@ -2981,7 +3180,7 @@ function showMapResult(i) {
 }
 
 function fillMaps() {
-  const M = state.maps, files = model ? results.filter((r) => r.parser?.id === 'cfdMap') : [];
+  const M = state.maps, files = model ? results.filter((r) => r.parser?.id === 'cfdMap' && !r.off) : [];
   M.list = files.flatMap((file) => file.data.maps.map((map) => ({ key: `${file.name}|${map.name}`, map, file,
     label: files.length > 1 ? `${map.name} · ${file.name}` : map.name })));
   renderer.setResultMaps(M.list.map(({ map }) => ({ pos: cfdMapVertices(map, model.metresPerUnit, model.origin), indices: map.indices })));
@@ -3140,7 +3339,7 @@ function showLocationHelp() {
 
 // The rows of the list: the weather files with a usable location, the Rhino file, a city and a custom location.
 function locationGroups() {
-  const epw = site.epws.filter((e) => e.location.known).map((e) => ({ id: `epw:${e.id}`, label: e.fileName, sub: epwSub(e), title: `Location from ${e.fileName}` }));
+  const epw = site.epws.filter((e) => e.location.known && !e.off).map((e) => ({ id: `epw:${e.id}`, label: e.fileName, sub: epwSub(e), title: `Location from ${e.fileName}` }));
   const cityOf = site.city, customOf = site.custom;
   const files = fileLocations();
   const rhino = files.length
@@ -3175,7 +3374,7 @@ function openLocationDialog() {
     const groups = locationGroups(), key = JSON.stringify(groups);
     if (key !== shown) { list.setGroups(groups); shown = key; }
     list.setActive(activeLocation()?.use ?? '');
-    hint.hidden = site.epws.some((e) => e.location.known);
+    hint.hidden = site.epws.some((e) => e.location.known && !e.off);
   };
   refresh();
   locationDialog = { refresh };
@@ -4718,7 +4917,8 @@ async function openDemo() {
 async function showProject(projectId, given = null) {
   const project = (await Recent.list()).find((p) => p.id === projectId);
   if (!project) return;
-  const files = project.files.filter((f) => f.handle || (given && f.id === given.fileId));
+  const files = project.files.filter((f) => !f.off && (f.handle || (given && f.id === given.fileId)));
+  if (!files.length) { notice(`Nothing in ${project.name} is active. Tick a file in Attach files to show it.`, true); renderRecent(); return; }
   try {
     const sources = [];
     for (const f of files) {
@@ -4750,6 +4950,28 @@ async function detachRhinoFile(fileId) {
   await Recent.detach(model.projectId, fileId);
   renderRecent();
   await showProject(model.projectId);
+}
+
+// Makes a Rhino file of the open model active (in the view) or not, and shows the view again.
+async function setRhinoFileOn(fileId, on) {
+  await Recent.setFileOn(model.projectId, fileId, on);
+  renderRecent();
+  await showProject(model.projectId);
+}
+
+// Makes a weather file active or not. An inactive one is not offered as a location or weather source; if it
+// was the weather data source, another active one takes its place, or none.
+function setEpwOn(id, on) {
+  const e = site.epws.find((x) => x.id === id);
+  if (!e) return;
+  e.off = !on;
+  if (!on) {
+    if (site.epw?.id === id) site.epw = site.epws.find((x) => !x.off) ?? null;
+    if (site.use === `epw:${id}`) site.use = null;
+  }
+  linkToModel({ epws: epwLinks(), weather: site.epw?.id ?? null, use: site.use });
+  applyLocation();
+  syncResults();
 }
 
 function bindUi() {

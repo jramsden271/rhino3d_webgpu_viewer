@@ -5,11 +5,12 @@
 // Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle }],
+//   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle, off }],
 //                                              custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
 //                                        Returns { project, file }: the project's id and the file's id.
 //   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project. Returns the file's id.
+//   await Recent.setFileOn(projectId, fileId, on) turns a file in or out of the project's view
 //   await Recent.detach(projectId, fileId)        takes a 3dm file off a project
 //   await Recent.remove(index)           removes a project (its results copies with it)
 //   await Recent.link(handle, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
@@ -102,7 +103,7 @@ const Recent = {
       // The file opened again goes back to its project, which moves to the top, keeping its settings.
       const project = hit ? list[hit[0]] : { id: this.newId(), name: file.name, files: [], custom: null, city: null, epws: null, weather: null, use: null, results: [] };
       const rec = hit ? project.files[hit[1]] : { id: this.newId(), handle };
-      Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified });
+      Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified, off: false }); // opening a file turns it on
       if (!hit) project.files.push(rec);
       Object.assign(project, { name: hit ? project.name : file.name, opened: Date.now() });
       await this.save([project, ...list.filter((p) => p !== project)]);
@@ -121,6 +122,16 @@ const Recent = {
       project.files.push(rec);
       await this.save(list);
       return rec.id;
+    });
+  },
+
+  // Turns a 3dm file in a project on or off. An off file is kept in the project but not in its view.
+  setFileOn(projectId, fileId, on) {
+    return this.serial(async () => {
+      const list = await this.list(), project = list.find((p) => p.id === projectId), f = project?.files.find((x) => x.id === fileId);
+      if (!f) return;
+      f.off = !on;
+      await this.save(list);
     });
   },
 
