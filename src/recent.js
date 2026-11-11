@@ -5,13 +5,13 @@
 // Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()                  -> [{ id, name, opened, active, files: [{ id, name, size, modified, handle }],
+//   await Recent.list()                  -> [{ id, name, opened, shown: [file ids], files: [{ id, name, size, modified, handle }],
 //                                              custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
 //                                        Returns the project's id.
 //   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project without opening it. Returns the file's id.
-//   await Recent.activate(projectId, fileId)      the file the project opens next
-//   await Recent.detach(projectId, fileId)        takes a file off a project (not the one open)
+//   await Recent.setShown(projectId, fileId, on) puts a file in the project's view (shown together), or takes it out
+//   await Recent.detach(projectId, fileId)        takes a file off a project and out of its view
 //   await Recent.remove(index)           removes a project (its results copies with it)
 //   await Recent.link(handle, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
 //                                 attached weather files (epws: [{ id, name, bytes }]), the one used as weather data source
@@ -67,10 +67,13 @@ const Recent = {
   toProjects(list) {
     let changed = false;
     for (const r of list) {
-      if (r.files) continue;
+      if (r.files) { // a project saved on the branch before views of several files: its one file is shown
+        if (!r.shown) { r.shown = r.active ? [r.active] : []; delete r.active; changed = true; }
+        continue;
+      }
       changed = true;
       const f = { id: this.newId(), name: r.name, size: r.size, modified: r.modified, handle: r.handle };
-      Object.assign(r, { id: this.newId(), files: [f], active: f.id });
+      Object.assign(r, { id: this.newId(), files: [f], shown: [f.id] });
       for (const k of ['size', 'modified', 'handle']) delete r[k];
     }
     return changed;
@@ -103,7 +106,8 @@ const Recent = {
       const rec = hit ? project.files[hit[1]] : { id: this.newId(), handle };
       Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified });
       if (!hit) project.files.push(rec);
-      Object.assign(project, { name: hit ? project.name : file.name, active: rec.id, opened: Date.now() });
+      // Opening a file on its own shows just that file.
+      Object.assign(project, { name: hit ? project.name : file.name, shown: [rec.id], opened: Date.now() });
       await this.save([project, ...list.filter((p) => p !== project)]);
       return project.id;
     });
@@ -123,21 +127,26 @@ const Recent = {
     });
   },
 
-  // Takes a 3dm file off a project. The file that is open stays until another is opened.
+  // Takes a 3dm file off a project, and out of its view.
   detach(projectId, fileId) {
     return this.serial(async () => {
       const list = await this.list(), project = list.find((p) => p.id === projectId);
-      if (!project || project.active === fileId) return;
+      if (!project) return;
       project.files = project.files.filter((f) => f.id !== fileId);
+      project.shown = project.shown.filter((id) => id !== fileId);
       await this.save(list);
     });
   },
 
-  activate(projectId, fileId) {
+  // Puts a file in the project's view, or takes it out. The view shows all of its files together.
+  setShown(projectId, fileId, on) {
     return this.serial(async () => {
       const list = await this.list(), project = list.find((p) => p.id === projectId);
       if (!project?.files.some((f) => f.id === fileId)) return;
-      project.active = fileId;
+      const rest = project.shown.filter((id) => id !== fileId);
+      project.shown = on ? [...rest, fileId] : rest;
+      // Keep the order of the project's files, so the view reads the same as its list.
+      project.shown = project.files.map((f) => f.id).filter((id) => project.shown.includes(id));
       await this.save(list);
     });
   },

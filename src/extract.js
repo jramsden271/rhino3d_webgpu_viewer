@@ -293,15 +293,49 @@ const meshBuffers = (m) => {
 // buildBatches() turns that into GPU batches using each item's current attributes; it runs again
 // whenever an object's colour or material source changes, without re-reading the file.
 
-async function extractModel(rhino, doc, onProgress) {
-  const scene = await extractScene(rhino, doc, onProgress);
+// origin: the point geometry is measured from. A file read to be shown with others takes the first file's
+// origin, so the files share coordinates; by default it is the middle of the file's objects.
+async function extractModel(rhino, doc, onProgress, origin = null) {
+  const scene = await extractScene(rhino, doc, onProgress, origin);
   onProgress?.(1, 'Building batches');
   await tick();
   scene.batches = buildBatches(scene);
   return scene;
 }
 
-async function extractScene(rhino, doc, onProgress) {
+// The scene for several files shown together: each part's layers, materials, block definitions, objects
+// and lights come after the ones before them, with their layer and material numbers moved along. The
+// parts share one origin (see extractModel). Batches are built by the caller.
+function mergeScenes(parts, names) {
+  const sum = (a, b) => { for (const k of Object.keys(b)) a[k] = (a[k] || 0) + b[k]; return a; };
+  const out = { origin: parts[0].origin, units: parts[0].units, layers: [], materials: [], magicLayers: {}, defs: new Map(),
+    items: [], lights: [], views: [], location: parts.find((p) => p.location)?.location ?? null,
+    stats: { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {}, lights: {} } };
+  parts.forEach((p, k) => {
+    const lOff = out.layers.length, mOff = out.materials.length;
+    const shiftAi = (ai) => { if (!ai) return; if (ai.layer >= 0) ai.layer += lOff; if (ai.mi >= 0) ai.mi += mOff; };
+    for (const l of p.layers) {
+      out.layers.push({ ...l, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : -1,
+        material: l.material >= 0 ? l.material + mOff : l.material, fullPath: names.length > 1 ? `${names[k]}::${l.fullPath}` : l.fullPath });
+    }
+    for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length });
+    // The magic block layers (by key) are the first file's: each later file's are left in the layers, unused.
+    if (k === 0) out.magicLayers = Object.fromEntries(Object.entries(p.magicLayers).map(([key, i]) => [key, i + lOff]));
+    for (const it of p.items) { shiftAi(it.ai); shiftAi(it.ai0); out.items.push(it); }
+    for (const [id, def] of p.defs) {
+      for (const e of def.entries) shiftAi(e.ai);
+      if (!out.defs.has(id)) out.defs.set(id, def);
+    }
+    out.lights.push(...p.lights);
+    out.views.push(...(p.views || []));
+    for (const key of ['objects', 'triangles', 'curves', 'points', 'instances']) out.stats[key] += p.stats[key] || 0;
+    for (const key of ['unsupported', 'noRenderMesh', 'lights']) sum(out.stats[key], p.stats[key] || {});
+  });
+  out.objects = out.items;
+  return out;
+}
+
+async function extractScene(rhino, doc, onProgress, originOverride = null) {
   const objects = doc.objects();
   const stats = { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {} };
   const skip = (bucket, name) => (stats[bucket][name] = (stats[bucket][name] || 0) + 1);
@@ -350,7 +384,7 @@ async function extractScene(rhino, doc, onProgress) {
 
   // Origin ------------------------------------------------------------------------------------
   const bb = objects.getBoundingBox();
-  const origin = bb && bb.isValid ? bb.center : [0, 0, 0];
+  const origin = originOverride || (bb && bb.isValid ? bb.center : [0, 0, 0]);
   const negOrigin = [-origin[0], -origin[1], -origin[2]];
   const originXf = new Float64Array([1, 0, 0, -origin[0], 0, 1, 0, -origin[1], 0, 0, 1, -origin[2], 0, 0, 0, 1]);
 

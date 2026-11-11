@@ -418,46 +418,73 @@ async function restoreLinks(handle) {
   return back;
 }
 
-async function readModel(kind, name, bytes) {
+// One file read. full: a file on its own, with its batches built; otherwise a part of a scene (see openScene).
+async function readModel(kind, name, bytes, origin = null, full = true) {
   showBusy('Starting the Rhino file reader', 0.04);
   const rhino = await getRhino(kind);
   showBusy(`Parsing ${name} (${(bytes.length / 1e6).toFixed(0)} MB)`, 0.06);
   await new Promise((r) => setTimeout(r, 20));
   const doc = rhino.File3dm.fromByteArray(bytes);
   if (!doc) throw new Error('The file could not be read. It may be damaged or not a Rhino model.');
+  const progress = (f, text) => showBusy(text, 0.08 + f * 0.82);
   try {
-    return await extractModel(rhino, doc, (f, text) => showBusy(text, 0.08 + f * 0.82));
+    return full ? await extractModel(rhino, doc, progress, origin) : await extractScene(rhino, doc, progress, origin);
   } finally {
     doc.delete();
   }
 }
 
+// Reads a file with the reader its size calls for. The 32-bit reader aborts when it runs out of address
+// space; then the file is read again with the 64-bit one.
+async function readWithReader(name, bytes, origin, full) {
+  const first = can64() && bytes.length > BIG_FILE ? 'w64' : 'w32';
+  try {
+    return { m: await readModel(first, name, bytes, origin, full), reader: first };
+  } catch (e) {
+    if (first !== 'w32' || !can64() || !(e instanceof WebAssembly.RuntimeError)) throw e;
+    delete rhinoModules.w32;
+    return { m: await readModel('w64', name, bytes, origin, full), reader: 'w64' };
+  }
+}
+
 // handle: the file's handle when it was opened from the user's files (see openFile).
 async function openBytes(name, bytes, handle = null) {
-  const t0 = performance.now();
+  return openScene([{ name, bytes, handle }]);
+}
+
+// The Rhino files shown together as one model: sources = [{ name, bytes, handle }]. The first file's
+// origin is used for all, so they line up as they do in Rhino. handle: the first file's, which
+// holds the model's settings (see Recent).
+async function openScene(sources) {
+  const t0 = performance.now(), [first] = sources, handle = first.handle ?? null;
+  const name = sources.map((s) => s.name).join(' + ');
   walker.exit();
   driver.exit();
   saveViewState();
   clearNotices();
   try {
-    let m;
-    const first = can64() && bytes.length > BIG_FILE ? 'w64' : 'w32';
-    try {
-      m = await readModel(first, name, bytes);
-      m.reader = first;
-    } catch (e) {
-      // The 32-bit reader aborts when it runs out of address space; retry with the 64-bit one.
-      if (first !== 'w32' || !can64() || !(e instanceof WebAssembly.RuntimeError)) throw e;
-      delete rhinoModules.w32;
-      m = await readModel('w64', name, bytes);
-      m.reader = 'w64';
+    let m, reader;
+    if (sources.length === 1) {
+      ({ m, reader } = await readWithReader(first.name, first.bytes, null, true));
+    } else {
+      const parts = [];
+      for (const s of sources) {
+        const r = await readWithReader(s.name, s.bytes, parts[0]?.origin ?? null, false);
+        parts.push(r.m);
+        reader ??= r.reader;
+      }
+      m = mergeScenes(parts, sources.map((s) => s.name.replace(/\.3dm$/i, '')));
+      showBusy('Building batches', 0.9);
+      await new Promise((r) => setTimeout(r, 20));
+      m.batches = buildBatches(m);
     }
+    m.reader = reader;
     model = m;
     layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
     state.blockOff = new Set();
     model.name = name;
-    model.size = bytes.length;
-    model.bytes = bytes; // kept so a copy with the viewer's changes can be written
+    model.size = sources.reduce((n, s) => n + s.bytes.length, 0);
+    model.bytes = sources.length === 1 ? first.bytes : null; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     model.blocks = blockTable(m);
@@ -2782,16 +2809,17 @@ function openAttachDialog() {
   const refresh = async () => {
     const project = model?.projectId ? (await Recent.list()).find((p) => p.id === model.projectId) : null;
     const rhino = (project?.files || []).map((f) => {
-      const open = f.id === project.active;
-      const r = row(f.name, open ? 'Rhino file · open now' : 'Rhino file', open ? null : () => detachRhinoFile(f.id));
-      if (!open) {
-        const b = document.createElement('button');
-        b.className = 'btn small';
-        b.textContent = 'Open';
-        b.title = `Open ${f.name}`;
-        b.addEventListener('click', () => openProjectFile(project, f));
-        r.append(b);
-      }
+      const shown = project.shown.includes(f.id);
+      const r = row(f.name, 'Rhino file', () => detachRhinoFile(f.id));
+      const label = document.createElement('label');
+      label.className = 'fine';
+      label.title = 'Show this file in the view, together with the others that are shown';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = shown;
+      box.addEventListener('change', () => setRhinoFileShown(f.id, box.checked));
+      label.append(box, ' In view');
+      r.querySelector('.fine').append(' · ', label);
       return r;
     });
     el('list').replaceChildren(
@@ -4653,7 +4681,8 @@ async function renderRecent() {
     const epws = r.epws?.length ? r.epws : r.epw ? [r.epw] : [];
     const linked = [custom && `custom location ${fmtCoords(custom.lat, custom.lon)}`, city && `city ${city.name || fmtCoords(city.lat, city.lon)}`,
       epws.length && (epws.length === 1 ? `weather ${epws[0].name}` : `${epws.length} weather files`)].filter(Boolean);
-    const size = activeFile(r)?.size ?? 0, files = r.files.length > 1 ? [`${r.files.length} Rhino files`] : [];
+    const shown = shownFiles(r), size = shown.reduce((n, f) => n + f.size, 0);
+    const files = shown.length > 1 ? [`${shown.length} files in view`] : [];
     li.querySelector('.recent-info').textContent = [`${(size / 1e6).toFixed(size < 1e7 ? 1 : 0)} MB`, ...files, `opened ${date(r.opened)}`, ...linked].join(' · ');
     li.querySelector('.recent-open').title = `Open ${r.name}`;
     li.querySelector('.recent-open').addEventListener('click', () => openRecent(r));
@@ -4669,29 +4698,50 @@ async function openDemo() {
   await openBytes('Demo.3dm', Uint8Array.from(atob(DEMO_3DM), (c) => c.charCodeAt(0)));
 }
 
-// A project opens its active Rhino file; a project's other files open from the Attach files dialog.
-const activeFile = (p) => p.files.find((f) => f.id === p.active) || p.files[0];
-async function openRecent(r) { await openProjectFile(r, activeFile(r)); }
+// A project's view: its Rhino files that are shown, together as one model.
+const shownFiles = (p) => p.files.filter((f) => p.shown.includes(f.id));
 
-// Opens one of a project's Rhino files. The browser asks once per session before it can read a file again.
-async function openProjectFile(project, f) {
+// Opens a project's view. The browser asks once per session before it can read a file again.
+async function showProject(projectId) {
+  const project = (await Recent.list()).find((p) => p.id === projectId);
+  if (!project) return;
+  const files = shownFiles(project).filter((f) => f.handle);
+  if (!files.length) { notice('Nothing is in view. Tick a Rhino file in Attach files to show it.', true); return; }
   try {
-    if (!f?.handle) return;
-    if ((await f.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await f.handle.requestPermission({ mode: 'read' })) !== 'granted') return;
-    await openFile(await f.handle.getFile(), f.handle);
+    const sources = [];
+    for (const f of files) {
+      if ((await f.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await f.handle.requestPermission({ mode: 'read' })) !== 'granted') {
+        notice(`Permission to read ${f.name} was not given, so it is not in view.`, true);
+        continue;
+      }
+      showBusy(`Reading ${f.name}`, 0.02);
+      sources.push({ name: f.name, bytes: new Uint8Array(await (await f.handle.getFile()).arrayBuffer()), handle: f.handle });
+    }
+    if (!sources.length) { hideBusy(); return; }
+    await openScene(sources);
+    if (model) model.projectId = projectId;
   } catch (e) {
     hideBusy();
-    notice(e.name === 'NotFoundError' ? `${f.name} could not be found. It may have been moved, renamed or deleted; remove it from the list with ×.` : `Could not open ${f.name}: ${e.message}`, true);
+    notice(e.name === 'NotFoundError' ? `A file in ${project.name} could not be found. It may have been moved, renamed or deleted; remove it from the project in Attach files.` : `Could not open ${project.name}: ${e.message}`, true);
   }
   renderRecent();
   attachDialog?.refresh();
 }
+const openRecent = (r) => showProject(r.id);
 
-// Takes a Rhino file off the open model's project.
+// Takes a Rhino file off the open model's project, and out of its view.
 async function detachRhinoFile(fileId) {
+  const wasShown = model?.projectId && (await Recent.list()).find((p) => p.id === model.projectId)?.shown.includes(fileId);
   await Recent.detach(model.projectId, fileId);
   renderRecent();
-  attachDialog?.refresh();
+  if (wasShown) showProject(model.projectId);
+  else attachDialog?.refresh();
+}
+
+// Puts a Rhino file in the open model's view, or takes it out, and shows the view.
+async function setRhinoFileShown(fileId, on) {
+  await Recent.setShown(model.projectId, fileId, on);
+  await showProject(model.projectId);
 }
 
 function bindUi() {
