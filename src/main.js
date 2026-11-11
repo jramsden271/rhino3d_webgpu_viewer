@@ -173,6 +173,8 @@ async function boot() {
       await openBytes(decodeURIComponent(src.split('/').pop()), new Uint8Array(await res.arrayBuffer()));
     } catch (e) { hideBusy(); notice(`Could not load ${src}: ${e.message}`, true); }
   }
+  // The page opens on a blank project, with the projects menu open to start from.
+  if (!model) projectsMenu.open();
 }
 
 function onResize() {
