@@ -4,7 +4,7 @@
     {
       "name": "rhino-viewer",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["C:/github/jramsden271/rhino-webgpu-viewer/tools/serve.js", "8123"],
+      "runtimeArgs": ["C:/github/rhino3d_webgpu_viewer/tools/serve.js", "8123"],
       "port": 8123
     }
   ]

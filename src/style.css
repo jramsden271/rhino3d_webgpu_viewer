@@ -97,6 +97,11 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 .choice-list button[aria-disabled="true"] .box { opacity: 0.5; }
 .choice-list .view-speed { padding: 0 8px 4px 30px; } /* under its label */
 .choice-list .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-list .label .sub { display: block; font-size: 11px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.choice-list .choice-row { display: flex; align-items: center; gap: 6px; }
+.choice-list .choice-row > button[data-id] { flex: 1; min-width: 0; }
+.choice-list .choice-row > .choice-action { flex: none; padding: 3px 9px; border: 0; border-radius: 6px; font: inherit; font-size: 12px; background: var(--accent-soft); color: var(--accent); cursor: pointer; }
+.choice-list .choice-row > .choice-action:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .choice-list kbd { flex: none; font: inherit; font-size: 11px; font-weight: 400; color: var(--muted); }
 .sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); flex: none; }
 
@@ -551,6 +556,7 @@ body.walking .walk-frame { display: block; }
 .wx-btn.set .cloud { color: var(--text); fill: #f3f4f6; }
 .loc-dlg { display: flex; flex-direction: column; gap: 10px; }
 .loc-dlg > .fine { font-size: 11.5px; color: var(--muted); }
+.loc-dlg .choice-list { min-width: 0; max-width: none; }
 .loc-src { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
 .loc-src.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .loc-head { display: flex; align-items: center; gap: 8px; }
@@ -590,7 +596,7 @@ body.walking .walk-frame { display: block; }
 .map-hover .row b { font-weight: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .loc-actions { display: flex; align-items: center; gap: 12px; }
 .loc-actions .link { font-size: 12px; }
-.loc-actions .link[hidden] { display: none; }
+.loc-actions .link[hidden], .loc-actions[hidden] { display: none; }
 .loc-dlg .city-search { margin-bottom: 0; }
 .loc-dlg .city-list { max-height: 168px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }

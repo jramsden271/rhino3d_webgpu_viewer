@@ -2,17 +2,20 @@
 // with a click. Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, epw, results }], newest first
+//   await Recent.list()           -> [{ name, size, modified, opened, handle, custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file) remembers a file just opened (up to Recent.MAX)
 //   await Recent.remove(index)
-//   await Recent.link(handle, { custom, epw, use, results })  a model's custom location, weather file,
-//                                 which location source it uses and results files (any of them)
-//   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset, name } | null, epw: { name, bytes } | null,
-//                                      use: 'custom' | 'epw' | 'file' | null, results: [{ id, name, size }] }
+//   await Recent.link(handle, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
+//                                 attached weather files (epws: [{ id, name, bytes }]), the one used as weather data source
+//                                 (weather: its id), which location source it uses and results files (any of them)
+//   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset } | null, city: { lat, lon, utcOffset, name } | null,
+//                                      epws: [{ id, name, bytes }], weather: id | null,
+//                                      use: 'custom' | 'city' | 'file' | 'epw:<id>' | null, results: [{ id, name, size }] }
 //   await Recent.putResult(id, bytes), Recent.resultBytes(id), Recent.dropResults(ids)  a results file's copy
 //
-// A model's weather file is kept as a copy, so it comes back without another permission prompt.
-// So are its results files, each under its own key, as they can be large and the list is read often.
+// A model's weather files are kept as copies, so they come back without another permission prompt. So are
+// its results files, each under its own key, as they can be large and the list is read often. Records
+// saved before weather files were a list (one epw: { name, bytes }, and a city saved as custom) still read.
 
 const Recent = {
   MAX: 5,
@@ -60,7 +63,8 @@ const Recent = {
       const i = await this.find(list, handle), old = i >= 0 ? list[i] : {};
       const rest = list.filter((_, k) => k !== i);
       await this.save([{ name: file.name, size: file.size, modified: file.lastModified, opened: Date.now(), handle,
-        custom: old.custom || null, epw: old.epw || null, use: old.use || null, results: old.results || [] }, ...rest].slice(0, this.MAX));
+        custom: old.custom || null, city: old.city || null, epws: old.epws || null, epw: old.epw || null, weather: old.weather ?? null,
+        use: old.use || null, results: old.results || [] }, ...rest].slice(0, this.MAX));
       for (const gone of rest.slice(this.MAX - 1)) await this.dropResults((gone.results || []).map((r) => r.id));
     });
   },
@@ -75,13 +79,20 @@ const Recent = {
       const list = await this.list(), i = await this.find(list, handle);
       if (i < 0) return;
       Object.assign(list[i], changes);
+      if (changes.epws) delete list[i].epw; // replaced by the list: the old single weather file goes
       await this.save(list);
     });
   },
 
   async links(handle) {
-    const list = await this.list(), i = await this.find(list, handle);
-    return { custom: list[i]?.custom || null, epw: list[i]?.epw || null, use: list[i]?.use || null, results: list[i]?.results || [] };
+    const list = await this.list(), i = await this.find(list, handle), r = list[i] || {};
+    const old = r.epws ? null : r.epw; // saved before weather files were a list
+    const custom = r.custom && !r.custom.name ? r.custom : null;
+    const city = r.city || (r.custom?.name ? r.custom : null);
+    const epws = r.epws || (old ? [{ id: 'legacy', name: old.name, bytes: old.bytes }] : []);
+    const weather = r.weather ?? (old ? 'legacy' : null);
+    const use = r.use === 'epw' ? 'epw:legacy' : r.use === 'custom' && !custom ? 'city' : r.use || null;
+    return { custom, city, epws, weather, use, results: r.results || [] };
   },
 
   remove(index) {

@@ -91,7 +91,9 @@ class ChoiceList {
   }
 
   // groups: [{ id (optional: for showGroup), heading (optional), help (optional: { title, run }, a ? button on the heading's row),
-  //   items: [{ id, label, hint (optional), title (optional: the tooltip, otherwise the label),
+  //   items: [{ id, label, sub (optional: a second, smaller line under the label), hint (optional), title (optional: the tooltip,
+  //     otherwise the label), disabled (optional: why it cannot be picked, greyed out with that in its tooltip),
+  //     action (optional: { label, title, run }, a button beside the item, for something else than picking it),
   //     toggle (optional: an on/off item, with a checkbox; 'eye' for show/hide, drawn as an eye) }] }]
   setGroups(groups) {
     this.el.replaceChildren();
@@ -112,11 +114,12 @@ class ChoiceList {
         this.el.append(h);
       }
       for (const it of g.items) {
-        const b = tag(document.createElement('button'));
+        const b = document.createElement('button');
         b.dataset.id = it.id;
-        b.title = it.title || it.label;
+        b.title = it.disabled ? `${it.disabled}. ${it.title || it.label}` : it.title || it.label;
         b.setAttribute('role', it.toggle ? 'menuitemcheckbox' : 'menuitemradio');
         b.setAttribute('aria-checked', 'false');
+        if (it.disabled) b.setAttribute('aria-disabled', 'true');
         if (it.toggle) {
           const box = document.createElement('span');
           box.className = it.toggle === 'eye' ? 'box eye' : 'box';
@@ -125,13 +128,29 @@ class ChoiceList {
         const l = document.createElement('span');
         l.className = 'label';
         l.textContent = it.label;
+        if (it.sub) {
+          const s = document.createElement('span');
+          s.className = 'sub';
+          s.textContent = it.sub;
+          l.append(s);
+        }
         b.append(l);
         if (it.hint) {
           const k = document.createElement('kbd');
           k.textContent = it.hint;
           b.append(k);
         }
-        this.el.append(b);
+        if (!it.action) { this.el.append(tag(b)); continue; }
+        const row = tag(document.createElement('div'));
+        row.className = 'choice-row';
+        row.append(b);
+        const a = document.createElement('button');
+        a.className = 'choice-action';
+        a.textContent = it.action.label;
+        a.title = it.action.title || it.action.label;
+        a.addEventListener('click', it.action.run);
+        row.append(a);
+        this.el.append(row);
       }
     });
   }
