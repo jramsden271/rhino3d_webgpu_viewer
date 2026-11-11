@@ -359,7 +359,6 @@ class Driver {
     this.active = false;
     this.placing = false;
     this.input = { gas: false, brake: false, left: false, right: false, horn: false };
-    this.stick = null; // a thumb stick on touch screens: [forward, right], 1 at its rim
     // Set from the Drive panel: the car casts the sun's shadows, which camera, headlights on, sounds.
     this.settings = { shadows: true, cam: 0, headlights: false, sound: true, music: true };
     this.sound = new DriveSound();
@@ -475,7 +474,7 @@ class Driver {
     return along < 2.27 + r && side < 0.95 + r && up > -1 && up < 1.4;
   }
 
-  releaseAll() { for (const k in this.input) this.input[k] = false; this.stick = null; }
+  releaseAll() { for (const k in this.input) this.input[k] = false; }
 
   // Keyboard: returns true when the key was used for driving.
   key(e, down) {
@@ -589,15 +588,10 @@ class Driver {
     return out;
   }
 
-  // What the controls ask for: pedals and steering from the keys, else from the thumb stick
-  // (forward is the accelerator, back the brake and then reverse, sideways steers).
+  // What the controls ask for: the pedals and steering, from the keys or the on-screen buttons
+  // (gas and brake pedals, left and right steering).
   controls(now) {
     const I = this.input, out = { gas: I.gas, brake: I.brake, steer: (I.left ? 1 : 0) - (I.right ? 1 : 0), hand: false, horn: I.horn, throttle: 1 };
-    if (!I.gas && !I.brake && !I.left && !I.right && this.stick) {
-      const [f, r] = this.stick;
-      out.gas = f > 0.15; out.brake = f < -0.15; out.throttle = Math.min(1, Math.abs(f));
-      out.steer = -Math.max(-1, Math.min(1, r));
-    }
     // Braking while steering, going forwards, pulls the handbrake: the car slides round. At a crawl
     // or in reverse, it brakes (and reverses) as usual.
     if (out.brake && out.steer && this.vF > HAND_SPEED) { out.hand = true; out.brake = false; }

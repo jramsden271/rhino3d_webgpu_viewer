@@ -395,6 +395,17 @@ body:not(.touch) .touch-only, body.touch .keys-only { display: none; }
 .walk-stick.active { opacity: 1; transition: none; }
 .walk-stick.run > div { background: var(--accent); }
 body.walking.touch .walk-stick { display: block; }
+/* The driving pad on touch screens: steering to the left, pedals to the right, along the bottom. */
+.drive-pad { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 18px; display: none; justify-content: space-between; align-items: flex-end; gap: 12px; pointer-events: none; z-index: 2; }
+body.driving.touch .drive-pad { display: flex; }
+.drive-pad > div { display: flex; gap: 12px; pointer-events: auto; }
+.drive-pad button { touch-action: none; user-select: none; -webkit-user-select: none; width: 84px; height: 84px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(20, 24, 31, 0.55); color: #fff; font: 600 15px var(--font, system-ui, sans-serif); letter-spacing: 0.04em; cursor: pointer; }
+.drive-pad button.on { background: rgba(20, 24, 31, 0.85); }
+.drive-pad .pad-steer button { font-size: 40px; line-height: 1; padding: 0 0 4px; }
+.drive-pad .pad-pedals button { border-radius: 14px; width: 92px; height: 92px; }
+.drive-pad .pad-pedals button.gas { height: 110px; border-color: var(--accent); color: var(--accent); }
+.drive-pad .pad-pedals button.brake { height: 92px; }
+.drive-pad button.on.gas, .drive-pad button.on.brake { background: var(--accent); color: #fff; }
 .walk-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.6s; }
 .walk-fade.on { opacity: 0.6; transition: none; }
 .walk-fade.dark { opacity: 1; transition: opacity 0.25s; }

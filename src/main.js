@@ -3413,7 +3413,7 @@ function bindPointer() {
   canvas.addEventListener('pointerdown', (e) => {
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
-    if (moving() && e.pointerType === 'touch' && !stick) {
+    if (walker.active && e.pointerType === 'touch' && !stick) {
       const r = canvas.getBoundingClientRect();
       if (e.clientX < r.left + r.width / 2) { startStick(e); return; }
     }
@@ -3638,16 +3638,26 @@ function moveStick(e) {
   const dx = e.clientX - stick.x, dy = e.clientY - stick.y, d = Math.hypot(dx, dy);
   if (d > 6) stick.moved = true;
   if (!stick.moved) return;
-  (driver.active ? driver : walker).stick = [-dy / STICK_R, dx / STICK_R];
+  walker.stick = [-dy / STICK_R, dx / STICK_R];
   const k = d > STICK_R ? STICK_R / d : 1, el = $('walkStick');
   el.firstElementChild.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
   el.classList.toggle('run', walker.active && d / STICK_R > WALK.STICK_RUN);
 }
 
+// The driving pad: each button holds its control while pressed, so two can be held at once
+// (gas with a steer, for instance).
+for (const b of document.querySelectorAll('#drivePad [data-in]')) {
+  const k = b.dataset.in;
+  const release = () => { b.classList.remove('on'); driver.input[k] = false; };
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); driver.input[k] = true; });
+  b.addEventListener('pointerup', release);
+  b.addEventListener('pointercancel', release);
+  b.addEventListener('lostpointercapture', release);
+}
+
 function endStick() {
   stick = null;
   walker.stick = null;
-  driver.stick = null;
   const el = $('walkStick');
   el.classList.remove('active', 'run');
   el.style.left = el.style.top = el.firstElementChild.style.transform = '';
@@ -4187,7 +4197,7 @@ function enterVehicle() {
 function showDriveHelp() {
   Dialog.open({ title: 'Driving', html: true, width: 420, body: `<p><b>Drive</b> in the camera list, or <kbd>5</kbd>, starts driving: click where the car should start. It faces the way the camera looks. Until you click you can still move the view; <kbd>Esc</kbd> cancels. Closing this panel does not stop you: pick Drive again to bring it back.</p>
     <p><kbd>W</kbd> or <kbd>↑</kbd> accelerates · <kbd>S</kbd> or <kbd>↓</kbd> brakes, then reverses · <kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd> steer · braking while steering pulls the handbrake, to slide round · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>M</kbd> sounds · <kbd>F</kbd> gets out · <kbd>C</kbd> changes the camera · <kbd>R</kbd> puts the car back where it last stood firmly (as does driving off the model, or into water, which holds nothing up) · drag to look round · wheel to zoom · <kbd>Esc</kbd> or another camera to stop</p>
-    <p>On a touch screen, drag on the left half of the view: forward accelerates, back brakes and reverses, and sideways steers. Drag on the right half to look round. <b>Exit</b> in this panel stops driving.</p>
+    <p>On a touch screen, the buttons along the bottom drive: <b>GO</b> accelerates, <b>BRK</b> brakes and reverses, and <b>&lsaquo;</b> <b>&rsaquo;</b> steer. Drag the view to look round. <b>Exit</b> in this panel stops driving.</p>
     <p>The car mounts kerbs up to 30 cm; anything higher, and lower than its roof, it bounces off. Slopes slow it down going up, and off a ramp or an edge it flies. Hidden layers and vegetation are driven through.</p>
     <p>The car's top speed is 160 km/h · <b>Collision detection</b> off drives through walls (the car still follows the ground) · <b>Shadows</b>: the car casts the sun's shadows; that redraws them every frame, which can be slow on big models · <b>Headlights</b> (<kbd>T</kbd>): two beams that light the model, best at night, as the walker's torch does. The brake and reversing lights come on by themselves · <b>Sounds</b> (<kbd>M</kbd>): the engine, crashes and the horn · <b>Music</b>: the car radio while you drive, a track at random each time you start: 80s synthwave, two old-school West Coast hip hop tracks or 90s shooter metal. <b>Change track</b> picks another at random.</p>
     <p><b>Exit vehicle</b> (<kbd>F</kbd>) gets out: the car stays where it is and you walk from beside its driver's door, on the left, or on the right where the location is in a country that drives on the left. Walk into the car, or press <kbd>F</kbd> within 5 m of it, to drive it again. Stopping walking takes the car away too.</p>` });

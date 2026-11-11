@@ -11,6 +11,10 @@
   <canvas id="gfx" tabindex="0" aria-label="3D model view"></canvas>
   <div id="diag" class="diag" hidden></div>
   <div id="walkStick" class="walk-stick" aria-hidden="true"><div></div></div>
+  <div id="drivePad" class="drive-pad" aria-label="Driving controls">
+    <div class="pad-steer"><button data-in="left" aria-label="Steer left">&lsaquo;</button><button data-in="right" aria-label="Steer right">&rsaquo;</button></div>
+    <div class="pad-pedals"><button data-in="brake" class="brake" aria-label="Brake and reverse">BRK</button><button data-in="gas" class="gas" aria-label="Accelerate">GO</button></div>
+  </div>
 
   <header class="chrome top-left">
     <button class="brand" id="btnHome" title="Home: open another file or a recent one"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg><span>3DM Viewer</span></button>
@@ -337,7 +341,7 @@
   </div>
   <div id="notices" class="notices"></div>
   <div id="walkHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to walk · drag on the right to look · Exit in the Walk panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to walk · drag to look · <kbd>Shift</kbd> to run · <kbd>Space</kbd> jump · <kbd>E</kbd><kbd>Q</kbd> up and down · wheel to zoom · <kbd>T</kbd> torch · <kbd>Esc</kbd> to stop</span></div>
-  <div id="driveHint" class="chrome walk-hint" hidden><span class="touch-only">Drag on the left to drive · drag on the right to look · Exit in the Drive panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>S</kbd> accelerate and brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>S</kbd> with <kbd>A</kbd> or <kbd>D</kbd> handbrake · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>F</kbd> get out · <kbd>C</kbd> camera · <kbd>R</kbd> reset · drag to look · <kbd>Esc</kbd> to stop</span></div>
+  <div id="driveHint" class="chrome walk-hint" hidden><span class="touch-only">GO and BRK to drive, &lsaquo; &rsaquo; to steer · drag the view to look · Exit in the Drive panel to stop</span><span class="keys-only"><kbd>W</kbd><kbd>S</kbd> accelerate and brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>S</kbd> with <kbd>A</kbd> or <kbd>D</kbd> handbrake · <kbd>Space</kbd> horn · <kbd>T</kbd> headlights · <kbd>F</kbd> get out · <kbd>C</kbd> camera · <kbd>R</kbd> reset · drag to look · <kbd>Esc</kbd> to stop</span></div>
   <div id="walkPlaceHint" class="chrome walk-hint" hidden>Click where to start walking · drag to move the view · <kbd>Esc</kbd> to cancel</div>
   <div class="walk-frame"></div>
   <div id="walkFade" class="walk-fade"></div>
