@@ -376,9 +376,22 @@ async function openFile(file, handle = null) {
   if (resultParsersFor(file.name).length) { addResultsFile(file); return; }
   if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
-  await Recent.add(handle, file);
+  // The file's project (new, or the one it belongs to) is the one the model is open in.
+  const projectId = await Recent.add(handle, file);
   renderRecent();
   await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), handle);
+  if (model) model.projectId = projectId;
+  attachDialog?.refresh();
+}
+
+// A 3dm file attached from the Attach files dialog: it joins the open model's project, and is opened
+// only when chosen there. With no project open, it opens as a new one.
+async function attachRhinoFile(file, handle) {
+  const projectId = model?.projectId;
+  if (!projectId || !handle) { await openFile(file, handle); return; }
+  await Recent.attach(projectId, handle, file);
+  renderRecent();
+  attachDialog?.refresh();
 }
 
 // The custom location, city, weather files and choice of location linked to a model come back with it.
@@ -2734,8 +2747,9 @@ function showAttachHelp() {
     <p>Drop files onto the window to attach them too.</p>` });
 }
 
-// Attach files dialog: the weather files and results files attached to the open model, and which
-// parser read each results file.
+// Attach files dialog: the Rhino files in the open model's project (one is open, the others are
+// chosen to open), the weather files and results files attached to the model, and which parser
+// read each results file.
 let attachDialog = null;
 function openAttachDialog() {
   if (attachDialog) return;
@@ -2746,22 +2760,46 @@ function openAttachDialog() {
     <div class="loc-actions"><button class="btn small" data-el="pick">Attach files…</button></div>
     <input type="file" multiple data-el="input" hidden>`;
   const el = (k) => wrap.querySelector(`[data-el="${k}"]`);
-  el('input').accept = [...new Set(['.epw', ...RESULT_PARSERS.flatMap((p) => p.extensions)])].join(',');
-  el('pick').addEventListener('click', () => el('input').click());
-  el('input').addEventListener('change', () => { const files = [...el('input').files]; el('input').value = ''; files.forEach((f) => (/\.epw$/i.test(f.name) ? attachEpw(f) : addResultsFile(f))); });
+  const types = [...new Set(['.epw', '.3dm', ...RESULT_PARSERS.flatMap((p) => p.extensions)])];
+  el('input').accept = types.join(',');
+  const route = (f, handle) => (/\.epw$/i.test(f.name) ? attachEpw(f) : /\.3dm$/i.test(f.name) ? attachRhinoFile(f, handle) : addResultsFile(f));
+  el('pick').addEventListener('click', async () => {
+    // With the file picker, each file comes with a handle, so an attached Rhino file can be reopened later.
+    if (!Recent.supported) { el('input').click(); return; }
+    let handles;
+    try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Weather, Rhino and results files', accept: { 'application/octet-stream': types } }] }); }
+    catch (e) { return; } // cancelled
+    for (const h of handles) route(await h.getFile(), h);
+  });
+  el('input').addEventListener('change', () => { const files = [...el('input').files]; el('input').value = ''; files.forEach((f) => route(f, null)); });
   const row = (name, detail, remove, title) => {
     const r = document.createElement('div');
     r.className = 'res-row';
-    r.innerHTML = `<div><div>${escapeHtml(name)}</div><div class="fine">${detail}</div></div><button class="x" aria-label="Remove ${escapeHtml(name)}" title="Remove">×</button>`;
-    r.querySelector('.x').addEventListener('click', remove);
+    r.innerHTML = `<div><div>${escapeHtml(name)}</div><div class="fine">${detail}</div></div>${remove ? `<button class="x" aria-label="Remove ${escapeHtml(name)}" title="Remove">×</button>` : ''}`;
+    if (remove) r.querySelector('.x').addEventListener('click', remove);
     return r;
   };
-  const refresh = () => {
+  const refresh = async () => {
+    const project = model?.projectId ? (await Recent.list()).find((p) => p.id === model.projectId) : null;
+    const rhino = (project?.files || []).map((f) => {
+      const open = f.id === project.active;
+      const r = row(f.name, open ? 'Rhino file · open now' : 'Rhino file', open ? null : () => detachRhinoFile(f.id));
+      if (!open) {
+        const b = document.createElement('button');
+        b.className = 'btn small';
+        b.textContent = 'Open';
+        b.title = `Open ${f.name}`;
+        b.addEventListener('click', () => openProjectFile(project, f));
+        r.append(b);
+      }
+      return r;
+    });
     el('list').replaceChildren(
+      ...rhino,
       ...site.epws.map((e) => row(e.fileName, `Weather file · ${escapeHtml(epwSub(e))}`, () => removeEpw(e.id))),
       ...results.map((r) => row(r.name, r.parser ? `${escapeHtml(r.parser.name)} · ${escapeHtml(r.parser.describe(r.data))}` : 'Not recognised by any parser', () => removeResultsFile(r.id))),
     );
-    if (!site.epws.length && !results.length) el('list').innerHTML = '<div class="fine">Nothing attached yet.</div>';
+    if (!rhino.length && !site.epws.length && !results.length) el('list').innerHTML = '<div class="fine">Nothing attached yet.</div>';
   };
   refresh();
   attachDialog = { refresh };
@@ -4615,7 +4653,8 @@ async function renderRecent() {
     const epws = r.epws?.length ? r.epws : r.epw ? [r.epw] : [];
     const linked = [custom && `custom location ${fmtCoords(custom.lat, custom.lon)}`, city && `city ${city.name || fmtCoords(city.lat, city.lon)}`,
       epws.length && (epws.length === 1 ? `weather ${epws[0].name}` : `${epws.length} weather files`)].filter(Boolean);
-    li.querySelector('.recent-info').textContent = [`${(r.size / 1e6).toFixed(r.size < 1e7 ? 1 : 0)} MB`, `opened ${date(r.opened)}`, ...linked].join(' · ');
+    const size = activeFile(r)?.size ?? 0, files = r.files.length > 1 ? [`${r.files.length} Rhino files`] : [];
+    li.querySelector('.recent-info').textContent = [`${(size / 1e6).toFixed(size < 1e7 ? 1 : 0)} MB`, ...files, `opened ${date(r.opened)}`, ...linked].join(' · ');
     li.querySelector('.recent-open').title = `Open ${r.name}`;
     li.querySelector('.recent-open').addEventListener('click', () => openRecent(r));
     li.querySelector('.x').addEventListener('click', async () => { await Recent.remove(i); renderRecent(); });
@@ -4630,16 +4669,29 @@ async function openDemo() {
   await openBytes('Demo.3dm', Uint8Array.from(atob(DEMO_3DM), (c) => c.charCodeAt(0)));
 }
 
-async function openRecent(r) {
+// A project opens its active Rhino file; a project's other files open from the Attach files dialog.
+const activeFile = (p) => p.files.find((f) => f.id === p.active) || p.files[0];
+async function openRecent(r) { await openProjectFile(r, activeFile(r)); }
+
+// Opens one of a project's Rhino files. The browser asks once per session before it can read a file again.
+async function openProjectFile(project, f) {
   try {
-    // The browser asks once per session before the page can read the file again.
-    if ((await r.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await r.handle.requestPermission({ mode: 'read' })) !== 'granted') return;
-    await openFile(await r.handle.getFile(), r.handle);
+    if (!f?.handle) return;
+    if ((await f.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await f.handle.requestPermission({ mode: 'read' })) !== 'granted') return;
+    await openFile(await f.handle.getFile(), f.handle);
   } catch (e) {
     hideBusy();
-    notice(e.name === 'NotFoundError' ? `${r.name} could not be found. It may have been moved, renamed or deleted; remove it from the list with ×.` : `Could not open ${r.name}: ${e.message}`, true);
+    notice(e.name === 'NotFoundError' ? `${f.name} could not be found. It may have been moved, renamed or deleted; remove it from the list with ×.` : `Could not open ${f.name}: ${e.message}`, true);
   }
   renderRecent();
+  attachDialog?.refresh();
+}
+
+// Takes a Rhino file off the open model's project.
+async function detachRhinoFile(fileId) {
+  await Recent.detach(model.projectId, fileId);
+  renderRecent();
+  attachDialog?.refresh();
 }
 
 function bindUi() {
