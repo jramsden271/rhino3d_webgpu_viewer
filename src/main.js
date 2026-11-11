@@ -466,7 +466,7 @@ async function openBytes(name, bytes, handle = null) {
 // The Rhino files shown together as one model: sources = [{ name, bytes, handle }]. The first file's
 // origin is used for all, so they line up as they do in Rhino. handle: the first file's, which
 // holds the model's settings (see Recent).
-async function openScene(sources) {
+async function openScene(sources, opts = {}) {
   const t0 = performance.now(), [first] = sources, handle = first.handle ?? null;
   const name = sources.map((s) => s.name).join(' + ');
   walker.exit();
@@ -491,6 +491,8 @@ async function openScene(sources) {
     }
     m.reader = reader;
     model = m;
+    model.projectId = opts.projectId ?? null; // the project the model is open in, if any
+    model.stored = opts.stored ?? {};        // its saved changes and view (see readStored)
     layerOn = m.layers.map((l) => l.visible); // before anything reads layer state for the new model
     state.blockOff = new Set();
     model.name = name;
@@ -1151,14 +1153,44 @@ const editedMaterialLayers = () => new Set([...Object.keys(state.layerMat), ...O
 const editCount = () => ({ mat: editedMaterialLayers().size, col: Object.keys(state.layerColor).length,
   obj: Object.keys(state.objEdits).length, blocks: Object.keys(state.blockSub).length, magic: Object.keys(state.blockMagic).length });
 
+// Where a model's changes and view are kept: in its project when it has one (so they go with the project into a
+// zip), otherwise in this browser under the file's name and size. kind: 'edits' or 'view'.
+function readStored(kind) {
+  if (model?.projectId) return model.stored?.[kind] ?? null;
+  try { return JSON.parse(localStorage.getItem(kind === 'edits' ? editsKey() : viewKey()) || 'null'); } catch (e) { return null; }
+}
+function writeStored(kind, value) {
+  if (model?.projectId) {
+    model.stored = { ...model.stored, [kind]: value };
+    queueStore(model.projectId, model.stored); // autosaved as it changes
+    return;
+  }
+  const key = kind === 'edits' ? editsKey() : viewKey();
+  if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(value));
+}
+let storePending = null, storeTimer = 0;
+function queueStore(projectId, stored) {
+  storePending = { projectId, stored };
+  clearTimeout(storeTimer);
+  storeTimer = setTimeout(flushStore, 300);
+}
+function flushStore() {
+  clearTimeout(storeTimer);
+  const p = storePending;
+  storePending = null;
+  if (p) Recent.saveState(p.projectId, p.stored);
+}
+addEventListener('pagehide', flushStore);
+
 function saveEdits() {
+  if (!model) return;
   const n = editCount(), north = state.sun.north;
   try {
-    localStorage.removeItem(oldMaterialsKey());
+    if (!model.projectId) localStorage.removeItem(oldMaterialsKey());
     if (n.mat + n.col + n.obj + n.blocks + n.magic || north !== fileNorth()) {
       const { layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic } = state;
-      localStorage.setItem(editsKey(), JSON.stringify({ layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic, north }));
-    } else localStorage.removeItem(editsKey());
+      writeStored('edits', { layerMat, layerColor, layerSpecial, objEdits, blockSub, blockMagic, north });
+    } else writeStored('edits', null);
   } catch (e) { /* storage unavailable: changes last for this session only */ }
 }
 
@@ -1358,9 +1390,8 @@ async function restoreEdits(e) {
 // Restore the changes remembered for this model. Returns true if objects changed (the batches
 // then need rebuilding).
 function loadEdits() {
-  let e = null;
-  try { e = JSON.parse(localStorage.getItem(editsKey()) || 'null'); } catch (err) { /* none */ }
-  if (!e) try { const old = JSON.parse(localStorage.getItem(oldMaterialsKey()) || 'null'); if (old) e = { layerMat: old }; } catch (err) { /* none */ }
+  let e = readStored('edits');
+  if (!e && !model.projectId) try { const old = JSON.parse(localStorage.getItem(oldMaterialsKey()) || 'null'); if (old) e = { layerMat: old }; } catch (err) { /* none */ }
   e = e || {};
   const ids = new Set(model.layers.map((l) => l.id));
   const known = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => ids.has(k)));
@@ -1400,7 +1431,7 @@ function loadEdits() {
 const viewKey = () => `3dm-viewer:view:${model.name}:${model.size}`;
 
 function loadViewState() {
-  try { return JSON.parse(localStorage.getItem(viewKey()) || '{}') || {}; } catch (e) { return {}; }
+  return readStored('view') || {};
 }
 
 function saveViewState() {
@@ -1409,7 +1440,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    localStorage.setItem(viewKey(), JSON.stringify({ layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view } }));
+    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view } });
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -4934,8 +4965,8 @@ async function showProject(projectId, given = null) {
       sources.push({ name: f.name, bytes: new Uint8Array(await (await f.handle.getFile()).arrayBuffer()), handle: f.handle });
     }
     if (!sources.length) { hideBusy(); return; }
-    await openScene(sources);
-    if (model) model.projectId = projectId;
+    const stored = (await Recent.loadState(projectId)) || {};
+    await openScene(sources, { projectId, stored });
   } catch (e) {
     hideBusy();
     notice(e.name === 'NotFoundError' ? `A file in ${project.name} could not be found. It may have been moved, renamed or deleted; remove it from the project in Attach files.` : `Could not open ${project.name}: ${e.message}`, true);
