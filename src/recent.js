@@ -23,6 +23,7 @@
 //                                      epws: [{ id, name, bytes }], weather: id | null,
 //                                      use: 'custom' | 'city' | 'file' | 'file:<n>' | 'epw:<id>' | null, results: [{ id, name, size }] }
 //   await Recent.saveState(projectId, state), Recent.loadState(projectId)  the project's changes and view
+//   await Recent.saveThumb(projectId, blob), Recent.loadThumb(projectId)  a small picture of its view
 //   await Recent.putResult(id, bytes), Recent.resultBytes(id), Recent.dropResults(ids)  a results file's copy
 //
 // A project's weather files are kept as copies, so they come back without another permission prompt. So are
@@ -214,12 +215,15 @@ const Recent = {
       await this.save(list);
       const ids = (gone?.results || []).map((r) => r.id);
       await this.dropResults(ids);
-      try { await this.store('readwrite', (s) => s.delete(`state:${gone?.id}`)); } catch (e) { /* storage unavailable */ }
+      try { await this.store('readwrite', (s) => { s.delete(`state:${gone?.id}`); s.delete(`thumb:${gone?.id}`); }); } catch (e) { /* storage unavailable */ }
     });
   },
 
   // A project's changes and view, as the viewer keeps them (see main.js readStored): saved as they change.
   saveState(projectId, state) { return this.store('readwrite', (s) => s.put(state, `state:${projectId}`)).catch(() => {}); },
+  // A small picture of the project's view (a Blob), for the projects list.
+  saveThumb(projectId, blob) { return this.store('readwrite', (s) => s.put(blob, `thumb:${projectId}`)).catch(() => {}); },
+  loadThumb(projectId) { return this.store('readonly', (s) => s.get(`thumb:${projectId}`)).catch(() => null); },
   loadState(projectId) { return this.store('readonly', (s) => s.get(`state:${projectId}`)).catch(() => null); },
 
   putResult(id, bytes) { return this.store('readwrite', (s) => s.put(bytes, `result:${id}`)); },

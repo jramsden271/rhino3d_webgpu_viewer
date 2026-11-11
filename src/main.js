@@ -183,7 +183,7 @@ function onResize() {
   redraw();
 }
 
-function redraw() { if (renderer) renderer.dirty = true; lastInput = performance.now(); }
+function redraw() { if (renderer) renderer.dirty = true; lastInput = performance.now(); thumb.due = true; }
 
 function frameState() {
   const cam = { eye: camera.eye, forward: camera.forward, right: camera.right, up: camera.up, fov: camera.fov,
@@ -362,16 +362,44 @@ function loop() {
     syncDriveSpeed();
   }
   diag.ticks++;
+  // The project's thumbnail is taken once the view has settled after a change (see redraw).
+  if (thumb.due && now - lastInput > THUMB_SETTLE && canThumb()) { thumb.due = false; thumb.take = true; renderer.dirty = true; }
   if (renderer.dirty) {
     anim.drawn = now;
     renderer.dirty = false;
     const t = performance.now();
     renderer.draw(frameState());
+    if (thumb.take) { thumb.take = false; captureThumb(); } // the frame can only be read before this task ends
     if (state.devMode) diagFrame(t);
     positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
   }
   requestAnimationFrame(loop);
+}
+
+// Thumbnails: a small picture of a project's view for the projects list, taken from the orbit view as the user
+// left it (nothing is turned on or off for it). Not taken while walking or driving, so the last orbit view stays.
+const THUMB_SETTLE = 1500, THUMB_W = 240, THUMB_H = 150; // ms of quiet before one is taken; its size in pixels
+const thumb = { due: false, take: false };
+const canThumb = () => !!(renderer && model?.projectId && !moving() && !choosingStart());
+function captureThumb() {
+  const id = model?.projectId;
+  if (!id || !canvas.width || !canvas.height) return;
+  const c = document.createElement('canvas');
+  c.width = THUMB_W; c.height = THUMB_H;
+  // The middle of the view, cropped to the thumbnail's shape.
+  const s = Math.max(THUMB_W / canvas.width, THUMB_H / canvas.height), w = canvas.width * s, h = canvas.height * s;
+  c.getContext('2d').drawImage(canvas, (THUMB_W - w) / 2, (THUMB_H - h) / 2, w, h);
+  return new Promise((resolve) => c.toBlob((b) => {
+    if (b) Recent.saveThumb(id, b).then(renderRecent);
+    resolve(b);
+  }, 'image/webp', 0.8));
+}
+// Before a project is put away, or saved as a zip: a frame drawn and taken now. Resolves to the picture, or null.
+function thumbNow() {
+  if (!canThumb()) return Promise.resolve(null);
+  renderer.draw(frameState());
+  return captureThumb();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -485,6 +513,7 @@ async function openScene(sources, opts = {}) {
   const name = sources.map((s) => s.name).join(' + ');
   walker.exit();
   driver.exit();
+  thumbNow(); // the project being put away
   saveViewState();
   clearNotices();
   try {
@@ -4901,6 +4930,7 @@ function showProjectName() {
 
 // A new blank project: whatever was open is put away (its changes are saved as they happen).
 function newProject() {
+  thumbNow();
   flushStore();
   flushLinks();
   walker.exit();
@@ -4986,7 +5016,8 @@ async function openFolder(dir) {
 // project.json: { format: '3dm-viewer-project', version: 1, name, saved,
 //   files: [{ id, name, path, off }]   Rhino files. Their ids are kept: the saved changes and view refer to them.
 //   epws: [{ id, name, path, off }], weather (an epws id), use (the location source), custom, city,
-//   results: [{ name, path, off }], state: { edits, view } (see readStored) }
+//   results: [{ name, path, off }], state: { edits, view } (see readStored),
+//   thumbnail: the path of a small picture of the view, for the projects list }
 
 const PROJECT_FORMAT = '3dm-viewer-project';
 const safeFileName = (name) => name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Project';
@@ -5017,6 +5048,7 @@ async function saveProjectZip() {
   const project = (await Recent.list()).find((p) => p.id === model.projectId);
   if (!project) return;
   const zipName = `${safeFileName(project.name.replace(/\.3dm$/i, ''))}.zip`;
+  const picture = thumbNow(); // the view as it is now, before the save dialog covers it
   const target = await chooseSaveTarget(zipName, 'Project zip', 'application/zip', '.zip');
   if (!target) return;
   saveViewState();
@@ -5054,6 +5086,11 @@ async function saveProjectZip() {
       const path = pathFor('results', r.name);
       json.results.push({ name: r.name, path, off: !!r.off });
       entries.push({ name: path, data: bytes });
+    }
+    const t = (await picture) || (await Recent.loadThumb(fresh.id));
+    if (t instanceof Blob) {
+      json.thumbnail = t.type === 'image/png' ? 'thumbnail.png' : 'thumbnail.webp';
+      entries.push({ name: json.thumbnail, data: t });
     }
     entries.unshift({ name: 'project.json', data: JSON.stringify(json, null, 1) });
     const zip = await Zip.write(entries, (f, name) => showBusy(name ? `Adding ${name} to the zip` : 'Finishing the zip', 0.05 + 0.85 * f));
@@ -5113,6 +5150,9 @@ async function openZip(handle, file = null) {
     const weather = epwIds.has(json?.weather) ? json.weather : epws.find((e) => !e.off)?.id ?? null;
     await Recent.create({ id, name, files, epws, weather, use, custom: json?.custom ?? null, city: json?.city ?? null, results });
     if (json?.state && typeof json.state === 'object') await Recent.saveState(id, json.state);
+    // Its thumbnail shows in the projects list straight away.
+    const pic = typeof json?.thumbnail === 'string' && byPath.get(json.thumbnail);
+    if (pic) await Recent.saveThumb(id, new Blob([await bytesOf(pic)], { type: json.thumbnail.endsWith('.png') ? 'image/png' : 'image/webp' }));
     if (model) newProject();
     current = { id, name, blank: false };
     showProjectName();
@@ -5156,6 +5196,9 @@ function bindProjectsMenu() {
   });
 }
 
+const PROJECT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg>';
+const thumbUrls = []; // object URLs of the thumbnails shown, let go when the list is filled again
+
 // The list of projects in the menu, newest first, filtered by the project's name and its files' names.
 async function renderRecent() {
   if (!projectsMenu?.isOpen) return;
@@ -5165,13 +5208,23 @@ async function renderRecent() {
   const shown = list.filter((r) => !q || [r.name, ...fileNames(r)].some((n) => n?.toLowerCase().includes(q)));
   const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   box.replaceChildren();
+  thumbUrls.splice(0).forEach((u) => URL.revokeObjectURL(u));
   if (!Recent.supported) { box.innerHTML = '<div class="fine">Projects are kept in Chrome and Edge only.</div>'; return; }
   if (!shown.length) { box.innerHTML = `<div class="fine">${list.length ? 'No project matches.' : 'No projects yet. Open some files to start one.'}</div>`; return; }
   for (const r of shown) {
     const row = document.createElement('div');
     row.className = 'proj-row' + (r.id === current.id ? ' current' : '');
     row.setAttribute('role', 'listitem');
-    row.innerHTML = '<button class="proj-open"><span class="proj-name"></span><span class="proj-info"></span></button><button class="x" aria-label="Remove from the list" title="Remove from the list">×</button>';
+    row.innerHTML = `<button class="proj-open"><span class="proj-thumb">${PROJECT_ICON}</span><span class="proj-text"><span class="proj-name"></span><span class="proj-info"></span></span></button><button class="x" aria-label="Remove from the list" title="Remove from the list">×</button>`;
+    // The thumbnail of the project's view, when it has one; the cube until then.
+    Recent.loadThumb(r.id).then((b) => {
+      if (!(b instanceof Blob) || !row.isConnected) return;
+      const img = new Image(), url = URL.createObjectURL(b);
+      thumbUrls.push(url);
+      img.src = url;
+      img.alt = '';
+      row.querySelector('.proj-thumb').replaceChildren(img);
+    });
     const n = fileNames(r).length;
     row.querySelector('.proj-name').textContent = r.name;
     row.querySelector('.proj-info').textContent = [`${n} file${n === 1 ? '' : 's'}`, `opened ${date(r.opened)}`].join(' · ');

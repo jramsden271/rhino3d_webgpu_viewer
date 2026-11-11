@@ -474,7 +474,7 @@ body.walking .walk-frame { display: block; }
 .drop-card .link { color: #2563eb; }
 .drop-card .fine { font-size: 12px; margin-top: 14px; }
 /* Projects menu (the 3DM Viewer button): New and Open, the projects so far with a filter, and Settings. */
-.projects-menu { width: 340px; display: flex; flex-direction: column; }
+.projects-menu { width: 380px; display: flex; flex-direction: column; }
 .projects-menu .tool-menu-body { flex: 1; min-height: 0; }
 .proj-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .proj-filter { font: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; }
@@ -483,7 +483,11 @@ body.walking .walk-frame { display: block; }
 .proj-row { display: flex; align-items: center; border-radius: 8px; }
 .proj-row:hover { background: var(--hover); }
 .proj-row.current .proj-name::after { content: ' · open'; font-weight: 400; color: var(--muted); }
-.proj-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 0; background: none; padding: 6px 8px; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.proj-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 6px 8px; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.proj-thumb { flex: none; width: 80px; height: 50px; border-radius: 5px; overflow: hidden; background: var(--hover); display: flex; align-items: center; justify-content: center; }
+.proj-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proj-thumb svg { width: 22px; height: 22px; fill: var(--muted); stroke: none; opacity: 0.6; }
+.proj-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .proj-name { font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-info { font-size: 11.5px; color: var(--muted); }
 .proj-row .x { flex: none; margin-right: 4px; opacity: 0; }
