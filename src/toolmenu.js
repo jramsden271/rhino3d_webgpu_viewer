@@ -9,8 +9,9 @@
 // The popup lives outside the toolbar, which would clip it (the toolbar scrolls when narrow).
 
 class ToolbarMenu {
-  constructor(button, { label, layout = 'column', onOpen = null } = {}) {
-    Object.assign(this, { button, onOpen });
+  // below: opens under the button (for a button at the top of the window) rather than above it.
+  constructor(button, { label, layout = 'column', onOpen = null, below = false } = {}) {
+    Object.assign(this, { button, onOpen, below });
     this.el = document.createElement('div');
     this.el.className = 'chrome tool-menu';
     this.el.hidden = true;
@@ -57,10 +58,18 @@ class ToolbarMenu {
     window.removeEventListener('resize', this.place);
   }
 
-  // Above the button, kept on screen; a tall body scrolls.
+  // Above the button (or below it), kept on screen; a tall body scrolls.
   position() {
     if (!this.isOpen) return;
     const b = this.button.getBoundingClientRect(), gap = 8;
+    if (this.below) {
+      this.el.style.maxHeight = `${Math.max(80, innerHeight - b.bottom - 2 * gap)}px`;
+      const w = this.el.offsetWidth;
+      this.el.style.left = `${Math.max(gap, Math.min(innerWidth - w - gap, b.left))}px`;
+      this.el.style.top = `${b.bottom + gap}px`;
+      this.el.style.bottom = '';
+      return;
+    }
     this.el.style.maxHeight = `${Math.max(80, b.top - 2 * gap)}px`;
     const w = this.el.offsetWidth;
     this.el.style.left = `${Math.max(gap, Math.min(innerWidth - w - gap, b.left + b.width / 2 - w / 2))}px`;

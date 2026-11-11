@@ -9,6 +9,7 @@
 //                                              custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
 //                                        Returns { project, file }: the project's id and the file's id.
+//   await Recent.put(projectId, name, entries)    files opened into a project, made if new. Returns its id.
 //   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project. Returns the file's id.
 //   await Recent.setFileOn(projectId, fileId, on) turns a file in or out of the project's view
 //   await Recent.detach(projectId, fileId)        takes a 3dm file off a project
@@ -109,6 +110,27 @@ const Recent = {
       Object.assign(project, { name: hit ? project.name : file.name, opened: Date.now() });
       await this.save([project, ...list.filter((p) => p !== project)]);
       return { project: project.id, file: rec.id };
+    });
+  },
+
+  // Files opened into a project (made with this id and name if it is new, as for a blank project): each 3dm
+  // joins its files, unless it is there already. The project moves to the top. entries: [{ handle, file }].
+  put(projectId, name, entries) {
+    if (!this.supported) return Promise.resolve(null);
+    return this.serial(async () => {
+      const list = await this.list();
+      const project = list.find((p) => p.id === projectId)
+        || { id: projectId, name, files: [], custom: null, city: null, epws: null, weather: null, use: null, results: [] };
+      for (const { handle, file } of entries) {
+        if (!handle) continue;
+        let rec = null;
+        for (const f of project.files) if (f.handle && await f.handle.isSameEntry(handle).catch(() => false)) rec = f;
+        if (!rec) project.files.push((rec = { id: this.newId(), handle }));
+        Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified, off: false });
+      }
+      project.opened = Date.now();
+      await this.save([project, ...list.filter((p) => p !== project)]);
+      return project.id;
     });
   },
 

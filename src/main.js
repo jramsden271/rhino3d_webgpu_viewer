@@ -394,11 +394,18 @@ async function openFile(file, handle = null) {
 // A 3dm file attached to the open model (from the Attach files dialog, or dropped on the viewer): it joins
 // the model's project and is added to the view. With no project open, it opens as a new one.
 async function attachRhinoFile(file, handle) {
+  await attachRhinoFiles([{ file, handle }]);
+}
+
+// Several Rhino files attached at once: the view is shown again once, with all of them.
+async function attachRhinoFiles(entries) {
   const projectId = model?.projectId;
-  if (!projectId || !handle) { await openFile(file, handle); return; }
-  const fileId = await Recent.attach(projectId, handle, file);
+  if (!model) { await openEntries(entries); return; } // a blank project: they start it
+  const withHandle = entries.filter((e) => e.handle);
+  if (!projectId || !withHandle.length) { for (const { file, handle } of entries) await openFile(file, handle); return; }
+  for (const { file, handle } of withHandle) await Recent.attach(projectId, handle, file);
   renderRecent();
-  if (fileId) await showProject(projectId, { file, fileId });
+  await showProject(projectId);
   attachDialog?.refresh();
 }
 
@@ -550,9 +557,11 @@ async function openScene(sources, opts = {}) {
     restoreCameras(savedView);
     model.viewReady = true;
     reportRestored();
-    leaveHome();
-    $('fileName').textContent = name;
-    document.title = `${name} · 3DM Viewer`;
+    $('drop').hidden = true;
+    // A model opened without a project (the demo, a file this browser cannot keep a handle for) is a project of
+    // its own for now, not kept in the list; showProject names the project when there is one.
+    if (!opts.projectId) current = { id: Recent.newId(), name, blank: false };
+    showProjectName();
     renderFileInfo();
     reportSkipped(m.stats);
     return true;
@@ -4056,7 +4065,7 @@ function diagFrame(t) {
   renderer.device.queue.onSubmittedWorkDone().then(() => { diag.gpu += performance.now() - t1 + ms; diag.gpuN++; diag.gpuWaiting = false; });
 }
 function showDiag() {
-  const el = $('diag'), on = state.devMode && !!model && !atHome && !!renderer;
+  const el = $('diag'), on = state.devMode && !!model && !!renderer;
   el.hidden = !on;
   if (!on) return;
   const s = (performance.now() - diag.t0) / 1000 || 1, n = (v) => Math.round(v).toLocaleString();
@@ -4291,7 +4300,7 @@ function onKey(e) {
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
-      if (atHome) { leaveHome(); return; } closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
+      closeLayerMenu(); $('matDialog').hidden = true; $('blockDialog').hidden = true; $('fileDialog').hidden = true; selectObject(null); },
     h: hideSelected,
     b: () => (e.shiftKey ? clearLamps() : placeLamp()),
     t: () => { if (walker.active) setTorch(!state.torch); },
@@ -4892,48 +4901,158 @@ function toggleHelp() {
   helpDialog.result.then(() => { helpDialog = null; });
 }
 
-// Home: the welcome screen, with recent files. An open model stays loaded underneath, and
-// "Back to …" (or Esc) returns to it.
-let atHome = false;
-function goHome() {
+// Projects -----------------------------------------------------------------------------------
+// The viewer always has a project open. On load it is a blank one, with no files: it joins the
+// list of projects (recent.js) once a file is opened into it. The 3DM Viewer button opens the
+// projects menu: New, Open, the projects so far (newest first, with a filter) and Settings.
+
+const UNTITLED = 'Untitled project';
+let current = { id: Recent.newId(), name: UNTITLED, blank: true }; // the open project
+
+function showProjectName() {
+  $('fileName').textContent = current.name;
+  $('fileName').title = model ? 'File properties' : current.name;
+  document.title = `${current.name} · 3DM Viewer`;
+}
+
+// A new blank project: whatever was open is put away (its changes are saved as they happen).
+function newProject() {
+  flushStore();
+  flushLinks();
   walker.exit();
   driver.exit();
-  if (model) { atHome = true; $('dropBackName').textContent = model.name; }
-  $('dropBack').hidden = !model;
-  $('drop').hidden = false;
+  saveViewState();
+  clearNotices();
+  model = null;
+  layerOn = [];
+  renderer?.clearModel();
+  resetObjectState();
+  Object.assign(site, { custom: null, city: null, epws: [], epw: null, use: null });
+  results = [];
+  syncResults();
+  applyLocation();
+  for (const id of ['fileDialog', 'matDialog', 'blockDialog']) $(id).hidden = true;
+  $('layerTree').innerHTML = '';
+  $('blockList').innerHTML = '';
+  $('undoRedo').hidden = true;
+  clearHistory();
+  attachDialog?.refresh();
+  current = { id: Recent.newId(), name: UNTITLED, blank: true };
+  showProjectName();
+  redraw();
+}
+
+// Rhino, weather and results files can be opened or attached; so can a zip (a project), later.
+const OPEN_TYPES = () => [...new Set(['.3dm', '.epw', ...RESULT_PARSERS.flatMap((p) => p.extensions)])];
+const canAttach = (name) => /\.(3dm|epw)$/i.test(name) || resultParsersFor(name).length > 0;
+
+// Files opened with Open (or dropped on a blank project) start a project: the blank one that is open, or
+// a new one. Its name: the folder's, the first Rhino file's, or Untitled. Rhino files go in by handle, and
+// weather and results files are attached once the model is open.
+async function openEntries(entries, folderName = null) {
+  if (entries.some(({ file }) => /\.zip$/i.test(file.name))) notice('Opening a project from a zip is not available yet.', true);
+  const valid = entries.filter(({ file }) => canAttach(file.name));
+  if (!valid.length) { if (!entries.some(({ file }) => /\.zip$/i.test(file.name))) notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files.', true); return; }
+  const rhino = valid.filter(({ file }) => /\.3dm$/i.test(file.name)), other = valid.filter((e) => !rhino.includes(e));
+  if (!current.blank) newProject();
+  const name = folderName || rhino[0]?.file.name || UNTITLED;
+  current.name = name;
+  showProjectName();
+  if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
+    await Recent.put(current.id, name, rhino);
+    await showProject(current.id);
+  } else if (rhino.length) {
+    // Without file handles (this browser cannot keep them), the first Rhino file opens on its own.
+    await openBytes(rhino[0].file.name, new Uint8Array(await rhino[0].file.arrayBuffer()));
+  }
+  for (const { file } of other) await openFile(file);
   renderRecent();
 }
-function leaveHome() {
-  atHome = false;
-  $('drop').hidden = true;
-  canvas.focus();
+
+async function pickFiles() {
+  if (!Recent.supported) { $('fileInput').click(); return; }
+  let handles;
+  try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files', accept: { 'application/octet-stream': [...OPEN_TYPES(), '.zip'] } }] }); }
+  catch (e) { return; } // cancelled
+  openEntries(await Promise.all(handles.map(async (handle) => ({ handle, file: await handle.getFile() }))));
 }
 
-// Recent files on the welcome screen (recent.js) ---------------------------------------------
+// A folder: the files in it (not in folders inside it) that can be opened. They stay where they are.
+async function openFolder(dir) {
+  if (!dir) {
+    if (!window.showDirectoryPicker) { notice('Opening a folder needs Chrome or Edge.', true); return; }
+    try { dir = await window.showDirectoryPicker({ mode: 'read' }); } catch (e) { return; } // cancelled
+  }
+  const entries = [];
+  for await (const h of dir.values()) if (h.kind === 'file' && canAttach(h.name)) entries.push({ handle: h, file: await h.getFile() });
+  if (!entries.length) { notice(`${dir.name} has no Rhino, weather or results files in it.`, true); return; }
+  entries.sort((a, b) => a.file.name.localeCompare(b.file.name));
+  openEntries(entries, dir.name);
+}
 
-async function renderRecent() {
-  const list = await Recent.list(), ul = $('recentList');
-  $('recent').hidden = !list.length;
-  $('demo').hidden = !!list.length; // with nothing to reopen (always, where the list isn't kept), the demo
-  ul.innerHTML = '';
-  const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  list.forEach((r, i) => {
-    const li = document.createElement('li');
-    li.innerHTML = '<button class="recent-open"><span class="recent-name"></span><span class="recent-info"></span></button><button class="x" aria-label="Remove from the list" title="Remove from the list">×</button>';
-    li.querySelector('.recent-name').textContent = r.name;
-    // Records saved before cities had their own field keep a named custom location: that is a city.
-    const city = r.city || (r.custom?.name ? r.custom : null), custom = r.custom && !r.custom.name ? r.custom : null;
-    const epws = r.epws?.length ? r.epws : r.epw ? [r.epw] : [];
-    const linked = [custom && `custom location ${fmtCoords(custom.lat, custom.lon)}`, city && `city ${city.name || fmtCoords(city.lat, city.lon)}`,
-      epws.length && (epws.length === 1 ? `weather ${epws[0].name}` : `${epws.length} weather files`)].filter(Boolean);
-    const size = r.files.reduce((n, f) => n + f.size, 0);
-    const files = r.files.length > 1 ? [`${r.files.length} Rhino files`] : [];
-    li.querySelector('.recent-info').textContent = [`${(size / 1e6).toFixed(size < 1e7 ? 1 : 0)} MB`, ...files, `opened ${date(r.opened)}`, ...linked].join(' · ');
-    li.querySelector('.recent-open').title = `Open ${r.name}`;
-    li.querySelector('.recent-open').addEventListener('click', () => openRecent(r));
-    li.querySelector('.x').addEventListener('click', async () => { await Recent.remove(i); renderRecent(); });
-    ul.appendChild(li);
+// The projects menu: built once, filled each time it opens (and when the list changes while it is open).
+let projectsMenu = null;
+function bindProjectsMenu() {
+  projectsMenu = new ToolbarMenu($('btnHome'), { label: 'Projects', below: true, onOpen: () => { filter.value = ''; queueMicrotask(renderRecent); } }); // filled once it is open
+  projectsMenu.el.classList.add('projects-menu');
+  projectsMenu.body.innerHTML = `
+    <div class="proj-actions">
+      <button class="btn small" data-act="new" title="A new, blank project">New</button>
+      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project">Open files…</button>
+      <button class="btn small" data-act="folder" title="Open the files in a folder as a new project, named after it">Open folder…</button>
+    </div>
+    <input type="search" class="proj-filter" placeholder="Filter projects and files" aria-label="Filter projects by name or file name">
+    <div class="proj-list" role="list"></div>
+    <div class="proj-foot">
+      <button class="link" data-act="demo">Open the demo model</button>
+      <button class="btn icon" data-act="settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+    </div>`;
+  const filter = projectsMenu.body.querySelector('.proj-filter');
+  filter.addEventListener('input', renderRecent);
+  const act = { new: newProject, open: pickFiles, folder: () => openFolder(), demo: openDemo, settings: openSettings };
+  projectsMenu.body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    projectsMenu.close();
+    act[b.dataset.act]();
   });
+}
+
+// The list of projects in the menu, newest first, filtered by the project's name and its files' names.
+async function renderRecent() {
+  if (!projectsMenu?.isOpen) return;
+  const list = await Recent.list(), box = projectsMenu.body.querySelector('.proj-list');
+  const q = projectsMenu.body.querySelector('.proj-filter').value.trim().toLowerCase();
+  const fileNames = (r) => [...r.files.map((f) => f.name), ...(r.epws || []).map((e) => e.name), ...(r.results || []).map((x) => x.name)];
+  const shown = list.filter((r) => !q || [r.name, ...fileNames(r)].some((n) => n?.toLowerCase().includes(q)));
+  const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  box.replaceChildren();
+  if (!Recent.supported) { box.innerHTML = '<div class="fine">Projects are kept in Chrome and Edge only.</div>'; return; }
+  if (!shown.length) { box.innerHTML = `<div class="fine">${list.length ? 'No project matches.' : 'No projects yet. Open some files to start one.'}</div>`; return; }
+  for (const r of shown) {
+    const row = document.createElement('div');
+    row.className = 'proj-row' + (r.id === current.id ? ' current' : '');
+    row.setAttribute('role', 'listitem');
+    row.innerHTML = '<button class="proj-open"><span class="proj-name"></span><span class="proj-info"></span></button><button class="x" aria-label="Remove from the list" title="Remove from the list">×</button>';
+    const n = fileNames(r).length;
+    row.querySelector('.proj-name').textContent = r.name;
+    row.querySelector('.proj-info').textContent = [`${n} file${n === 1 ? '' : 's'}`, `opened ${date(r.opened)}`].join(' · ');
+    row.querySelector('.proj-open').title = [r.name, ...fileNames(r)].join('\n');
+    row.querySelector('.proj-open').addEventListener('click', () => { projectsMenu.close(); openRecent(r); });
+    row.querySelector('.x').addEventListener('click', async () => { await Recent.remove(list.indexOf(r)); renderRecent(); });
+    box.append(row);
+  }
+}
+
+// Settings: a placeholder for the settings that are the viewer's own rather than a project's.
+function openSettings() {
+  const body = document.createElement('div');
+  body.innerHTML = `<p class="fine">Settings that apply to every project will go here.</p>
+    <label class="fine"><input type="checkbox" data-el="dev"> Developer mode</label>`;
+  const dev = body.querySelector('[data-el="dev"]');
+  dev.checked = !!state.devMode;
+  dev.addEventListener('change', () => setDevMode(dev.checked));
+  Dialog.open({ title: 'Settings', body, buttons: [{ label: 'Close', value: true, primary: true }], width: 380 });
 }
 
 // The demo model built into the page (src/demo.js, from tools/make-demo.js): a small site in
@@ -4967,6 +5086,7 @@ async function showProject(projectId, given = null) {
     if (!sources.length) { hideBusy(); return; }
     const stored = (await Recent.loadState(projectId)) || {};
     await openScene(sources, { projectId, stored });
+    if (model?.projectId === projectId) { current = { id: projectId, name: project.name, blank: false }; showProjectName(); }
   } catch (e) {
     hideBusy();
     notice(e.name === 'NotFoundError' ? `A file in ${project.name} could not be found. It may have been moved, renamed or deleted; remove it from the project in Attach files.` : `Could not open ${project.name}: ${e.message}`, true);
@@ -5007,32 +5127,16 @@ function setEpwOn(id, on) {
 
 function bindUi() {
   const input = $('fileInput');
-  // The file picker gives a handle for the recent files list; the plain file input is the fallback.
-  const browse = async () => {
-    if (!Recent.supported) { input.click(); return; }
-    let handle;
-    try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'Rhino model', accept: { 'application/octet-stream': ['.3dm'] } }] }); } catch (e) { return; } // cancelled
-    openFile(await handle.getFile(), handle);
-  };
-  $('btnHome').addEventListener('click', goHome);
+  // The plain file input is the fallback where the file picker (and so file handles) is not available.
+  input.multiple = true;
+  input.accept = OPEN_TYPES().join(',');
+  bindProjectsMenu();
+  showProjectName();
   $('btnLocation').addEventListener('click', openLocationDialog);
   $('btnWeather').addEventListener('click', openWeatherDialog);
   $('btnResultsFiles').addEventListener('click', openAttachDialog);
   $('btnMessages').addEventListener('click', openMessages);
-  $('btnBack').addEventListener('click', leaveHome);
-  $('btnDemo').addEventListener('click', openDemo);
-  $('dropBrowse').addEventListener('click', browse);
-  // Developer mode: five quick clicks on the logo turn it on, and five more turn it off.
-  let logoClicks = 0, logoLast = 0;
-  $('dropLogo').addEventListener('click', () => {
-    const now = performance.now();
-    logoClicks = now - logoLast < 400 ? logoClicks + 1 : 1;
-    logoLast = now;
-    if (logoClicks < 5) return;
-    logoClicks = 0;
-    setDevMode(!state.devMode);
-  });
-  input.addEventListener('change', () => { if (input.files[0]) openFile(input.files[0]); input.value = ''; });
+  input.addEventListener('change', () => { const files = [...input.files]; input.value = ''; if (files.length) openEntries(files.map((file) => ({ file, handle: null }))); });
 
   // Only a drag that carries files shows the drop screen. Any other (text, a link, an image) can
   // still be dropped into a text box, and elsewhere is refused, so a link can't open over the model.
@@ -5040,22 +5144,27 @@ function bindUi() {
   const editable = (e) => e.target instanceof Element && !!e.target.closest('input, textarea, [contenteditable]');
   let depth = 0;
   window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (++depth === 1) { drop.hidden = false; drop.classList.add('over'); } });
-  window.addEventListener('dragleave', (e) => { if (!hasFiles(e) || !depth) return; if (--depth === 0) { drop.classList.remove('over'); if (model && !atHome) drop.hidden = true; } });
+  window.addEventListener('dragleave', (e) => { if (!hasFiles(e) || !depth) return; if (--depth === 0) { drop.classList.remove('over'); drop.hidden = true; } });
   window.addEventListener('dragover', (e) => {
     if (hasFiles(e)) e.preventDefault();
     else if (!editable(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; }
   });
-  window.addEventListener('drop', (e) => {
+  // Dropped files are added to the open project; on a blank project they start it. A folder opens as a new project.
+  window.addEventListener('drop', async (e) => {
     if (!hasFiles(e)) { if (!editable(e)) e.preventDefault(); return; }
     e.preventDefault(); depth = 0; drop.classList.remove('over');
-    if (model && !atHome) drop.hidden = true;
-    const f = e.dataTransfer.files[0];
-    if (f && resultParsersFor(f.name).length) { [...e.dataTransfer.files].forEach((x) => openFile(x)); return; }
-    // The handle has to be requested before anything else is awaited.
-    const h = Recent.supported ? e.dataTransfer.items[0]?.getAsFileSystemHandle?.() : null;
-    // A Rhino file dropped on a model that is open adds to its view; otherwise it opens.
-    const open = (handle) => (model && !atHome && /\.3dm$/i.test(f.name) ? attachRhinoFile(f, handle) : openFile(f, handle));
-    if (f) Promise.resolve(h).then((handle) => open(handle?.kind === 'file' ? handle : null), () => open(null));
+    drop.hidden = true;
+    // The handles have to be requested before anything else is awaited.
+    const files = [...e.dataTransfer.files], items = [...e.dataTransfer.items].filter((i) => i.kind === 'file');
+    const asked = Recent.supported ? items.map((i) => i.getAsFileSystemHandle?.()) : [];
+    const handles = await Promise.all(asked.map((p) => Promise.resolve(p).catch(() => null)));
+    const dir = handles.find((h) => h?.kind === 'directory');
+    if (dir) { openFolder(dir); return; }
+    const entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null }));
+    if (!model) { openEntries(entries); return; }
+    const rhino = entries.filter(({ file }) => /\.3dm$/i.test(file.name));
+    if (rhino.length) await attachRhinoFiles(rhino);
+    for (const { file, handle } of entries) if (!rhino.some((r) => r.file === file)) await openFile(file, handle);
   });
 
   bindCameraMenu();

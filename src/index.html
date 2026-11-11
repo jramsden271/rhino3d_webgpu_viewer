@@ -17,7 +17,7 @@
   </div>
 
   <header class="chrome top-left">
-    <button class="brand" id="btnHome" title="Home: open another file or a recent one"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg><span>3DM Viewer</span></button>
+    <button class="brand" id="btnHome" title="Projects: new, open and recent"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg><span>3DM Viewer</span></button>
     <button id="fileName" class="file-name" title="File properties"></button>
     <span class="undo-redo" id="undoRedo" hidden>
       <button class="btn icon" id="btnUndo" disabled title="Nothing to undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
@@ -347,19 +347,14 @@
   <div id="walkFade" class="walk-fade"></div>
   <div id="driveSplash" class="drive-splash" hidden>Splash!</div>
 
-  <div id="drop" class="overlay drop">
+  <!-- Shown only while files are dragged over the window. -->
+  <div id="drop" class="overlay drop" hidden>
     <div id="devLabel" class="dev-label" hidden>Developer mode</div>
     <div class="drop-card">
-      <svg id="dropLogo" class="drop-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg>
-      <h1>Drop a Rhino <code>.3dm</code> file</h1>
-      <p>or <button class="link" id="dropBrowse">browse for one</button></p>
-      <p class="fine">Everything runs locally in this page; the model never leaves your computer.</p>
-      <p class="drop-back" id="dropBack" hidden><button class="btn primary" id="btnBack">Back to <span id="dropBackName"></span></button></p>
-      <p class="demo-open" id="demo" hidden>No Rhino file to hand? <button class="link" id="btnDemo">Open the demo model</button></p>
-      <div class="recent" id="recent" hidden>
-        <div class="recent-head">Recent files</div>
-        <ul id="recentList"></ul>
-      </div>
+      <svg class="drop-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z"/></svg>
+      <h1>Drop files to add them</h1>
+      <p>Rhino <code>.3dm</code>, weather <code>.epw</code> and results files. A folder opens as a new project.</p>
+      <p class="fine">Everything runs locally in this page; your files never leave your computer.</p>
     </div>
   </div>
 
