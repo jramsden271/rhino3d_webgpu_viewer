@@ -1,30 +1,27 @@
 // Projects, kept in this browser (IndexedDB). A project is what the home screen lists: a name, the
 // 3dm files attached to it (kept as file handles, so they reopen with a click, never as copies, as
-// they can be gigabytes), one of them active (the one open), and the model's settings: its custom
-// location, city, weather files, which location source it uses and its results files.
+// they can be gigabytes), and the model's settings: its custom location, city, weather files, which
+// location source it uses and its results files. Opening a project shows all its 3dm files together.
 // Needs the File System Access API (Chrome, Edge); elsewhere the list stays empty.
 // The browser asks for permission to read a file again the first time it is reopened in a session.
 //
-//   await Recent.list()                  -> [{ id, name, opened, shown: [file ids], files: [{ id, name, size, modified, handle }],
+//   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle }],
 //                                              custom, city, epws, weather, use, results }], newest first
 //   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
-//                                        Returns the project's id.
-//   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project without opening it. Returns the file's id.
-//   await Recent.setShown(projectId, fileId, on) puts a file in the project's view (shown together), or takes it out
-//   await Recent.detach(projectId, fileId)        takes a file off a project and out of its view
+//                                        Returns { project, file }: the project's id and the file's id.
+//   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project. Returns the file's id.
+//   await Recent.detach(projectId, fileId)        takes a 3dm file off a project
 //   await Recent.remove(index)           removes a project (its results copies with it)
 //   await Recent.link(handle, { custom, city, epws, weather, use, results })  a model's typed custom location, city,
 //                                 attached weather files (epws: [{ id, name, bytes }]), the one used as weather data source
 //                                 (weather: its id), which location source it uses and results files (any of them)
 //   await Recent.links(handle)    -> { custom: { lat, lon, utcOffset } | null, city: { lat, lon, utcOffset, name } | null,
 //                                      epws: [{ id, name, bytes }], weather: id | null,
-//                                      use: 'custom' | 'city' | 'file' | 'epw:<id>' | null, results: [{ id, name, size }] }
+//                                      use: 'custom' | 'city' | 'file' | 'file:<n>' | 'epw:<id>' | null, results: [{ id, name, size }] }
 //   await Recent.putResult(id, bytes), Recent.resultBytes(id), Recent.dropResults(ids)  a results file's copy
 //
 // A project's weather files are kept as copies, so they come back without another permission prompt. So are
-// its results files, each under its own key, as they can be large and the list is read often. Records
-// saved before projects (one file at the top level of the record) are turned into projects on read.
-// Records saved before weather files were a list (one epw: { name, bytes }, and a city saved as custom) still read.
+// its results files, each under its own key, as they can be large and the list is read often.
 
 const Recent = {
   supported: typeof window.showOpenFilePicker === 'function' && 'indexedDB' in window,
@@ -62,18 +59,19 @@ const Recent = {
     try { await this.store('readwrite', (s) => s.put(list, 'recent')); } catch (e) { /* storage unavailable */ }
   },
 
-  // MIGRATION (remove after 2026-12-09): a record saved before projects held one 3dm file at its top level.
-  // It becomes a project of that one file, keeping its settings. Returns whether anything changed.
+  // MIGRATION (remove after 2026-12-09): records saved before projects held one 3dm file at their top level
+  // (and before a project showed all its files, a list of files shown with one ticked). Each becomes a
+  // project of its files. Returns whether anything changed.
   toProjects(list) {
     let changed = false;
     for (const r of list) {
-      if (r.files) { // a project saved on the branch before views of several files: its one file is shown
-        if (!r.shown) { r.shown = r.active ? [r.active] : []; delete r.active; changed = true; }
+      if (r.files) {
+        if (r.shown || r.active !== undefined) { delete r.shown; delete r.active; changed = true; }
         continue;
       }
       changed = true;
       const f = { id: this.newId(), name: r.name, size: r.size, modified: r.modified, handle: r.handle };
-      Object.assign(r, { id: this.newId(), files: [f], shown: [f.id] });
+      Object.assign(r, { id: this.newId(), files: [f] });
       for (const k of ['size', 'modified', 'handle']) delete r[k];
     }
     return changed;
@@ -106,14 +104,13 @@ const Recent = {
       const rec = hit ? project.files[hit[1]] : { id: this.newId(), handle };
       Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified });
       if (!hit) project.files.push(rec);
-      // Opening a file on its own shows just that file.
-      Object.assign(project, { name: hit ? project.name : file.name, shown: [rec.id], opened: Date.now() });
+      Object.assign(project, { name: hit ? project.name : file.name, opened: Date.now() });
       await this.save([project, ...list.filter((p) => p !== project)]);
-      return project.id;
+      return { project: project.id, file: rec.id };
     });
   },
 
-  // A 3dm file added to a project without opening it: listed under the project's attached files.
+  // A 3dm file added to a project: it joins the project's files, and so its view.
   attach(projectId, handle, file) {
     if (!this.supported || !handle) return Promise.resolve(null);
     return this.serial(async () => {
@@ -127,26 +124,12 @@ const Recent = {
     });
   },
 
-  // Takes a 3dm file off a project, and out of its view.
+  // Takes a 3dm file off a project.
   detach(projectId, fileId) {
     return this.serial(async () => {
       const list = await this.list(), project = list.find((p) => p.id === projectId);
       if (!project) return;
       project.files = project.files.filter((f) => f.id !== fileId);
-      project.shown = project.shown.filter((id) => id !== fileId);
-      await this.save(list);
-    });
-  },
-
-  // Puts a file in the project's view, or takes it out. The view shows all of its files together.
-  setShown(projectId, fileId, on) {
-    return this.serial(async () => {
-      const list = await this.list(), project = list.find((p) => p.id === projectId);
-      if (!project?.files.some((f) => f.id === fileId)) return;
-      const rest = project.shown.filter((id) => id !== fileId);
-      project.shown = on ? [...rest, fileId] : rest;
-      // Keep the order of the project's files, so the view reads the same as its list.
-      project.shown = project.files.map((f) => f.id).filter((id) => project.shown.includes(id));
       await this.save(list);
     });
   },
@@ -182,7 +165,8 @@ const Recent = {
       const list = await this.list();
       const [gone] = list.splice(index, 1);
       await this.save(list);
-      await this.dropResults((gone?.results || []).map((r) => r.id));
+      const ids = (gone?.results || []).map((r) => r.id);
+      await this.dropResults(ids);
     });
   },
 

@@ -295,8 +295,8 @@ const meshBuffers = (m) => {
 
 // origin: the point geometry is measured from. A file read to be shown with others takes the first file's
 // origin, so the files share coordinates; by default it is the middle of the file's objects.
-async function extractModel(rhino, doc, onProgress, origin = null) {
-  const scene = await extractScene(rhino, doc, onProgress, origin);
+async function extractModel(rhino, doc, onProgress, origin = null, scale = 1) {
+  const scene = await extractScene(rhino, doc, onProgress, origin, scale);
   onProgress?.(1, 'Building batches');
   await tick();
   scene.batches = buildBatches(scene);
@@ -308,31 +308,40 @@ async function extractModel(rhino, doc, onProgress, origin = null) {
 // parts share one origin (see extractModel). Batches are built by the caller.
 function mergeScenes(parts, names) {
   const sum = (a, b) => { for (const k of Object.keys(b)) a[k] = (a[k] || 0) + b[k]; return a; };
+  const multi = names.length > 1;
+  // With several files, Rhino's ids (layers, objects, block definitions) are only unique within one file,
+  // so each gets its file's number in front. The original id stays as `guid` on objects and layers.
   const out = { origin: parts[0].origin, units: parts[0].units, layers: [], materials: [], magicLayers: {}, defs: new Map(),
-    items: [], lights: [], views: [], location: parts.find((p) => p.location)?.location ?? null,
+    items: [], lights: [], views: parts[0].views || [], locations: parts.map((p, k) => ({ name: names[k], location: p.location })),
+    location: parts.find((p) => p.location)?.location ?? null,
     stats: { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {}, lights: {} } };
   parts.forEach((p, k) => {
+    const pre = (id) => (multi ? `${k}:${id}` : id);
     // With several files, each file's top layers sit under a layer named for the file, so the Layers
     // panel shows one group per file (like the magic block layers, it is a layer with no objects of its own).
-    const root = names.length > 1 ? out.layers.length : -1;
-    if (root >= 0) out.layers.push({ index: root, id: `file-${k}`, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
+    const root = multi ? out.layers.length : -1;
+    if (root >= 0) out.layers.push({ index: root, id: `file-${k}`, guid: null, parentId: '', name: names[k], fullPath: names[k], rgb: [0.5, 0.5, 0.5],
       visible: true, material: -1, count: 0, parent: -1, materialName: '', materialRgb: DEFAULT_MATERIAL.rgb, materialAlpha: 1, file: true });
     const lOff = out.layers.length, mOff = out.materials.length;
     const shiftAi = (ai) => { if (!ai) return; if (ai.layer >= 0) ai.layer += lOff; if (ai.mi >= 0) ai.mi += mOff; };
     for (const l of p.layers) {
-      out.layers.push({ ...l, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
-        material: l.material >= 0 ? l.material + mOff : l.material, fullPath: names.length > 1 ? `${names[k]}::${l.fullPath}` : l.fullPath });
+      out.layers.push({ ...l, id: pre(l.id), guid: l.id, index: out.layers.length, parent: l.parent >= 0 ? l.parent + lOff : root,
+        material: l.material >= 0 ? l.material + mOff : l.material, fullPath: multi ? `${names[k]}::${l.fullPath}` : l.fullPath });
     }
     for (const m of p.materials) out.materials.push({ ...m, index: out.materials.length });
     // The magic block layers (by key) are the first file's: each later file's are left in the layers, unused.
     if (k === 0) out.magicLayers = Object.fromEntries(Object.entries(p.magicLayers).map(([key, i]) => [key, i + lOff]));
-    for (const it of p.items) { shiftAi(it.ai); shiftAi(it.ai0); out.items.push(it); }
+    for (const it of p.items) {
+      shiftAi(it.ai); shiftAi(it.ai0);
+      if (it.k === 'inst') it.idef = pre(it.idef);
+      Object.assign(it, { guid: it.id, id: pre(it.id), file: k });
+      out.items.push(it);
+    }
     for (const [id, def] of p.defs) {
-      for (const e of def.entries) shiftAi(e.ai);
-      if (!out.defs.has(id)) out.defs.set(id, def);
+      for (const e of def.entries) { shiftAi(e.ai); if (e.k === 'inst') e.idef = pre(e.idef); }
+      if (!out.defs.has(pre(id))) out.defs.set(pre(id), def);
     }
     out.lights.push(...p.lights);
-    out.views.push(...(p.views || []));
     for (const key of ['objects', 'triangles', 'curves', 'points', 'instances']) out.stats[key] += p.stats[key] || 0;
     for (const key of ['unsupported', 'noRenderMesh', 'lights']) sum(out.stats[key], p.stats[key] || {});
   });
@@ -340,7 +349,7 @@ function mergeScenes(parts, names) {
   return out;
 }
 
-async function extractScene(rhino, doc, onProgress, originOverride = null) {
+async function extractScene(rhino, doc, onProgress, originOverride = null, scale = 1) {
   const objects = doc.objects();
   const stats = { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {} };
   const skip = (bucket, name) => (stats[bucket][name] = (stats[bucket][name] || 0) + 1);
@@ -389,9 +398,15 @@ async function extractScene(rhino, doc, onProgress, originOverride = null) {
 
   // Origin ------------------------------------------------------------------------------------
   const bb = objects.getBoundingBox();
+  // The file's geometry is in its own units. k scales it into the scene's units (1 for the first file;
+  // see readModel), and origin is in the scene's units, so the source origin is origin / k.
   const origin = originOverride || (bb && bb.isValid ? bb.center : [0, 0, 0]);
-  const negOrigin = [-origin[0], -origin[1], -origin[2]];
+  const k = scale;
+  const srcOrigin = origin.map((v) => v / k);
+  const negOrigin = [-srcOrigin[0], -srcOrigin[1], -srcOrigin[2]];
   const originXf = new Float64Array([1, 0, 0, -origin[0], 0, 1, 0, -origin[1], 0, 0, 1, -origin[2], 0, 0, 0, 1]);
+  // An instance's transform, its translation scaled into the scene's units.
+  const scaledXf = (g) => { const x = xformOf(g.xform); x[3] *= k; x[7] *= k; x[11] *= k; return x; };
 
   // Geometry -> parts (meshes carry their own feature edges) -----------------------------------
   // `shift` translates geometry in rhino3dm first (top-level objects only; mutates the doc).
@@ -400,6 +415,7 @@ async function extractScene(rhino, doc, onProgress, originOverride = null) {
     const take = (m) => {
       if (shift) m.translate(negOrigin);
       const p = meshBuffers(m);
+      if (k !== 1) for (let i = 0; i < p.pos.length; i++) p.pos[i] *= k;
       p.edges = featureEdges(p.pos, p.idx);
       parts.push(p);
     };
@@ -446,9 +462,9 @@ async function extractScene(rhino, doc, onProgress, originOverride = null) {
       const g = o.geometry(), a = o.attributes(), tn = enumName(g.objectType), ai = attrInfo(a);
       if (!a.visible) continue;
       const base = { ai };
-      if (tn === 'InstanceReference') { getIdef(g.parentIdefId); def.entries.push({ ...base, k: 'inst', idef: g.parentIdefId, xf: xformOf(g.xform) }); }
-      else if (tn === 'Curve') { const s = []; sampleCurve(g, s); def.entries.push({ ...base, k: 'line', segs: Float64Array.from(s) }); }
-      else if (tn === 'Point') def.entries.push({ ...base, k: 'point', p: Float64Array.from(g.location) });
+      if (tn === 'InstanceReference') { getIdef(g.parentIdefId); def.entries.push({ ...base, k: 'inst', idef: g.parentIdefId, xf: scaledXf(g) }); }
+      else if (tn === 'Curve') { const s = []; sampleCurve(g, s); def.entries.push({ ...base, k: 'line', segs: Float64Array.from(s, (v) => v * k) }); }
+      else if (tn === 'Point') def.entries.push({ ...base, k: 'point', p: Float64Array.from(g.location, (v) => v * k) });
       else {
         const parts = meshParts(g, tn, false);
         if (parts.length) def.entries.push({ ...base, k: 'mesh', parts });
@@ -473,7 +489,7 @@ async function extractScene(rhino, doc, onProgress, originOverride = null) {
     stats.lights[style || 'Light'] = (stats.lights[style || 'Light'] || 0) + 1;
     if (!g.isEnabled || !(g.isPointLight || g.isSpotLight)) return;
     const c = g.diffuse || { r: 255, g: 255, b: 255 };
-    const l = { name: ai.name || g.name || '', p: V3.sub(g.location, origin),
+    const l = { name: ai.name || g.name || '', p: V3.sub(V3.scale(g.location, k), origin),
       rgb: [c.r, c.g, c.b].map((v) => (v / 255) ** 2.2), intensity: g.intensity ?? 1 };
     if (g.isSpotLight) {
       // Rhino: spot angle is the cone's half angle; the hot spot is the share of it at full strength.
@@ -491,14 +507,14 @@ async function extractScene(rhino, doc, onProgress, originOverride = null) {
     const it = { id: a.id, name: ai.name, type: TYPE_LABEL[tn] || tn, block: '', userText: userText(a), ai, ai0: { ...ai },
       seed: seedOf(i, 0.5, 0.25), xf: null };
     if (tn === 'InstanceReference') {
-      Object.assign(it, { k: 'inst', idef: g.parentIdefId, xf: mulRM(originXf, xformOf(g.xform)), block: getIdef(g.parentIdefId).name });
+      Object.assign(it, { k: 'inst', idef: g.parentIdefId, xf: mulRM(originXf, scaledXf(g)), block: getIdef(g.parentIdefId).name });
       it.seed = seedOf(it.xf[3], it.xf[7], it.xf[11]);
     } else if (tn === 'Curve') {
       const s = []; sampleCurve(g, s);
-      for (let j = 0; j < s.length; j += 3) { s[j] -= origin[0]; s[j + 1] -= origin[1]; s[j + 2] -= origin[2]; }
+      for (let j = 0; j < s.length; j += 3) { s[j] = s[j] * k - origin[0]; s[j + 1] = s[j + 1] * k - origin[1]; s[j + 2] = s[j + 2] * k - origin[2]; }
       Object.assign(it, { k: 'line', segs: Float32Array.from(s) });
     } else if (tn === 'Point') {
-      Object.assign(it, { k: 'point', p: Float32Array.from(V3.sub(g.location, origin)) });
+      Object.assign(it, { k: 'point', p: Float32Array.from(V3.sub(V3.scale(g.location, k), origin)) });
     } else if (MESH_TYPES.includes(tn)) {
       Object.assign(it, { k: 'mesh', parts: meshParts(g, tn, true) });
     } else if (tn === 'Light') {

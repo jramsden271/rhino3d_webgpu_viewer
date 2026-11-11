@@ -377,11 +377,11 @@ async function openFile(file, handle = null) {
   if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
   showBusy(`Reading ${file.name}`, 0.02);
   try {
-    // The file's project (new, or the one it belongs to) is the one the model is open in.
-    const projectId = await Recent.add(handle, file);
+    // A file with a handle opens its project: the file's own, new or the one it belongs to, with all its files.
+    const ids = await Recent.add(handle, file);
     renderRecent();
-    await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), handle);
-    if (model) model.projectId = projectId;
+    if (ids) { await showProject(ids.project, { file, fileId: ids.file }); return; }
+    await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), null);
     attachDialog?.refresh();
   } catch (e) {
     // Errors here used to leave the welcome screen up with nothing said: say what went wrong.
@@ -391,13 +391,14 @@ async function openFile(file, handle = null) {
   }
 }
 
-// A 3dm file attached from the Attach files dialog: it joins the open model's project, and is opened
-// only when chosen there. With no project open, it opens as a new one.
+// A 3dm file attached to the open model (from the Attach files dialog, or dropped on the viewer): it joins
+// the model's project and is added to the view. With no project open, it opens as a new one.
 async function attachRhinoFile(file, handle) {
   const projectId = model?.projectId;
   if (!projectId || !handle) { await openFile(file, handle); return; }
-  await Recent.attach(projectId, handle, file);
+  const fileId = await Recent.attach(projectId, handle, file);
   renderRecent();
+  if (fileId) await showProject(projectId, { file, fileId });
   attachDialog?.refresh();
 }
 
@@ -414,7 +415,7 @@ async function restoreLinks(handle) {
   }
   if (site.epws.length) back.push(site.epws.length === 1 ? `weather file ${site.epws[0].fileName}` : `${site.epws.length} weather files`);
   site.epw = site.epws.find((e) => e.id === weather) ?? null;
-  if (['custom', 'city', 'file'].includes(use) || (use?.startsWith('epw:') && epwById(use.slice(4)))) site.use = use;
+  if (['custom', 'city', 'file'].includes(use) || use?.startsWith('file:') || (use?.startsWith('epw:') && epwById(use.slice(4)))) site.use = use;
   for (const r of bound) {
     try {
       const bytes = await Recent.resultBytes(r.id);
@@ -426,7 +427,9 @@ async function restoreLinks(handle) {
 }
 
 // One file read. full: a file on its own, with its batches built; otherwise a part of a scene (see openScene).
-async function readModel(kind, name, bytes, origin = null, full = true) {
+// units: the scene's unit system; the file's geometry is scaled into it (a file in millimetres shown with
+// one in metres comes out right). Without units, the file's own.
+async function readModel(kind, name, bytes, origin = null, full = true, units = null) {
   showBusy('Starting the Rhino file reader', 0.04);
   const rhino = await getRhino(kind);
   showBusy(`Parsing ${name} (${(bytes.length / 1e6).toFixed(0)} MB)`, 0.06);
@@ -434,8 +437,9 @@ async function readModel(kind, name, bytes, origin = null, full = true) {
   const doc = rhino.File3dm.fromByteArray(bytes);
   if (!doc) throw new Error('The file could not be read. It may be damaged or not a Rhino model.');
   const progress = (f, text) => showBusy(text, 0.08 + f * 0.82);
+  const scale = units ? (METRES_PER_UNIT[enumName(doc.settings().modelUnitSystem)] || 1) / (METRES_PER_UNIT[units] || 1) : 1;
   try {
-    return full ? await extractModel(rhino, doc, progress, origin) : await extractScene(rhino, doc, progress, origin);
+    return full ? await extractModel(rhino, doc, progress, origin, scale) : await extractScene(rhino, doc, progress, origin, scale);
   } finally {
     doc.delete();
   }
@@ -443,14 +447,14 @@ async function readModel(kind, name, bytes, origin = null, full = true) {
 
 // Reads a file with the reader its size calls for. The 32-bit reader aborts when it runs out of address
 // space; then the file is read again with the 64-bit one.
-async function readWithReader(name, bytes, origin, full) {
+async function readWithReader(name, bytes, origin, full, units = null) {
   const first = can64() && bytes.length > BIG_FILE ? 'w64' : 'w32';
   try {
-    return { m: await readModel(first, name, bytes, origin, full), reader: first };
+    return { m: await readModel(first, name, bytes, origin, full, units), reader: first };
   } catch (e) {
     if (first !== 'w32' || !can64() || !(e instanceof WebAssembly.RuntimeError)) throw e;
     delete rhinoModules.w32;
-    return { m: await readModel('w64', name, bytes, origin, full), reader: 'w64' };
+    return { m: await readModel('w64', name, bytes, origin, full, units), reader: 'w64' };
   }
 }
 
@@ -476,7 +480,7 @@ async function openScene(sources) {
     } else {
       const parts = [];
       for (const s of sources) {
-        const r = await readWithReader(s.name, s.bytes, parts[0]?.origin ?? null, false);
+        const r = await readWithReader(s.name, s.bytes, parts[0]?.origin ?? null, false, parts[0]?.units ?? null);
         parts.push(r.m);
         reader ??= r.reader;
       }
@@ -493,6 +497,7 @@ async function openScene(sources) {
     model.size = sources.reduce((n, s) => n + s.bytes.length, 0);
     model.bytes = sources.length === 1 ? first.bytes : null; // kept so a copy with the viewer's changes can be written
     model.handle = handle;
+    model.locations ??= [{ name: first.name, location: m.location }]; // a scene of several files has one per file
     model.objectIndex = new Map(m.objects.map((o, i) => [o.id, i]));
     model.blocks = blockTable(m);
     model.metresPerUnit = METRES_PER_UNIT[m.units] || 1;
@@ -2589,8 +2594,15 @@ const fmtCoords = (lat, lon) => `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? 'S' :
 const epwById = (id) => site.epws.find((e) => e.id === id) ?? null;
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
-// { lat, lon, utcOffset, name, kind, use } for one location source (use: 'custom', 'city', 'file' or
-// 'epw:<id>'), or null when it has no location.
+// The location source for a Rhino file in the model: 'file' for the first file, 'file:<n>' for the next.
+const fileUse = (k) => (k ? `file:${k}` : 'file');
+// The Rhino files that set a location: [{ name, location, use }].
+function fileLocations() {
+  return (model?.locations || []).map((x, k) => ({ name: x.name, location: x.location, use: fileUse(k) })).filter((x) => x.location);
+}
+
+// { lat, lon, utcOffset, name, kind, use } for one location source (use: 'custom', 'city', 'file',
+// 'file:<n>' or 'epw:<id>'), or null when it has no location.
 function locationOf(use) {
   if (use === 'custom') return site.custom && { ...site.custom, name: null, kind: 'custom', use };
   if (use === 'city') return site.city && { ...site.city, kind: 'city', use };
@@ -2598,11 +2610,12 @@ function locationOf(use) {
     const e = epwById(use.slice(4))?.location;
     return e?.known ? { lat: e.lat, lon: e.lon, utcOffset: e.utcOffset ?? Math.round(e.lon / 15), name: e.name, kind: 'epw', use } : null;
   }
-  const f = model?.location;
-  return f ? { lat: f.lat, lon: f.lon, utcOffset: f.utcOffset, name: null, kind: 'file', use: 'file' } : null;
+  const k = use === 'file' ? 0 : use?.startsWith('file:') ? +use.slice(5) : -1;
+  const f = k >= 0 ? model?.locations?.[k]?.location : null;
+  return f ? { lat: f.lat, lon: f.lon, utcOffset: f.utcOffset, name: null, kind: 'file', use: fileUse(k) } : null;
 }
 const activeLocation = () => (site.use && locationOf(site.use)) || locationOf('custom') || locationOf('city')
-  || (site.epw && locationOf(`epw:${site.epw.id}`)) || locationOf('file');
+  || (site.epw && locationOf(`epw:${site.epw.id}`)) || (fileLocations()[0] && locationOf(fileLocations()[0].use));
 
 function applyLocation() {
   const A = activeLocation();
@@ -2815,20 +2828,10 @@ function openAttachDialog() {
   };
   const refresh = async () => {
     const project = model?.projectId ? (await Recent.list()).find((p) => p.id === model.projectId) : null;
-    const rhino = (project?.files || []).map((f) => {
-      const shown = project.shown.includes(f.id);
-      const r = row(f.name, 'Rhino file', () => detachRhinoFile(f.id));
-      const label = document.createElement('label');
-      label.className = 'fine';
-      label.title = 'Show this file in the view, together with the others that are shown';
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = shown;
-      box.addEventListener('change', () => setRhinoFileShown(f.id, box.checked));
-      label.append(box, ' In view');
-      r.querySelector('.fine').append(' · ', label);
-      return r;
-    });
+    // Every Rhino file of the model is in its view; a file's layers are shown or hidden in the Layers panel.
+    // The last one cannot be taken off, as the view would have nothing in it.
+    const many = (project?.files.length || 0) > 1;
+    const rhino = (project?.files || []).map((f) => row(f.name, 'Rhino file in the view', many ? () => detachRhinoFile(f.id) : null));
     el('list').replaceChildren(
       ...rhino,
       ...site.epws.map((e) => row(e.fileName, `Weather file · ${escapeHtml(epwSub(e))}`, () => removeEpw(e.id))),
@@ -3139,10 +3142,15 @@ function showLocationHelp() {
 function locationGroups() {
   const epw = site.epws.filter((e) => e.location.known).map((e) => ({ id: `epw:${e.id}`, label: e.fileName, sub: epwSub(e), title: `Location from ${e.fileName}` }));
   const cityOf = site.city, customOf = site.custom;
+  const files = fileLocations();
+  const rhino = files.length
+    ? files.map(({ name, location, use }) => ({ id: use, label: model.locations.length > 1 ? name : 'Rhino file', sub: fmtCoords(location.lat, location.lon),
+      title: `The location saved in ${name}` }))
+    : [{ id: 'file', label: 'Rhino file', sub: !model ? 'No file open' : `${model.name} does not set a location`,
+      title: 'The location saved in the Rhino file', disabled: 'The Rhino file does not set a location' }];
   return [{ items: [
     ...epw,
-    { id: 'file', label: 'Rhino file', sub: !model ? 'No file open' : model.location ? fmtCoords(model.location.lat, model.location.lon) : `${model.name} does not set a location`,
-      title: 'The location saved in the Rhino file', disabled: model?.location ? null : 'The Rhino file does not set a location' },
+    ...rhino,
     { id: 'city', label: 'From city', sub: cityOf ? `${cityOf.name} · ${fmtCoords(cityOf.lat, cityOf.lon)}` : 'No city chosen', title: 'A city from the list',
       disabled: cityOf ? null : 'No city chosen', action: { label: cityOf ? 'Change…' : 'Set city…', title: 'Choose a city', run: openCityDialog } },
     { id: 'custom', label: 'Custom location', sub: customOf ? `${fmtCoords(customOf.lat, customOf.lon)} · ${fmtUtc(customOf.utcOffset)}` : 'Not set', title: 'A latitude, longitude and UTC offset that you type',
@@ -4688,8 +4696,8 @@ async function renderRecent() {
     const epws = r.epws?.length ? r.epws : r.epw ? [r.epw] : [];
     const linked = [custom && `custom location ${fmtCoords(custom.lat, custom.lon)}`, city && `city ${city.name || fmtCoords(city.lat, city.lon)}`,
       epws.length && (epws.length === 1 ? `weather ${epws[0].name}` : `${epws.length} weather files`)].filter(Boolean);
-    const shown = shownFiles(r), size = shown.reduce((n, f) => n + f.size, 0);
-    const files = shown.length > 1 ? [`${shown.length} files in view`] : [];
+    const size = r.files.reduce((n, f) => n + f.size, 0);
+    const files = r.files.length > 1 ? [`${r.files.length} Rhino files`] : [];
     li.querySelector('.recent-info').textContent = [`${(size / 1e6).toFixed(size < 1e7 ? 1 : 0)} MB`, ...files, `opened ${date(r.opened)}`, ...linked].join(' · ');
     li.querySelector('.recent-open').title = `Open ${r.name}`;
     li.querySelector('.recent-open').addEventListener('click', () => openRecent(r));
@@ -4705,20 +4713,21 @@ async function openDemo() {
   await openBytes('Demo.3dm', Uint8Array.from(atob(DEMO_3DM), (c) => c.charCodeAt(0)));
 }
 
-// A project's view: its Rhino files that are shown, together as one model.
-const shownFiles = (p) => p.files.filter((f) => p.shown.includes(f.id));
-
-// Opens a project's view. The browser asks once per session before it can read a file again.
-async function showProject(projectId) {
+// Opens a project: all its Rhino files, together as one model. given: a file already read, { file, fileId },
+// so it is not read again. The browser asks once per session before it can read a file again.
+async function showProject(projectId, given = null) {
   const project = (await Recent.list()).find((p) => p.id === projectId);
   if (!project) return;
-  const files = shownFiles(project).filter((f) => f.handle);
-  if (!files.length) { notice('Nothing is in view. Tick a Rhino file in Attach files to show it.', true); return; }
+  const files = project.files.filter((f) => f.handle || (given && f.id === given.fileId));
   try {
     const sources = [];
     for (const f of files) {
+      if (given && f.id === given.fileId) {
+        sources.push({ name: f.name, bytes: new Uint8Array(await given.file.arrayBuffer()), handle: f.handle ?? null });
+        continue;
+      }
       if ((await f.handle.queryPermission({ mode: 'read' })) !== 'granted' && (await f.handle.requestPermission({ mode: 'read' })) !== 'granted') {
-        notice(`Permission to read ${f.name} was not given, so it is not in view.`, true);
+        notice(`Permission to read ${f.name} was not given, so it is not in the view.`, true);
         continue;
       }
       showBusy(`Reading ${f.name}`, 0.02);
@@ -4736,18 +4745,10 @@ async function showProject(projectId) {
 }
 const openRecent = (r) => showProject(r.id);
 
-// Takes a Rhino file off the open model's project, and out of its view.
+// Takes a Rhino file off the open model's project, and out of the view.
 async function detachRhinoFile(fileId) {
-  const wasShown = model?.projectId && (await Recent.list()).find((p) => p.id === model.projectId)?.shown.includes(fileId);
   await Recent.detach(model.projectId, fileId);
   renderRecent();
-  if (wasShown) showProject(model.projectId);
-  else attachDialog?.refresh();
-}
-
-// Puts a Rhino file in the open model's view, or takes it out, and shows the view.
-async function setRhinoFileShown(fileId, on) {
-  await Recent.setShown(model.projectId, fileId, on);
   await showProject(model.projectId);
 }
 
@@ -4799,7 +4800,9 @@ function bindUi() {
     if (f && resultParsersFor(f.name).length) { [...e.dataTransfer.files].forEach((x) => openFile(x)); return; }
     // The handle has to be requested before anything else is awaited.
     const h = Recent.supported ? e.dataTransfer.items[0]?.getAsFileSystemHandle?.() : null;
-    if (f) Promise.resolve(h).then((handle) => openFile(f, handle?.kind === 'file' ? handle : null), () => openFile(f));
+    // A Rhino file dropped on a model that is open adds to its view; otherwise it opens.
+    const open = (handle) => (model && !atHome && /\.3dm$/i.test(f.name) ? attachRhinoFile(f, handle) : openFile(f, handle));
+    if (f) Promise.resolve(h).then((handle) => open(handle?.kind === 'file' ? handle : null), () => open(null));
   });
 
   bindCameraMenu();
