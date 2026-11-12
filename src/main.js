@@ -4973,10 +4973,8 @@ async function openEntries(entries) {
   if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
     const existing = await projectWithFiles(rhino);
     if (existing) {
-      // Its name is given only where it says more than the file names do (a project is often named after its file).
       const files = existing.files.map((f) => f.name).join(', ');
-      const under = existing.name !== files ? `, under project name ${existing.name}` : '';
-      const choice = await askOpenOrCopy('This project is already open', `A project with ${existing.files.length > 1 ? 'files' : 'file'} ${files} already exists${under}.`);
+      const choice = await askOpenOrCopy('This project is already open', `A project with ${existing.files.length > 1 ? 'files' : 'file'} ${files} already exists, under project name ${existing.name}.`);
       if (choice !== 'open' && choice !== 'copy') return;
       if (choice === 'open') {
         await showProject(existing.id);
