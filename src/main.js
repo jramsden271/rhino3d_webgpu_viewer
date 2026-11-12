@@ -5110,11 +5110,42 @@ async function saveProjectZip() {
   }
 }
 
+// The project (the most recently opened, if there are several) that was made from this zip, or null. With a
+// handle it is the same file; without one, a zip of the same name, size and date.
+async function projectFromZip(handle, file) {
+  const same = async (h) => !!(handle && h && await h.isSameEntry(handle).catch(() => false));
+  for (const p of await Recent.list()) {
+    const s = p.source;
+    if (s?.kind === 'zip' && (await same(s.handle) || (!handle && s.name === file.name && s.size === file.size && s.modified === file.lastModified))) return p;
+    for (const f of p.files) if (f.zip && await same(f.zip)) return p; // made before projects kept their source
+  }
+  return null;
+}
+
+// Asks what to do when what is being opened is already a project: 'open' it, make a fresh 'copy', or null.
+function askOpenOrCopy(name, why) {
+  const body = document.createElement('div');
+  body.innerHTML = '<p></p><p class="fine">A fresh copy is a new project; the one there now stays as it is.</p>';
+  body.querySelector('p').textContent = why;
+  return Dialog.open({ title: `${name} is already open`, body, width: 420, buttons: [
+    { label: 'Cancel', value: null },
+    { label: `Create a fresh copy`, value: 'copy' },
+    { label: `Open the existing version`, value: 'open', primary: true },
+  ] });
+}
+
 // Opens a zip as a new project. handle: the zip's file handle, which the project keeps to read its Rhino files
 // from; without one (a browser that cannot keep it), the zip's Rhino files open for this session only.
 async function openZip(handle, file = null) {
   try {
     file ??= await handle.getFile();
+    // A zip opened before: open that project, or make a fresh copy of it.
+    const existing = await projectFromZip(handle, file);
+    if (existing) {
+      const choice = await askOpenOrCopy(existing.name, `${file.name} was opened before, as ${existing.name}.`);
+      if (choice === 'open') { await showProject(existing.id); return; }
+      if (choice !== 'copy') return;
+    }
     showBusy(`Reading ${file.name}`, 0.02);
     const entries = await Zip.entries(file), byPath = new Map(entries.map((e) => [e.name, e]));
     const bytesOf = async (e) => new Uint8Array(await (await Zip.read(file, e)).arrayBuffer());
@@ -5153,7 +5184,9 @@ async function openZip(handle, file = null) {
     const epwIds = new Set(epws.map((e) => e.id));
     const use = typeof json?.use === 'string' && (!json.use.startsWith('epw:') || epwIds.has(json.use.slice(4))) ? json.use : null;
     const weather = epwIds.has(json?.weather) ? json.weather : epws.find((e) => !e.off)?.id ?? null;
-    await Recent.create({ id, name, files, epws, weather, use, custom: json?.custom ?? null, city: json?.city ?? null, results });
+    // source: the zip it came from, so opening the same zip again can find it (projectFromZip).
+    const source = { kind: 'zip', handle, name: file.name, size: file.size, modified: file.lastModified };
+    await Recent.create({ id, name, files, epws, weather, use, custom: json?.custom ?? null, city: json?.city ?? null, results, source });
     if (json?.state && typeof json.state === 'object') await Recent.saveState(id, json.state);
     // Its thumbnail shows in the projects list straight away.
     const pic = typeof json?.thumbnail === 'string' && byPath.get(json.thumbnail);
