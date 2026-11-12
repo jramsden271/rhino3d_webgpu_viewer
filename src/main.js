@@ -412,14 +412,9 @@ async function openFile(file, handle = null) {
   if (/\.epw$/i.test(file.name)) { attachEpw(file); return; }
   if (resultParsersFor(file.name).length) { addResultsFile(file); return; }
   if (!/\.3dm$/i.test(file.name)) { notice(`${file.name} is not a .3dm, .epw or results file.`, true); return; }
-  showBusy(`Reading ${file.name}`, 0.02);
   try {
-    // A file with a handle opens its project: the file's own, new or the one it belongs to, with all its files.
-    const ids = await Recent.add(handle, file);
-    renderRecent();
-    if (ids) { await showProject(ids.project, { file, fileId: ids.file }); return; }
-    await openBytes(file.name, new Uint8Array(await file.arrayBuffer()), null);
-    attachDialog?.refresh();
+    // A Rhino file opens as Open files opens one: a new project, unless it is already one (then it asks).
+    await openEntries([{ file, handle }]);
   } catch (e) {
     // Errors here used to leave the welcome screen up with nothing said: say what went wrong.
     console.error(e);
@@ -4973,6 +4968,23 @@ async function openEntries(entries) {
   const valid = entries.filter(({ file }) => canAttach(file.name));
   if (!valid.length) { if (zips.length) leftOut(); else notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files.', true); return; }
   const rhino = valid.filter(({ file }) => /\.3dm$/i.test(file.name)), other = valid.filter((e) => !rhino.includes(e));
+  // Exactly the Rhino files of a project already in the list: open that project (with the weather and results
+  // files attached to it), or make a fresh one from them.
+  if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
+    const existing = await projectWithFiles(rhino);
+    if (existing) {
+      const many = rhino.length > 1, names = rhino.map((e) => e.file.name).join(', ');
+      const choice = await askOpenOrCopy(existing.name, `${names} ${many ? 'are the Rhino files' : 'is the Rhino file'} of ${existing.name}.`);
+      if (choice !== 'open' && choice !== 'copy') return;
+      if (choice === 'open') {
+        await showProject(existing.id);
+        for (const { file } of other) await openFile(file);
+        leftOut();
+        renderRecent();
+        return;
+      }
+    }
+  }
   // Files go into the open project while it has no model to show (a blank one, or one with no Rhino files yet).
   if (model) newProject();
   const name = current.blank ? rhino[0]?.file.name || UNTITLED : current.name;
@@ -5118,6 +5130,22 @@ async function projectFromZip(handle, file) {
     const s = p.source;
     if (s?.kind === 'zip' && (await same(s.handle) || (!handle && s.name === file.name && s.size === file.size && s.modified === file.lastModified))) return p;
     for (const f of p.files) if (f.zip && await same(f.zip)) return p; // made before projects kept their source
+  }
+  return null;
+}
+
+// The project (the most recently opened, if there are several) whose Rhino files are exactly these: the same
+// files, by handle, no more and no fewer (files turned off count). Null if there is none. entries: [{ handle }].
+async function projectWithFiles(entries) {
+  for (const p of await Recent.list()) {
+    if (p.files.length !== entries.length || p.files.some((f) => !f.handle)) continue;
+    let all = true;
+    for (const { handle } of entries) {
+      let hit = false;
+      for (const f of p.files) if (await f.handle.isSameEntry(handle).catch(() => false)) { hit = true; break; }
+      if (!hit) { all = false; break; }
+    }
+    if (all) return p;
   }
   return null;
 }

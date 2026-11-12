@@ -8,8 +8,6 @@
 //   await Recent.list()                  -> [{ id, name, opened, files: [{ id, name, size, modified, handle, off }
 //                                              or, from a zip, { id, name, size, zip (its handle), entry (its path), off }],
 //                                              custom, city, epws, weather, use, results }], newest first
-//   await Recent.add(handle, file)       opens a file: its project (made if the file is new) moves to the top.
-//                                        Returns { project, file }: the project's id and the file's id.
 //   await Recent.put(projectId, name, entries)    files opened into a project, made if new. Returns its id.
 //   await Recent.create(project)                  a whole project (one opened from a zip) added at the top
 //   await Recent.attach(projectId, handle, file)  adds a 3dm file to a project. Returns the file's id.
@@ -99,21 +97,6 @@ const Recent = {
       }
     }
     return null;
-  },
-
-  add(handle, file) {
-    if (!this.supported || !handle) return Promise.resolve(null);
-    return this.serial(async () => {
-      const list = await this.list(), hit = await this.locate(list, handle);
-      // The file opened again goes back to its project, which moves to the top, keeping its settings.
-      const project = hit ? list[hit[0]] : { id: this.newId(), name: file.name, files: [], custom: null, city: null, epws: null, weather: null, use: null, results: [] };
-      const rec = hit ? project.files[hit[1]] : { id: this.newId(), handle };
-      Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified, off: false }); // opening a file turns it on
-      if (!hit) project.files.push(rec);
-      Object.assign(project, { name: hit ? project.name : file.name, opened: Date.now() });
-      await this.save([project, ...list.filter((p) => p !== project)]);
-      return { project: project.id, file: rec.id };
-    });
   },
 
   // Files opened into a project (made with this id and name if it is new, as for a blank project): each 3dm
