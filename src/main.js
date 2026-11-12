@@ -4973,8 +4973,10 @@ async function openEntries(entries) {
   if (rhino.length && rhino.every((e) => e.handle) && Recent.supported) {
     const existing = await projectWithFiles(rhino);
     if (existing) {
-      const many = rhino.length > 1, names = rhino.map((e) => e.file.name).join(', ');
-      const choice = await askOpenOrCopy(existing.name, `${names} ${many ? 'are the Rhino files' : 'is the Rhino file'} of ${existing.name}.`);
+      // Its name is given only where it says more than the file names do (a project is often named after its file).
+      const files = existing.files.map((f) => f.name).join(', ');
+      const under = existing.name !== files ? `, under project name ${existing.name}` : '';
+      const choice = await askOpenOrCopy('This project is already open', `A project with ${existing.files.length > 1 ? 'files' : 'file'} ${files} already exists${under}.`);
       if (choice !== 'open' && choice !== 'copy') return;
       if (choice === 'open') {
         await showProject(existing.id);
@@ -5151,11 +5153,11 @@ async function projectWithFiles(entries) {
 }
 
 // Asks what to do when what is being opened is already a project: 'open' it, make a fresh 'copy', or null.
-function askOpenOrCopy(name, why) {
+function askOpenOrCopy(title, why) {
   const body = document.createElement('div');
   body.innerHTML = '<p></p><p class="fine">A fresh copy is a new project; the one there now stays as it is.</p>';
   body.querySelector('p').textContent = why;
-  return Dialog.open({ title: `${name} is already open`, body, width: 420, buttons: [
+  return Dialog.open({ title, body, width: 420, buttons: [
     { label: 'Cancel', value: null },
     { label: `Create a fresh copy`, value: 'copy' },
     { label: `Open the existing version`, value: 'open', primary: true },
@@ -5170,7 +5172,7 @@ async function openZip(handle, file = null) {
     // A zip opened before: open that project, or make a fresh copy of it.
     const existing = await projectFromZip(handle, file);
     if (existing) {
-      const choice = await askOpenOrCopy(existing.name, `${file.name} was opened before, as ${existing.name}.`);
+      const choice = await askOpenOrCopy(`${existing.name} is already open`, `${file.name} was opened before, as ${existing.name}.`);
       if (choice === 'open') { await showProject(existing.id); return; }
       if (choice !== 'copy') return;
     }
