@@ -4966,11 +4966,12 @@ const canAttach = (name) => /\.(3dm|epw)$/i.test(name) || resultParsersFor(name)
 // a new one. Its name: the first Rhino file's, or Untitled. Rhino files go in by handle, and weather and
 // results files are attached once the model is open.
 async function openEntries(entries) {
-  // A zip opens as a project of its own.
+  // A project zip is opened on its own, with Open zip; one among other files is left out (said once the
+  // files are open, as opening a model clears the notices before it).
   const zips = entries.filter(({ file }) => /\.zip$/i.test(file.name));
-  for (const z of zips) await openZip(z.handle, z.file);
+  const leftOut = () => { if (zips.length) notice(`Left out ${zips.map((z) => z.file.name).join(', ')}: a project zip is opened on its own, with Open zip.`, true); };
   const valid = entries.filter(({ file }) => canAttach(file.name));
-  if (!valid.length) { if (!zips.length) notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files, or a project zip.', true); return; }
+  if (!valid.length) { if (zips.length) leftOut(); else notice('Nothing to open: choose Rhino (.3dm), weather (.epw) or results files.', true); return; }
   const rhino = valid.filter(({ file }) => /\.3dm$/i.test(file.name)), other = valid.filter((e) => !rhino.includes(e));
   // Files go into the open project while it has no model to show (a blank one, or one with no Rhino files yet).
   if (model) newProject();
@@ -4985,15 +4986,30 @@ async function openEntries(entries) {
     await openBytes(rhino[0].file.name, new Uint8Array(await rhino[0].file.arrayBuffer()));
   }
   for (const { file } of other) await openFile(file);
+  leftOut();
   renderRecent();
 }
 
 async function pickFiles() {
   if (!Recent.supported) { $('fileInput').click(); return; }
   let handles;
-  try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files, and project zips', accept: { 'application/octet-stream': [...OPEN_TYPES(), '.zip'] } }] }); }
+  try { handles = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Rhino, weather and results files', accept: { 'application/octet-stream': OPEN_TYPES() } }] }); }
   catch (e) { return; } // cancelled
   openEntries(await Promise.all(handles.map(async (handle) => ({ handle, file: await handle.getFile() }))));
+}
+
+// Open zip: one project zip, opened as a new project.
+async function pickZip() {
+  if (!window.showOpenFilePicker) {
+    const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.zip' });
+    input.addEventListener('change', () => { if (input.files[0]) openZip(null, input.files[0]); });
+    input.click();
+    return;
+  }
+  let handle;
+  try { [handle] = await window.showOpenFilePicker({ multiple: false, types: [{ description: 'Project zip', accept: { 'application/zip': ['.zip'] } }] }); }
+  catch (e) { return; } // cancelled
+  openZip(handle);
 }
 
 // Project zips --------------------------------------------------------------------------------
@@ -5164,7 +5180,9 @@ function bindProjectsMenu() {
   projectsMenu.body.innerHTML = `
     <div class="proj-actions">
       <button class="btn small" data-act="new" title="A new, blank project">New</button>
-      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project, or a project zip">Open files…</button>      <button class="btn small" data-act="zip" title="Save this project, with a copy of each of its files and its settings, as a zip that opens anywhere">Save as zip…</button>
+      <button class="btn small" data-act="open" title="Open Rhino, weather or results files as a new project">Open files…</button>
+      <button class="btn small" data-act="openZip" title="Open a project zip as a new project">Open zip…</button>
+      <button class="btn small" data-act="saveZip" title="Save this project, with a copy of each of its files and its settings, as a zip that opens anywhere">Save as zip…</button>
     </div>
     <input type="search" class="proj-filter" placeholder="Filter projects and files" aria-label="Filter projects by name or file name">
     <div class="proj-list" role="list"></div>
@@ -5174,7 +5192,7 @@ function bindProjectsMenu() {
     </div>`;
   const filter = projectsMenu.body.querySelector('.proj-filter');
   filter.addEventListener('input', renderRecent);
-  const act = { new: newProject, open: pickFiles, zip: saveProjectZip, demo: openDemo, settings: openSettings };
+  const act = { new: newProject, open: pickFiles, openZip: pickZip, saveZip: saveProjectZip, demo: openDemo, settings: openSettings };
   projectsMenu.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -5389,14 +5407,18 @@ function bindUi() {
     if (dirs.length) notice(`Folders can't be opened (${dirs.map((d) => d.name).join(', ')}): drop the files in ${dirs.length > 1 ? 'them' : 'it'} instead, or use Open files.`, true);
     let entries = files.map((file, i) => ({ file, handle: handles[i]?.kind === 'file' ? handles[i] : null })).filter((_, i) => handles[i]?.kind !== 'directory');
     if (!entries.length) return;
-    // A project zip opens as a new project.
-    for (const z of entries.filter(({ file }) => /\.zip$/i.test(file.name))) await openZip(z.handle, z.file);
+    // A project zip dropped on its own opens as a new project; dropped with other files (or other zips), it is left out.
+    const zips = entries.filter(({ file }) => /\.zip$/i.test(file.name));
+    if (zips.length === 1 && entries.length === 1) { await openZip(zips[0].handle, zips[0].file); return; }
+    // Said once the other files are open, as opening a model clears the notices before it.
+    const leftOut = () => { if (zips.length) notice(`Left out ${zips.map((z) => z.file.name).join(', ')}: a project zip is opened on its own (drop it by itself, or use Open zip).`, true); };
     entries = entries.filter(({ file }) => !/\.zip$/i.test(file.name));
-    if (!entries.length) return;
-    if (!model) { openEntries(entries); return; }
+    if (!entries.length) { leftOut(); return; }
+    if (!openProjectId()) { await openEntries(entries); leftOut(); return; }
     const rhino = entries.filter(({ file }) => /\.3dm$/i.test(file.name));
     if (rhino.length) await attachRhinoFiles(rhino);
     for (const { file, handle } of entries) if (!rhino.some((r) => r.file === file)) await openFile(file, handle);
+    leftOut();
   });
 
   bindCameraMenu();
