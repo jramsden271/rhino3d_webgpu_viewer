@@ -436,8 +436,8 @@ async function attachRhinoFile(file, handle) {
 
 // Several Rhino files attached at once: the view is shown again once, with all of them.
 async function attachRhinoFiles(entries) {
-  const projectId = model?.projectId;
-  if (!model) { await openEntries(entries); return; } // a blank project: they start it
+  const projectId = openProjectId();
+  if (!projectId) { await openEntries(entries); return; } // a blank project: they start it
   const withHandle = entries.filter((e) => e.handle);
   if (!projectId || !withHandle.length) { for (const { file, handle } of entries) await openFile(file, handle); return; }
   for (const { file, handle } of withHandle) await Recent.attach(projectId, handle, file);
@@ -2871,7 +2871,7 @@ function applyLocation() {
 // Save a change to the open project's settings. Typing saves once the typing pauses.
 let linkTimer = 0, linkPending = null; // { projectId, changes }
 function linkToModel(changes, delay = 0) {
-  const id = model?.projectId;
+  const id = openProjectId();
   if (!id) return;
   if (linkPending && linkPending.projectId !== id) flushLinks();
   linkPending = { projectId: id, changes: { ...linkPending?.changes, ...changes } };
@@ -3079,12 +3079,10 @@ function openAttachDialog() {
     return r;
   };
   const refresh = async () => {
-    const project = model?.projectId ? (await Recent.list()).find((p) => p.id === model.projectId) : null;
-    // Every Rhino file of the model is in its view; a file's layers are shown or hidden in the Layers panel.
-    // The last one cannot be taken off, as the view would have nothing in it.
+    const pid = openProjectId(), project = pid ? (await Recent.list()).find((p) => p.id === pid) : null;
     // Active: a Rhino file is in the view; a weather file is offered as a location or weather source.
-    const many = (project?.files.length || 0) > 1;
-    const rhino = (project?.files || []).map((f) => row(f.name, 'Rhino file', many ? () => detachRhinoFile(f.id) : null,
+    // A Rhino file that could not be found says so, so it can be removed (or attached again).
+    const rhino = (project?.files || []).map((f) => row(f.name, missingFiles.has(f.id) ? 'Rhino file · <b>not found</b>' : 'Rhino file', () => detachRhinoFile(f.id),
       { label: 'In view', title: 'Show this file in the view, with the others that are in view', on: !f.off, change: (on) => setRhinoFileOn(f.id, on) }));
     el('list').replaceChildren(
       ...rhino,
@@ -5262,44 +5260,80 @@ async function showProject(projectId, given = null) {
   const project = (await Recent.list()).find((p) => p.id === projectId);
   if (!project) return;
   const files = project.files.filter((f) => !f.off && (f.handle || f.zip || (given && f.id === given.fileId)));
-  if (!files.length) { notice(`Nothing in ${project.name} is active. Tick a file in Attach files to show it.`, true); renderRecent(); return; }
   try {
-    const sources = [];
+    // A file that cannot be found, or read, is left out: the project opens with the rest (or with none), so it
+    // can be put right in Attach files.
+    const sources = [], missing = [], refused = [];
     for (const f of files) {
       let blob = given && f.id === given.fileId ? given.file : null;
-      if (!blob) { showBusy(`Reading ${f.name}`, 0.02); blob = await projectFileBlob(f); }
-      if (!blob) { notice(`Permission to read ${f.name} was not given, so it is not in the view.`, true); continue; }
+      if (!blob) {
+        showBusy(`Reading ${f.name}`, 0.02);
+        try { blob = await projectFileBlob(f); }
+        catch (e) { if (e.name !== 'NotFoundError') throw e; missing.push(f); continue; }
+        if (!blob) { refused.push(f); continue; }
+      }
       sources.push({ key: f.id, name: f.name, bytes: new Uint8Array(await blob.arrayBuffer()), handle: f.handle ?? null, zip: f.zip ?? null, entry: f.entry ?? null });
     }
-    if (!sources.length) { hideBusy(); return; }
+    missingFiles = new Set(missing.map((f) => f.id));
     // The view open now is saved, and written, before the project's saved state is read: reopening the
     // project that is open must find the view as it is, not the one saved before it.
     saveViewState();
     await flushStore();
-    const stored = (await Recent.loadState(projectId)) || {};
-    await openScene(sources, { projectId, stored });
-    if (model?.projectId === projectId) { current = { id: projectId, name: project.name, blank: false }; showProjectName(); }
+    if (sources.length) {
+      const stored = (await Recent.loadState(projectId)) || {};
+      await openScene(sources, { projectId, stored });
+      if (model?.projectId === projectId) { current = { id: projectId, name: project.name, blank: false }; showProjectName(); }
+    } else {
+      hideBusy();
+      await openEmptyProject(project);
+    }
+    const names = (list) => list.map((f) => f.name).join(', '), many = (list) => list.length > 1;
+    if (missing.length) {
+      notice(`${names(missing)} could not be found. ${many(missing) ? 'They' : 'It'} may have been moved, renamed or deleted: in Attach files, remove ${many(missing) ? 'them' : 'it'}, or attach ${many(missing) ? 'them' : 'it'} again from where ${many(missing) ? 'they are' : 'it is'} now.`, true);
+    }
+    if (refused.length) notice(`Permission to read ${names(refused)} was not given, so ${many(refused) ? 'they are' : 'it is'} not in the view.`, true);
+    if (!files.length && project.files.length) notice(`Nothing in ${project.name} is in the view. Tick a file in Attach files to show it.`, true);
   } catch (e) {
     hideBusy();
-    notice(e.name === 'NotFoundError' ? `A file in ${project.name} could not be found. It may have been moved, renamed or deleted; remove it from the project in Attach files.` : `Could not open ${project.name}: ${e.message}`, true);
+    notice(`Could not open ${project.name}: ${e.message}`, true);
   }
   renderRecent();
   attachDialog?.refresh();
+}
+
+// The Rhino files of the open project that could not be found when it was opened (shown in Attach files).
+let missingFiles = new Set();
+
+// The open project's id: the model's, or that of a project open without one (see openEmptyProject); null for
+// a blank project.
+const openProjectId = () => model?.projectId ?? (current.blank ? null : current.id);
+
+// A project with nothing that can be shown (its files are missing, or none is in the view) still opens,
+// without a model, so its files can be put right in Attach files; its location and weather apply.
+async function openEmptyProject(project) {
+  newProject();
+  current = { id: project.id, name: project.name, blank: false };
+  showProjectName();
+  await restoreLinks(project.id);
+  syncResults();
+  applyLocation();
 }
 const openRecent = (r) => showProject(r.id);
 
 // Takes a Rhino file off the open model's project, and out of the view.
 async function detachRhinoFile(fileId) {
-  await Recent.detach(model.projectId, fileId);
+  const projectId = openProjectId();
+  await Recent.detach(projectId, fileId);
   renderRecent();
-  await showProject(model.projectId);
+  await showProject(projectId);
 }
 
 // Makes a Rhino file of the open model active (in the view) or not, and shows the view again.
 async function setRhinoFileOn(fileId, on) {
-  await Recent.setFileOn(model.projectId, fileId, on);
+  const projectId = openProjectId();
+  await Recent.setFileOn(projectId, fileId, on);
   renderRecent();
-  await showProject(model.projectId);
+  await showProject(projectId);
 }
 
 // Makes a weather file active or not. An inactive one is not offered as a location or weather source; if it
