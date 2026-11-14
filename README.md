@@ -600,19 +600,26 @@ here even though you can walk through them; glass counts as opaque. It reads:
   0-1, which stands in for shelter until the viewer can estimate it. It starts at 0.5, a
   typical allowance for streets and buildings; the UTCI itself expects 10 m wind speeds. Wind
   below 0.5 m/s (including calm) is counted as 0.5 m/s, the lowest speed the UTCI was fitted for.
-- **Mean radiant temperature** is the air temperature in shade. In sunlight (the sunlight line
-  above, including weak sunlight) two things are added:
-  - the direct sun on the person, by SolarCal (Arens et al. 2015, as in ladybug-comfort) for a
-    standing person turned side-on to the sun, from the direct normal radiation and the sun's
-    altitude: typically 10-25 °C;
-  - a placeholder for sun-warmed ground and walls nearby: direct normal × sin(altitude) / 60,
-    about 10 °C for 600 W/m² of direct sun on the ground. Sunlit paving is roughly 20-30 °C
-    hotter than shaded paving in summer, and the ground fills about half of a person's view.
+- **Mean radiant temperature** starts from the air temperature. SolarCal (Arens et al. 2015,
+  ASHRAE 55 Appendix C) adds the short-wave light on the person, from the weather file's
+  radiation for the hour, for someone turned side-on to the sun, standing or sitting (the
+  panel's **Posture**):
+  - skylight, from the diffuse horizontal radiation, in sun or shade;
+  - light off the ground (direct and diffuse, ground reflectance 0.25, as ladybug-comfort uses
+    outdoors), in sun or shade;
+  - the direct sun on the person, in sunlight only (the sunlight line above, including weak
+    sunlight): typically 10-25 °C.
 
-  Together a sunlit spot comes out about 15-27 °C warmer in radiant temperature than a shaded
-  one, in line with field measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI.
-  Surfaces heating up and cooling down over the day, their materials, the sky and reflected
-  light are not counted.
+  In sunlight a placeholder for sun-warmed ground and walls nearby is added too: direct normal ×
+  sin(altitude) / 60, about 10 °C for 600 W/m² of direct sun on the ground. Sunlit paving is
+  roughly 20-30 °C hotter than shaded paving in summer, and the ground fills about half of a
+  person's view.
+
+  Sun and shade come out about 15-27 °C apart in radiant temperature, in line with field
+  measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI. Not counted yet: how much of
+  the sky the person sees (taken to be all of it), the long-wave heat lost to a cold sky (so the
+  radiant temperature runs high, most of all under a bright overcast sky), and surfaces heating up
+  and cooling down over the day, and their materials.
 - **Clouds** are counted in one of two ways:
   - By default, the direct sun is the weather file's hourly direct normal radiation: an
     average that already allows for that hour's cloud by dimming the sun evenly. This is how
@@ -788,7 +795,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 
 | Command | What it does |
 | --- | --- |
-| `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort |
+| `node tools/test-utci.js` | Checks the UTCI against reference values from ladybug-comfort, and SolarCal against jsthermalcomfort |
 | `node tools/test-epw.js <folder or .epw files>` | Checks weather file reading against real files |
 | `node tools/test-magic.js` | Checks where a magic block is placed |
 | `node tools/test-sun.js` | Checks the sun path diagram |
@@ -830,10 +837,12 @@ tools/                   development helpers (local server, Node test scripts)
 from the BHoM LadybugTools Toolkit (`external_comfort/utci.py`). `utci(ta, tr, va, rh)` takes
 air and mean radiant temperature in °C, 10 m wind speed in m/s (clamped to 0.5-17, as
 ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays, and
-`utciCategory` gives the stress band and its colour. `solarMrtDelta` gives the rise in mean
-radiant temperature from direct sun (SolarCal), and `surroundingsMrtDelta` the placeholder for
-sun-warmed surroundings. `node tools/test-utci.js` checks it
-against values from ladybug-comfort.
+`utciCategory` gives the stress band and its colour. `solarCal` gives the rise in mean radiant
+temperature from sun and sky (SolarCal, ASHRAE 55's formulas and projection factor tables, as in
+jsthermalcomfort's `solar_gain`, but with the weather file's measured diffuse radiation), and
+`surroundingsMrtDelta` the placeholder for sun-warmed surroundings. `node tools/test-utci.js`
+checks the UTCI against values from ladybug-comfort, and `solarCal` against jsthermalcomfort,
+which is a development dependency for that test only and is not bundled into the page.
 
 ## Future work
 

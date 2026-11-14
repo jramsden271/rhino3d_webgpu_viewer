@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta } = require('../src/utci.js');
+const { utci, utciMany, utciInRange, utciCategory, solarCal, SOLARCAL_POSTURES, surroundingsMrtDelta } = require('../src/utci.js');
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [
@@ -53,14 +53,21 @@ for (const [v, name] of [[-41, 'Extreme cold stress'], [-40, 'Very strong cold s
   check(utciCategory(v).name === name, `category of ${v} is ${utciCategory(v).name}, expected ${name}`);
 }
 
-// Direct-sun MRT rise against ladybug-comfort's solarcal (get_projection_factor_simple):
-// [direct normal W/m², altitude °, SHARP °, MRT rise °C]
-for (const [dnr, alt, sharp, want] of [[800, 60, 135, 17.04033], [800, 30, 135, 26.507179], [500, 45, 90, 11.072833],
-  [300, 15, 10, 12.678817], [650, 7.5, 170, 27.470769], [900, 90, 135, 8.976602]]) {
-  const got = solarMrtDelta(dnr, alt, sharp);
-  check(Math.abs(got - want) < 1e-5, `solarMrtDelta(${dnr}, ${alt}, ${sharp}) = ${got}, expected ${want}`);
+// SolarCal against jsthermalcomfort's solar_gain (ASHRAE 55 Appendix C), which rounds to 0.1 °C. It
+// takes the diffuse light to be a fifth of the direct beam, so solarCal is given that here.
+const { solar_gain } = require('jsthermalcomfort');
+for (const posture of SOLARCAL_POSTURES) {
+  for (const [alt, sharp, dir, skyView, refl] of [[60, 135, 800, 1, 0.25], [30, 135, 800, 1, 0.6], [45, 90, 500, 0.5, 0.25],
+    [15, 10, 300, 1, 0.25], [7.5, 170, 650, 0.8, 0.4], [90, 135, 900, 1, 0.25], [52, 33, 420, 0.3, 0.6]]) {
+    const want = solar_gain(alt, sharp, dir, 1, skyView, 1, 0.7, posture, refl).delta_mrt;
+    const got = solarCal(alt, dir, 0.2 * dir, { posture, sharp, skyView, groundReflectance: refl }).total;
+    check(Math.abs(got - want) <= 0.051, `solarCal ${posture} (${alt}°, SHARP ${sharp}, ${dir} W/m², sky ${skyView}, ground ${refl}) = ${got.toFixed(3)}, jsthermalcomfort ${want}`);
+  }
 }
-check(solarMrtDelta(800, -2) === 0 && solarMrtDelta(0, 40) === 0, 'no sun, no rise');
+const shade = solarCal(40, 700, 120, { lit: false }), night = solarCal(-5, 0, 0);
+check(shade.direct === 0 && shade.diffuse > 0 && shade.reflected > 0, 'in shade: sky and ground, no direct sun');
+check(night.total === 0, 'at night: nothing');
+check(solarCal(40, 700, 120).direct > solarCal(40, 700, 120, { posture: 'sitting' }).direct * 0.5, 'sitting gives a direct part too');
 check(Math.abs(surroundingsMrtDelta(600, 90) - 10) < 1e-9 && Math.abs(surroundingsMrtDelta(600, 30) - 5) < 1e-9 && surroundingsMrtDelta(600, -1) === 0, 'sun-warmed surroundings');
 
 const t0 = performance.now();

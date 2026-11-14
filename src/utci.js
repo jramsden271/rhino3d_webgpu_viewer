@@ -151,35 +151,66 @@ export function utciCategory(value) {
   return UTCI_CATEGORIES.find((c) => value < c.below);
 }
 
-// Direct sun on a person (SolarCal: Arens et al. 2015, ASHRAE 55 Appendix C, as in
-// ladybug-comfort's solarcal module). Returns how much direct sunlight raises the mean radiant
-// temperature, °C, for a standing person in full sun. dnr: direct normal irradiance, W/m²;
-// altitude: sun altitude, degrees; sharp: sun angle from the person's front, degrees (0 in the
-// face, 180 on the back; 135, side-on and turned away from the glare, is SolarCal's default).
-// Shade, sky and ground reflections are left out: in shade the radiant temperature is taken to be
-// the air temperature.
-export function solarMrtDelta(dnr, altitude, sharp = 135) {
-  if (!(dnr > 0) || !(altitude > 0)) return 0;
-  const absorptivity = 0.7, emissivity = 0.95, exposedFraction = 0.725, radiantCoeff = 6.012;
-  const flux = solarProjectionFactor(Math.min(altitude, 90), sharp) * dnr;
-  return (flux * absorptivity) / emissivity / (exposedFraction * radiantCoeff);
+// Sun on a person outdoors (SolarCal: Arens et al. 2015, ASHRAE 55 Appendix C), as the rise in
+// mean radiant temperature, °C, in three parts:
+//   direct     the sun's beam on the body, only when the person is in sunlight
+//   diffuse    light from the sky, in sun or shade
+//   reflected  sunlight and skylight off the ground, in sun or shade
+// The formulas are ASHRAE 55's, as in jsthermalcomfort's solar_gain (and pythermalcomfort's), which
+// tools/test-utci.js checks this against. That version is for indoors behind glazing and takes the
+// diffuse light to be a fifth of the direct beam; outdoors the weather file's measured diffuse
+// horizontal radiation is used instead, as ladybug-comfort's outdoor_sky_heat_exch does.
+//   altitude   sun altitude, degrees
+//   beam       direct normal radiation on the person, W/m² (between or under simulated clouds, or the hour's)
+//   diffuse    diffuse horizontal radiation, W/m²
+//   options    lit (the person is in sunlight), groundBeam (direct normal radiation on the ground
+//              round about, W/m²: the hour's average, as the ground does not change as a cloud
+//              passes; default beam), posture ('standing' or 'sitting'), sharp (sun angle from the
+//              person's front, degrees: 0 in the face, 180 on the back; 135, side-on and turned away
+//              from the glare, is SolarCal's default), skyView (fraction of the sky the person sees, 1
+//              in the open), groundReflectance (0.25, ladybug-comfort's default for outdoors; ASHRAE's
+//              indoor floor default is 0.6), absorptivity (short-wave, 0.7)
+export const SOLARCAL_POSTURES = ['standing', 'sitting'];
+export function solarCal(altitude, beam, diffuse, { lit = true, groundBeam = beam, posture = 'standing', sharp = 135, skyView = 1, groundReflectance = 0.25, absorptivity = 0.7 } = {}) {
+  const sitting = posture === 'sitting', fEff = sitting ? 0.696 : 0.725; // fraction of the body that exchanges radiation
+  const up = altitude > 0 ? Math.min(altitude, 90) : 0;
+  const iDiff = diffuse > 0 ? diffuse : 0, iDir = up > 0 && beam > 0 ? beam : 0, iGround = up > 0 && groundBeam > 0 ? groundBeam : 0;
+  // Each part's flux on the body (W/m² of body surface), and the radiant temperature rise it makes:
+  // absorbed short-wave over long-wave emissivity (0.95), over the radiative heat transfer coefficient (6 W/m²K).
+  const rise = (flux) => (flux * absorptivity) / 0.95 / (6 * fEff);
+  const direct = lit && iDir ? rise(fEff * solarProjectionFactor(up, sharp, sitting) * iDir) : 0;
+  const sky = rise(fEff * skyView * 0.5 * iDiff);
+  const reflected = rise(fEff * skyView * 0.5 * (iGround * Math.sin((up * Math.PI) / 180) + iDiff) * groundReflectance);
+  return { direct, diffuse: sky, reflected, total: direct + sky + reflected };
 }
 
-// Fraction of a standing body's surface that faces the sun (Ap/Ad), interpolated from SolarCal's
-// table by sun altitude (0, 15 ... 90°) and SHARP (0, 15 ... 180°): ladybug-comfort's
-// get_projection_factor_simple.
-const SOLARCAL_STANDING = [
-  [0.254, 0.254, 0.228, 0.187, 0.149, 0.104, 0.059], [0.248, 0.248, 0.225, 0.183, 0.145, 0.102, 0.059],
-  [0.239, 0.239, 0.218, 0.177, 0.138, 0.096, 0.059], [0.225, 0.225, 0.199, 0.165, 0.127, 0.09, 0.059],
-  [0.205, 0.205, 0.182, 0.151, 0.116, 0.083, 0.059], [0.183, 0.183, 0.165, 0.136, 0.109, 0.078, 0.059],
-  [0.167, 0.167, 0.155, 0.131, 0.107, 0.078, 0.059], [0.175, 0.175, 0.161, 0.131, 0.111, 0.081, 0.059],
-  [0.199, 0.199, 0.178, 0.147, 0.12, 0.084, 0.059], [0.22, 0.22, 0.196, 0.16, 0.126, 0.088, 0.059],
-  [0.238, 0.238, 0.21, 0.17, 0.133, 0.091, 0.059], [0.249, 0.249, 0.22, 0.177, 0.138, 0.093, 0.059],
-  [0.252, 0.252, 0.223, 0.178, 0.138, 0.093, 0.059],
-];
-function solarProjectionFactor(altitude, sharp = 135) {
+// Fraction of the body's surface that faces the sun (fp, the projected area factor), interpolated by
+// sun altitude (0, 15 ... 90°, across) and SHARP (0, 15 ... 180°, down): ASHRAE 55's tables, as in
+// jsthermalcomfort's solar_gain (MIT licence, Federico Tartarini).
+const SOLARCAL_FP = {
+  standing: [
+    [0.35, 0.35, 0.314, 0.258, 0.206, 0.144, 0.082], [0.342, 0.342, 0.31, 0.252, 0.2, 0.14, 0.082],
+    [0.33, 0.33, 0.3, 0.244, 0.19, 0.132, 0.082], [0.31, 0.31, 0.275, 0.228, 0.175, 0.124, 0.082],
+    [0.283, 0.283, 0.251, 0.208, 0.16, 0.114, 0.082], [0.252, 0.252, 0.228, 0.188, 0.15, 0.108, 0.082],
+    [0.23, 0.23, 0.214, 0.18, 0.148, 0.108, 0.082], [0.242, 0.242, 0.222, 0.18, 0.153, 0.112, 0.082],
+    [0.274, 0.274, 0.245, 0.203, 0.165, 0.116, 0.082], [0.304, 0.304, 0.27, 0.22, 0.174, 0.121, 0.082],
+    [0.328, 0.328, 0.29, 0.234, 0.183, 0.125, 0.082], [0.344, 0.344, 0.304, 0.244, 0.19, 0.128, 0.082],
+    [0.347, 0.347, 0.308, 0.246, 0.191, 0.128, 0.082],
+  ],
+  sitting: [
+    [0.29, 0.324, 0.305, 0.303, 0.262, 0.224, 0.177], [0.292, 0.328, 0.294, 0.288, 0.268, 0.227, 0.177],
+    [0.288, 0.332, 0.298, 0.29, 0.264, 0.222, 0.177], [0.274, 0.326, 0.294, 0.289, 0.252, 0.214, 0.177],
+    [0.254, 0.308, 0.28, 0.276, 0.241, 0.202, 0.177], [0.23, 0.282, 0.262, 0.26, 0.233, 0.193, 0.177],
+    [0.216, 0.26, 0.248, 0.244, 0.22, 0.186, 0.177], [0.234, 0.258, 0.236, 0.227, 0.208, 0.18, 0.177],
+    [0.262, 0.26, 0.224, 0.208, 0.196, 0.176, 0.177], [0.28, 0.26, 0.21, 0.192, 0.184, 0.17, 0.177],
+    [0.298, 0.256, 0.194, 0.174, 0.168, 0.168, 0.177], [0.306, 0.25, 0.18, 0.156, 0.156, 0.166, 0.177],
+    [0.3, 0.24, 0.168, 0.152, 0.152, 0.164, 0.177],
+  ],
+};
+function solarProjectionFactor(altitude, sharp, sitting) {
   const a = Math.min(Math.max(altitude, 0), 90) / 15, s = Math.min(Math.max(sharp, 0), 180) / 15;
-  const i = Math.min(Math.floor(s), 11), j = Math.min(Math.floor(a), 5), fs = s - i, fa = a - j, T = SOLARCAL_STANDING;
+  const i = Math.min(Math.floor(s), 11), j = Math.min(Math.floor(a), 5), fs = s - i, fa = a - j;
+  const T = sitting ? SOLARCAL_FP.sitting : SOLARCAL_FP.standing;
   return (T[i][j] * (1 - fa) + T[i][j + 1] * fa) * (1 - fs) + (T[i + 1][j] * (1 - fa) + T[i + 1][j + 1] * fa) * fs;
 }
 
@@ -189,7 +220,7 @@ function solarProjectionFactor(altitude, sharp = 135) {
 // absorptivity 0.8), and the ground fills about half of a standing person's view, so the radiant
 // temperature rises by about half that: dnr × sin(altitude) / 60, or 10 °C for 600 W/m² of direct
 // sun on the ground. Field studies put the whole sun-shade difference in mean radiant temperature
-// at about 20-30 °C, which this and solarMrtDelta together match. It ignores how long surfaces
+// at about 20-30 °C, which this and the direct part of solarCal together match. It ignores how long surfaces
 // take to heat up and cool down, and what the surfaces are made of.
 export function surroundingsMrtDelta(dnr, altitude) {
   if (!(dnr > 0) || !(altitude > 0)) return 0;
