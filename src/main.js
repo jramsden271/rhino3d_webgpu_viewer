@@ -11,7 +11,7 @@ import { Zip } from './zip.js';
 import { dateFromDayOfYear, dayOfYear, daysInYear, fmtHour, moonLight, moonPosition, siderealTime, solarPosition, sunLight, sunPathDiagram, sunVector } from './sun.js';
 import { EPW, EPW_YEAR } from './epw.js';
 import { CLOUD_SPEED_MAX, cloudShadeAt, weatherSky } from './clouds.js';
-import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, solarCal, surroundingsMrtDelta, utci, utciCategory, utciInRange } from './utci.js';
+import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, skyLongwaveMrtDelta, solarCal, surroundingsMrtDelta, utci, utciCategory, utciInRange } from './utci.js';
 import { ColourScales } from './colourscales.js';
 import { RESULT_PARSERS, cfdMapFind, cfdMapValueAt, cfdMapValues, cfdMapVertices, parseResultsFile, resultParsersFor, streamlineVertices } from './results.js';
 import { Meshes } from './mesh.js';
@@ -4739,7 +4739,7 @@ function sunState(r) {
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised by the sun and sky on the person
 // (SolarCal: skylight and light off the ground always, the direct sun when the camera is in
-// sunlight) and, in sunlight, by sun-warmed surroundings (a placeholder).
+// sunlight) and, in sunlight, by sun-warmed surroundings (a placeholder), and lowered by the cold sky.
 
 function toggleComfortPanel() {
   const C = state.comfort;
@@ -4769,9 +4769,10 @@ function comfortNow() {
   // reflection off the ground are not.
   const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, groundBeam: w.directNormal, posture: state.comfort.posture });
   const dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
-  const tr = ta + sc.total + dSurr;
+  const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta); // the cold sky, day and night
+  const tr = ta + sc.total + dSurr + dSky;
   // Wind below the UTCI's 0.5 m/s is raised to it (utci does), so it is not counted as out of range.
-  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
+  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
 }
 
 // The simulated cloud at the camera: null with the option off; { off: reason } when there are no
@@ -4842,9 +4843,9 @@ function syncComfortPanel() {
 
 // What the radiant temperature adds to the air temperature, part by part (those that add anything).
 function radiantParts(r, f) {
-  const parts = [[r.sc.direct, 'sun on you'], [r.sc.diffuse, 'sky'], [r.sc.reflected, 'off the ground'], [r.dSurr, 'sunlit surroundings']]
-    .filter(([v]) => v >= 0.05).map(([v, what]) => `${f(v)} ${what}`);
-  return `<span class="fine">(${parts.length ? `air + ${parts.join(' + ')}` : '= air'})</span>`;
+  const parts = [[r.sc.direct, 'sun on you'], [r.sc.diffuse, 'skylight'], [r.sc.reflected, 'off the ground'], [r.dSurr, 'sunlit surroundings'], [r.dSky, 'cold sky']]
+    .filter(([v]) => Math.abs(v) >= 0.05).map(([v, what]) => `${v < 0 ? '−' : '+'} ${f(Math.abs(v))} ${what}`);
+  return `<span class="fine">(${parts.length ? `air ${parts.join(' ')}` : '= air'})</span>`;
 }
 
 // Under the UTCI: why simulated clouds, when asked for, could not be counted (the sunlight line
@@ -4860,7 +4861,8 @@ function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
     <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation) and <b>light off the ground</b> (direct and diffuse, with the ground reflecting a quarter), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person is turned side-on to the sun, and <b>Posture</b> sets whether they stand or sit, which changes how much of the body the direct sun falls on. In sunlight the warmth of sunlit ground and walls nearby is added too, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Sun and shade end up about 15 to 27 °C apart in radiant temperature in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI.</p>
-    <p>Not counted yet: the person is taken to see the whole sky (no street or building cuts it down); the heat the body loses to a cold sky, which makes the radiant temperature too high most of all under a bright overcast sky; surfaces heating up and cooling down over the day, and their materials.</p>
+    <p>The <b>cold sky</b> takes some off, day and night: the sky is colder than the air, much colder when it is clear, and the half of the body facing it loses heat to it. Its temperature comes from the weather file's horizontal infrared radiation, as ladybug-comfort works it out; ground and walls are taken to be at the air temperature.</p>
+    <p>Not counted yet: the person is taken to see the whole sky (no street or building cuts it down), which counts the most skylight and the most cold sky there can be; surfaces heating up and cooling down over the day, and their materials.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
 }

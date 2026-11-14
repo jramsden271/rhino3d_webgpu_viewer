@@ -214,6 +214,23 @@ function solarProjectionFactor(altitude, sharp, sitting) {
   return (T[i][j] * (1 - fa) + T[i][j + 1] * fa) * (1 - fs) + (T[i + 1][j] * (1 - fa) + T[i + 1][j + 1] * fa) * fs;
 }
 
+// Long-wave exchange with the sky: the sky is colder than the air (much colder when clear), so a
+// person who sees it loses heat to it, lowering the mean radiant temperature, °C (a negative number).
+// As ladybug-comfort's outdoor_sky_heat_exch (longwave_mrt_delta_from_horiz_ir): half the body faces
+// the sky, so the rise is half the sky's temperature less the surroundings', with the sky temperature
+// from the weather file's horizontal infrared radiation (ladybug's calc_sky_temperature, with the
+// body's emissivity, 0.95). The surroundings (ground and walls) are taken to be at the air temperature.
+//   horizIr   horizontal infrared radiation from the sky, W/m²
+//   surroundingsTemp   °C
+//   skyView   fraction of the sky the person sees, 1 in the open
+export function skyLongwaveMrtDelta(horizIr, surroundingsTemp, skyView = 1) {
+  if (!(horizIr > 0)) return 0;
+  return 0.5 * skyView * (skyTemperature(horizIr) - surroundingsTemp);
+}
+export function skyTemperature(horizIr, emissivity = 0.95) {
+  return (horizIr / (emissivity * 5.6697e-8)) ** 0.25 - 273.15;
+}
+
 // Sun-warmed surroundings: a placeholder for the extra mean radiant temperature of a sunlit
 // street over a shaded one, from ground and walls heated by the sun, °C. Sunlit paving runs
 // roughly 20-30 °C hotter than shaded paving in summer (about absorbed sun / 24 W/m²K, with

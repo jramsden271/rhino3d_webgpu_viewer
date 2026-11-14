@@ -616,10 +616,12 @@ here even though you can walk through them; glass counts as opaque. It reads:
   person's view.
 
   Sun and shade come out about 15-27 °C apart in radiant temperature, in line with field
-  measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI. Not counted yet: how much of
-  the sky the person sees (taken to be all of it), the long-wave heat lost to a cold sky (so the
-  radiant temperature runs high, most of all under a bright overcast sky), and surfaces heating up
-  and cooling down over the day, and their materials.
+  measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI. The cold sky takes some
+  off, day and night: half the sky's temperature less the air's (ladybug-comfort's
+  `longwave_mrt_delta_from_horiz_ir`), with the sky temperature from the weather file's horizontal
+  infrared radiation, and ground and walls taken to be at the air temperature. Not counted yet: how
+  much of the sky the person sees (taken to be all of it), and surfaces heating up and cooling down
+  over the day, and their materials.
 - **Clouds** are counted in one of two ways:
   - By default, the direct sun is the weather file's hourly direct normal radiation: an
     average that already allows for that hour's cloud by dimming the sun evenly. This is how
@@ -839,9 +841,10 @@ air and mean radiant temperature in °C, 10 m wind speed in m/s (clamped to 0.5-
 ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays, and
 `utciCategory` gives the stress band and its colour. `solarCal` gives the rise in mean radiant
 temperature from sun and sky (SolarCal, ASHRAE 55's formulas and projection factor tables, as in
-jsthermalcomfort's `solar_gain`, but with the weather file's measured diffuse radiation), and
-`surroundingsMrtDelta` the placeholder for sun-warmed surroundings. `node tools/test-utci.js`
-checks the UTCI against values from ladybug-comfort, and `solarCal` against jsthermalcomfort,
+jsthermalcomfort's `solar_gain`, but with the weather file's measured diffuse radiation),
+`skyLongwaveMrtDelta` the long-wave loss to the sky, and `surroundingsMrtDelta` the placeholder for
+sun-warmed surroundings. `node tools/test-utci.js` checks the UTCI against values from
+ladybug-comfort, the sky loss against its formula, and `solarCal` against jsthermalcomfort,
 which is a development dependency for that test only and is not bundled into the page.
 
 ## Future work

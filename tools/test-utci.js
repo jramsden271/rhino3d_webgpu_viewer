@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { utci, utciMany, utciInRange, utciCategory, solarCal, SOLARCAL_POSTURES, surroundingsMrtDelta } = require('../src/utci.js');
+const { utci, utciMany, utciInRange, utciCategory, solarCal, SOLARCAL_POSTURES, skyLongwaveMrtDelta, surroundingsMrtDelta } = require('../src/utci.js');
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [
@@ -68,6 +68,14 @@ const shade = solarCal(40, 700, 120, { lit: false }), night = solarCal(-5, 0, 0)
 check(shade.direct === 0 && shade.diffuse > 0 && shade.reflected > 0, 'in shade: sky and ground, no direct sun');
 check(night.total === 0, 'at night: nothing');
 check(solarCal(40, 700, 120).direct > solarCal(40, 700, 120, { posture: 'sitting' }).direct * 0.5, 'sitting gives a direct part too');
+
+// Long-wave loss to the sky, by ladybug-comfort's longwave_mrt_delta_from_horiz_ir and ladybug's
+// calc_sky_temperature (emissivity 0.95), worked out by hand: [horizontal infrared W/m², surroundings °C, sky view, MRT change °C]
+for (const [ir, t, sky, want] of [[330, 11, 1, -2.187932], [280, 20, 1, -12.317489], [390, 15, 0.5, 0.888978], [250, -5, 1, -3.567916], [420, 30, 0.8, -2.395712]]) {
+  const got = skyLongwaveMrtDelta(ir, t, sky);
+  check(Math.abs(got - want) < 1e-5, `skyLongwaveMrtDelta(${ir}, ${t}, ${sky}) = ${got}, expected ${want}`);
+}
+check(skyLongwaveMrtDelta(null, 20) === 0 && skyLongwaveMrtDelta(0, 20) === 0, 'no infrared reading: no change');
 check(Math.abs(surroundingsMrtDelta(600, 90) - 10) < 1e-9 && Math.abs(surroundingsMrtDelta(600, 30) - 5) < 1e-9 && surroundingsMrtDelta(600, -1) === 0, 'sun-warmed surroundings');
 
 const t0 = performance.now();
