@@ -1,6 +1,6 @@
 // Cities for the location picker: [name, country, latitude, longitude, UTC offset in
 // hours (standard time; daylight saving is ignored)].
-const CITIES = [
+export const CITIES = [
   ['London', 'United Kingdom', 51.5074, -0.1278, 0],
   ['Leeds', 'United Kingdom', 53.8008, -1.5491, 0],
   ['Birmingham', 'United Kingdom', 52.4862, -1.8904, 0],

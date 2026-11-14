@@ -19,7 +19,10 @@
 //
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
-const WALK = {
+import { V3 } from './math.js';
+import { PROBE } from './renderer.js';
+
+export const WALK = {
   EYE: 1.5,         // eye height above the ground
   HEAD: 1.65,       // top of the head: obstacles below this block
   STEP: 1.0,        // highest step or wall that can be climbed
@@ -60,7 +63,7 @@ const WALK = {
 const MOVE_KEYS = { w: [1, 0], arrowup: [1, 0], s: [-1, 0], arrowdown: [-1, 0], a: [0, -1], arrowleft: [0, -1], d: [0, 1], arrowright: [0, 1] };
 const CLIMB_KEYS = { e: 1, q: -1 };
 
-class Walker {
+export class Walker {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
   //        shift(): Shift held, onExit(), notice(text, ms), fade() }
   constructor(ctx) {

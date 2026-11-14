@@ -8,7 +8,7 @@
 //   await Zip.entries(blob)                        -> [{ name, method, size, compressedSize, crc, localOffset }]
 //   await Zip.read(blob, entry)                    -> Blob of the entry's contents
 
-const Zip = (() => {
+export const Zip = (() => {
   const MAX32 = 0xffffffff;
   const CRC_TABLE = (() => {
     const t = new Uint32Array(256);

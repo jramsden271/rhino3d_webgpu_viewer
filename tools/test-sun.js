@@ -3,8 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'sun.js'), 'utf8');
-const { sunPathDiagram, dayOfYear } = new Function(`${src}\nreturn { sunPathDiagram, dayOfYear };`)();
+const { sunPathDiagram, dayOfYear } = require('../src/sun.js');
 
 const place = (lat, lon, utcOffset, north = 90, doy = dayOfYear(2017, 6, 21)) => sunPathDiagram({ lat, lon, utcOffset, north, year: 2017, doy, dayName: 'Today' });
 const alt = (p) => Math.asin(p[2]) * 180 / Math.PI;

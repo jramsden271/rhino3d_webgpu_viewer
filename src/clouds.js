@@ -9,8 +9,11 @@
 // The light itself comes from the radiation, which needs no inferring: the sun's strength from the
 // direct normal irradiance against a clear sky's, the sky's from the diffuse horizontal.
 
-const CLOUD_SPEED_MAX = 100; // the Weather widget's cloud speed multiplier: 0 .. this
-const CLOUD_KM = 1.5;        // height of the cloud layer the sky shader draws
+import { DEG, dateFromDayOfYear, smooth } from './sun.js';
+import { EPW_YEAR } from './epw.js';
+
+export const CLOUD_SPEED_MAX = 100; // the Weather widget's cloud speed multiplier: 0 .. this
+export const CLOUD_KM = 1.5;        // height of the cloud layer the sky shader draws
 
 // Clear-sky irradiance (W/m²) for a sun altitude in degrees: Haurwitz for global horizontal,
 // Meinel with the Kasten & Young air mass for direct normal.
@@ -69,7 +72,7 @@ function fillGaps(a, wraps) {
 // The drawn clouds' shadows take about 0.9 x cover of the sun on average, so of the dimming the
 // hour's direct radiation shows, they account for that much and an even haze for the rest:
 // haze (0-1) dims the sun in the gaps, where gapBeam (W/m²) is its direct normal irradiance.
-function weatherSky(epw, doy, hour, altitude) {
+export function weatherSky(epw, doy, hour, altitude) {
   const { month, day } = dateFromDayOfYear(EPW_YEAR, doy);
   const f = epw.index(month, day, hour);
   if (f === null) return null;
@@ -116,7 +119,7 @@ function cloudLevel(cover) {
 
 // Cloud shadow at a point p (model units from the origin): 1 in the open, down to 0.1 under a
 // cloud. sunDir: towards the sun (model space); drift: how far the clouds have moved (m).
-function cloudShadeAt(p, sunDir, cover, drift, metresPerUnit) {
+export function cloudShadeAt(p, sunDir, cover, drift, metresPerUnit) {
   if (cover < 0.01) return 1;
   const k = metresPerUnit / 1000, up = Math.max(CLOUD_KM - p[2] * k, 0), lz = Math.max(sunDir[2], 0.08);
   const qx = p[0] * k + (sunDir[0] / lz) * up - drift[0] / 1000, qy = p[1] * k + (sunDir[1] / lz) * up - drift[1] / 1000;

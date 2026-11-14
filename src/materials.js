@@ -13,7 +13,7 @@
 // ground), so a different colour keeps the variation. tones: the darkest and lightest variation as
 // factors of the base colour, for the two-tone layer swatch (the shader in renderer.js uses the same).
 
-const MATERIAL_RULES = [
+export const MATERIAL_RULES = [
   { id: 1, name: 'Water', rgb: [0.218, 0.326, 0.343], keywords: ['water', 'river', 'canal', 'lake$', 'lakes$', 'pond', 'sea$', 'stream$', 'streams$', 'reservoir', 'harbour', 'harbor', 'lagoon'] },
   { id: 2, name: 'Glass', rgb: [0.32, 0.38, 0.43], keywords: ['glass', 'glazing', 'glazed', 'curtain wall', 'curtainwall', 'window'] },
   { id: 3, name: 'Vegetation', rgb: [0.30, 0.38, 0.23], tones: [[0.8, 0.868, 0.87], [1.2, 1.132, 1.13]], keywords: ['tree', 'vegetation', 'veg$', 'planting', 'foliage', 'hedge', 'shrub', 'bush', 'woodland', 'forest'] },
@@ -27,8 +27,8 @@ const MATERIAL_RULES = [
   { id: 9, name: 'Red masonry', rgb: [0.56, 0.29, 0.21], tones: [[0.8, 0.78, 0.78], [1.15, 1.18, 1.2]], keywords: ['brick', 'masonry', 'red masonry'] },
 ];
 
-const MAT_WATER = 1, MAT_GLASS = 2, MAT_VEGETATION = 3;
-const SPECIAL = Object.fromEntries(MATERIAL_RULES.map((r) => [r.id, r]));
+export const MAT_WATER = 1, MAT_GLASS = 2, MAT_VEGETATION = 3;
+export const SPECIAL = Object.fromEntries(MATERIAL_RULES.map((r) => [r.id, r]));
 
 const ruleRegexes = MATERIAL_RULES.map((r) => ({
   id: r.id,
@@ -49,7 +49,7 @@ function classifyMaterial(text) {
 }
 
 // Auto match for layer i: { id, from: 'name' | 'parent' | 'material', text } or null.
-function matchLayer(layers, i) {
+export function matchLayer(layers, i) {
   const l = layers[i];
   if (!l) return null;
   for (let p = i; p >= 0 && layers[p]; p = layers[p].parent) {

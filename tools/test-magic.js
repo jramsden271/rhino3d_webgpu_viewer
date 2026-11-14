@@ -3,8 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'magicblocks.js'), 'utf8');
-const { magicSource, magicPlacement } = new Function(`${src}\nreturn { magicSource, magicPlacement };`)();
+const { magicSource, magicPlacement } = require('../src/magicblocks.js');
 
 const near = (a, b, what) => assert(Math.abs(a - b) < 1e-6, `${what}: ${a} is not ${b}`);
 const tree = { height: 9, ground: true, randomRotation: false };

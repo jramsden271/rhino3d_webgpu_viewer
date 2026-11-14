@@ -1,0 +1,12 @@
+{
+  "name": "rhino3d-webgpu-viewer",
+  "private": true,
+  "description": "A single HTML file that opens Rhino .3dm models in the browser and renders them with WebGPU",
+  "scripts": {
+    "build": "node build.js",
+    "serve": "node tools/serve.js 8123"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

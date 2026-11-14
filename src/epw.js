@@ -10,7 +10,9 @@
 // Years: a typical year is stitched together from months of different real years, so the year
 // column is not meaningful and is ignored. Where a year is needed, the convention is 2017.
 
-const EPW_YEAR = 2017;
+import { dateFromDayOfYear } from './sun.js';
+
+export const EPW_YEAR = 2017;
 
 // [key, column, unit, missing marker (values at or above it are missing)]
 const EPW_FIELDS = [
@@ -43,7 +45,7 @@ const EPW_FIELDS = [
   ['liquidPrecipitationHours', 34, 'h', 99],
 ];
 
-class EPW {
+export class EPW {
   // bytes: ArrayBuffer or Uint8Array. Most files are UTF-8 or plain ASCII; older ones with
   // accented place names are Windows-1252.
   static fromBytes(bytes, fileName) {
@@ -168,7 +170,7 @@ class EPW {
 }
 
 // Location only, from the first line, for when the hourly data is not needed.
-function epwLocation(text) {
+export function epwLocation(text) {
   const m = /^﻿?\s*LOCATION\s*,([^\r\n]*)/i.exec(text);
   if (!m) throw new Error('Not an EPW weather file: there is no LOCATION line.');
   return parseLocation(m[1]);

@@ -2,7 +2,7 @@
 // splitting long edges and finding normals. A mesh is { pos (x, y, z, ...), idx (three vertices
 // per triangle, anticlockwise seen from its front) }.
 
-const Meshes = {
+export const Meshes = {
   // One mesh from several: [{ pos, idx, xf (optional: a row-major 4x4 transform) }].
   join(list) {
     let nv = 0, ni = 0;

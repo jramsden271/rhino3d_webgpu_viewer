@@ -1,11 +1,13 @@
 // Builds one self-contained file with the viewer, rhino3dm.js and its WebAssembly binary inlined.
-//   node build.js   writes dist/index.html (git-ignored). Cloudflare Pages runs this same command
-//                   to build the live site from main and the preview site from develop.
+//   npm install     once, for esbuild, which bundles the app's ES modules (src/main.js and what it imports).
+//   node build.js   writes dist/index.html (git-ignored). Cloudflare Pages runs npm install and then this
+//                   same command to build the live site from main and the preview site from develop.
 // Downloads rhino3dm from the npm registry the first time only; afterwards it works offline.
 
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const esbuild = require('esbuild');
 
 const RHINO3DM_VERSION = '8.35.0';
 const root = __dirname;
@@ -44,10 +46,16 @@ async function ensureRhino3dm() {
     rhinoTags += `<script>RHINO3DM_FACTORIES.${k} = (function () {\n${safe(loader)}\nreturn rhino3dm;\n})();</script>\n`;
     rhinoTags += `<script>RHINO3DM_WASM.${k} = "${wasm}";</script>\n`;
   }
-  html = html.replace(/<script src="([^"]+)"><\/script>\n?/g, (_, f) => {
-    if (f.includes('vendor/')) return rhinoTags;
-    return `<script>\n${safe(fs.readFileSync(path.join(src, f), 'utf8'))}\n</script>\n`;
+  html = html.replace(/<script src="[^"]*vendor\/[^"]+"><\/script>\n?/, () => rhinoTags);
+
+  // The app is ES modules from main.js, bundled by esbuild into one classic script and inlined.
+  // Not minified, so the built page stays readable in the browser's developer tools.
+  const bundle = await esbuild.build({
+    entryPoints: [path.join(src, 'main.js')], bundle: true, write: false, format: 'iife',
+    target: 'es2022', charset: 'utf8', legalComments: 'inline', logLevel: 'warning',
   });
+  html = html.replace(/<script type="module" src="main\.js"><\/script>\n?/, () => `<script>\n${safe(bundle.outputFiles[0].text)}</script>\n`);
+  if (/<script[^>]* src=/.test(html)) throw new Error('index.html has a script tag the build does not know how to inline');
 
   html = html.replace('<title>3DM Viewer</title>', `<title>3DM Viewer</title>\n<!-- Built ${new Date().toISOString().slice(0, 10)} · rhino3dm ${RHINO3DM_VERSION} (MIT, Robert McNeel & Associates) -->`);
   fs.mkdirSync(path.dirname(out), { recursive: true });

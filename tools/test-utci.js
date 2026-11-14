@@ -5,8 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'utci.js'), 'utf8');
-const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta } = new Function(`${src}\nreturn { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta };`)();
+const { utci, utciMany, utciInRange, utciCategory, solarMrtDelta, surroundingsMrtDelta } = require('../src/utci.js');
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [

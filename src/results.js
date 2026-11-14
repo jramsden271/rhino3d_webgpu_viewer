@@ -6,6 +6,8 @@
 // parseResultsFile tries each parser in turn until one recognises the file. A parser's extensions
 // and an early check in its parse keep that cheap for files meant for another parser.
 
+import { ColourScales } from './colourscales.js';
+
 const LENGTH_IN_METRES = { m: 1, mm: 0.001, cm: 0.01, km: 1000, ft: 0.3048, in: 0.0254 };
 
 // "X [ m ]" -> { name: 'x', unit: 'm' }
@@ -17,7 +19,7 @@ function resultColumn(heading) {
 // CFX streamlines: one or more [Name], [Data] (nodes) and [Lines] (pairs of node numbers) sections.
 // Gives { streamlines: [{ name, segments, polylines: [{ points, velocity }] }] }: points (metres, x,
 // y, z, ...) with the velocity (m/s) of each, so the node numbers are not kept.
-function parseCfdStreamlines(text) {
+export function parseCfdStreamlines(text) {
   if (!/^\[Lines\]\s*$/m.test(text)) return null;
   const streamlines = [];
   let section = null, cur = null, cols = null, scale = 1;
@@ -97,7 +99,7 @@ const resultNumber = (s) => {
 // indices (triangles, as rows of points), results: [{ name, unit, metric, values }], faces,
 // skippedFaces, missing }] }. A node without a position loses its faces (skippedFaces), and a
 // value it lacks is NaN (missing: how many nodes lack any).
-function parseCfdMap(text) {
+export function parseCfdMap(text) {
   if (!/^\[Faces\]\s*$/m.test(text)) return null;
   const maps = [];
   let section = null, cur = null, cols = null, scale = 1;
@@ -155,7 +157,7 @@ function parseCfdMap(text) {
 }
 
 // A map's positions for the GPU, in the model's units relative to its origin.
-function cfdMapVertices(map, metresPerUnit, origin) {
+export function cfdMapVertices(map, metresPerUnit, origin) {
   const pos = new Float32Array(map.points.length);
   for (let i = 0; i < pos.length; i++) pos[i] = map.points[i] / metresPerUnit - origin[i % 3];
   return pos;
@@ -163,13 +165,13 @@ function cfdMapVertices(map, metresPerUnit, origin) {
 
 // A result's values for the GPU: missing ones become a huge number, which hides the faces around them.
 const CFD_MAP_MISSING = 1e30;
-function cfdMapValues(result) {
+export function cfdMapValues(result) {
   return result.values.map((v) => (Number.isNaN(v) ? CFD_MAP_MISSING : v));
 }
 
 // Finds the triangle under a point, using a grid over the map in plan.
 // -> { a, b, c (rows of points), wa, wb, wc (weights) }, the one nearest z where several overlap.
-function cfdMapFind(map, x, y, z) {
+export function cfdMapFind(map, x, y, z) {
   const P = map.points, T = map.indices, n = T.length / 3;
   if (!map.grid) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -210,9 +212,9 @@ function cfdMapFind(map, x, y, z) {
 }
 
 // A result's value at a place from cfdMapFind; NaN if a corner lacks it.
-const cfdMapValueAt = (result, h) => result.values[h.a] * h.wa + result.values[h.b] * h.wb + result.values[h.c] * h.wc;
+export const cfdMapValueAt = (result, h) => result.values[h.a] * h.wa + result.values[h.b] * h.wb + result.values[h.c] * h.wc;
 
-const RESULT_PARSERS = [
+export const RESULT_PARSERS = [
   { id: 'cfdStreamlines', name: 'CFD streamlines', extensions: ['.csv'], parse: parseCfdStreamlines,
     describe({ streamlines }) {
       const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`;
@@ -228,10 +230,10 @@ const RESULT_PARSERS = [
     } },
 ];
 
-const resultParsersFor = (fileName) => RESULT_PARSERS.filter((p) => p.extensions.some((x) => fileName.toLowerCase().endsWith(x)));
+export const resultParsersFor = (fileName) => RESULT_PARSERS.filter((p) => p.extensions.some((x) => fileName.toLowerCase().endsWith(x)));
 
 // -> { parser, data }, or null if no parser recognises the file.
-function parseResultsFile(bytes, fileName) {
+export function parseResultsFile(bytes, fileName) {
   const parsers = resultParsersFor(fileName);
   if (!parsers.length) return null;
   const text = new TextDecoder().decode(bytes);
@@ -245,7 +247,7 @@ function parseResultsFile(bytes, fileName) {
 // Line-list vertices for streamlines, in the model's units relative to its origin, with each
 // segment the colour (colourOf, velocity -> [r, g, b]) of its start node. ranges: for each streamline, a { first, count } in vertices
 // for each of its polylines.
-function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
+export function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
   const total = streamlines.reduce((s, l) => s + l.segments, 0);
   const pos = new Float32Array(total * 6), col = new Uint8Array(total * 8), ranges = [];
   let at = 0;

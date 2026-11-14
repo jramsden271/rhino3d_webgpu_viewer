@@ -1,5 +1,30 @@
 // App wiring: file loading, input handling, layer panel and toolbar.
 
+import { M4, V3 } from './math.js';
+import { MATERIAL_RULES, MAT_VEGETATION, MAT_WATER, SPECIAL, matchLayer } from './materials.js';
+import { MAGIC_BLOCKS, MAGIC_BY_ID, MAGIC_PARENT_LAYER, magicMeshes } from './magicblocks.js';
+import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes } from './extract.js';
+import { Dialog } from './dialog.js';
+import { CITIES } from './cities.js';
+import { Recent } from './recent.js';
+import { Zip } from './zip.js';
+import { dateFromDayOfYear, dayOfYear, daysInYear, fmtHour, moonLight, moonPosition, siderealTime, solarPosition, sunLight, sunPathDiagram, sunVector } from './sun.js';
+import { EPW, EPW_YEAR } from './epw.js';
+import { CLOUD_SPEED_MAX, cloudShadeAt, weatherSky } from './clouds.js';
+import { UTCI_CATEGORIES, UTCI_WIND_MIN, solarMrtDelta, surroundingsMrtDelta, utci, utciCategory, utciInRange } from './utci.js';
+import { ColourScales } from './colourscales.js';
+import { RESULT_PARSERS, cfdMapFind, cfdMapValueAt, cfdMapValues, cfdMapVertices, parseResultsFile, resultParsersFor, streamlineVertices } from './results.js';
+import { Meshes } from './mesh.js';
+import { EXPOSURE_DATE_SPANS, EXPOSURE_LIFT, EXPOSURE_SPACINGS, EXPOSURE_STEPS, EXPOSURE_TEXEL, EXPOSURE_TIME_SPANS, exposureDays, exposureHours, exposureLayerMeshes, exposurePointEstimate, exposureSummary, exposureSunDirs, exposureSurface, exposureTimes } from './exposure.js';
+import { Camera, movementRules } from './camera.js';
+import { ChoiceList, ToolbarMenu } from './toolmenu.js';
+import { RowSelection } from './listselect.js';
+import { WALK, Walker } from './walk.js';
+import { DRIVE_CAMS, Driver } from './drive.js';
+import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascades } from './renderer.js';
+import { DEMO_3DM } from './demo.js';
+import { Widgets } from './widgets.js';
+
 const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 

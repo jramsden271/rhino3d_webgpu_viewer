@@ -1,15 +1,15 @@
 // Solar position (NOAA general solar position equations; accurate to well under a degree,
 // which is ample for visual sun studies) and conversion to a direction in model space.
 
-const DEG = Math.PI / 180;
+export const DEG = Math.PI / 180;
 
 const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-const daysInYear = (y) => (isLeap(y) ? 366 : 365);
+export const daysInYear = (y) => (isLeap(y) ? 366 : 365);
 
-function dayOfYear(year, month, day) {
+export function dayOfYear(year, month, day) {
   return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000) + 1;
 }
-function dateFromDayOfYear(year, doy) {
+export function dateFromDayOfYear(year, doy) {
   const d = new Date(Date.UTC(year, 0, doy));
   return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
@@ -17,7 +17,7 @@ function dateFromDayOfYear(year, doy) {
 // opts: { lat, lon (degrees, east positive), utcOffset (hours), year, doy, hour (local clock) }
 // Returns azimuth (degrees clockwise from north), altitude (degrees), and sunrise / sunset /
 // solar noon in local clock hours (null when the sun does not rise or set that day).
-function solarPosition({ lat, lon, utcOffset, year, doy, hour }) {
+export function solarPosition({ lat, lon, utcOffset, year, doy, hour }) {
   const g = ((2 * Math.PI) / daysInYear(year)) * (doy - 1 + (hour - utcOffset - 12) / 24);
   const eqTime = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
   const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g)
@@ -51,7 +51,7 @@ function solarPosition({ lat, lon, utcOffset, year, doy, hour }) {
 
 // Unit vector towards the sun in model coordinates. northAngle follows Rhino: degrees
 // anticlockwise from the model +X axis to north (90 = +Y is north).
-function sunVector(azimuth, altitude, northAngle) {
+export function sunVector(azimuth, altitude, northAngle) {
   const n = northAngle * DEG, north = [Math.cos(n), Math.sin(n), 0], east = [Math.sin(n), -Math.cos(n), 0];
   const a = azimuth * DEG, h = altitude * DEG, c = Math.cos(h);
   return [
@@ -68,7 +68,7 @@ const SUN_PATH_LOW = Math.sin(4 * DEG); // labels stay this high, clear of the h
 // A sun path diagram, as directions in model coordinates. opts: { lat, lon, utcOffset, year, north,
 // doy, dayName }: doy is a day to pick out, called dayName. Returns segments: [{ a, b, kind }], cut off
 // at the horizon, and labels: [{ dir, text, kind }]. kind: 'month', 'hour', 'horizon' or 'day'.
-function sunPathDiagram({ lat, lon, utcOffset, year, north, doy, dayName }) {
+export function sunPathDiagram({ lat, lon, utcOffset, year, north, doy, dayName }) {
   const at = (d, hour) => {
     const p = solarPosition({ lat, lon, utcOffset, year, doy: d, hour });
     return sunVector(p.azimuth, p.altitude, north);
@@ -142,7 +142,7 @@ const SKY_KEYS = [
 
 // Approximate daylight colour (linear RGB, scaled by intensity), sky brightness, sky colours and
 // how dark it is (night: 0 by day, 1 once the stars are fully out).
-function sunLight(altitude) {
+export function sunLight(altitude) {
   const s = Math.sin(altitude * DEG);
   const up = smooth(-0.02, 0.06, s);           // fades in around sunrise
   const warm = smooth(0.0, 0.4, s);            // low sun is warmer
@@ -163,7 +163,7 @@ function j2000Days({ utcOffset, year, doy, hour }) {
 }
 
 // Local sidereal time (radians): turns the star field with the time of day and year.
-function siderealTime(opts) {
+export function siderealTime(opts) {
   const deg = 280.46061837 + 360.98564736629 * j2000Days(opts) + opts.lon;
   return (((deg % 360) + 360) % 360) * DEG;
 }
@@ -172,7 +172,7 @@ function siderealTime(opts) {
 // with the parallax from the observer's place on Earth (up to ~1 deg near the horizon).
 // opts as solarPosition. Returns azimuth, altitude (degrees), lit (illuminated fraction 0..1),
 // waxing (true while the lit fraction is growing) and phase (a name).
-function moonPosition(opts) {
+export function moonPosition(opts) {
   const d = j2000Days(opts), T = d / 36525;
   const sd = (a) => Math.sin(a * DEG), cd = (a) => Math.cos(a * DEG);
   const M = 134.9 + 477198.85 * T, D2 = 259.2 - 413335.38 * T, F2 = 235.7 + 890534.23 * T;
@@ -202,14 +202,14 @@ function moonPosition(opts) {
 }
 
 // Moonlight (linear RGB): bluish, brightest at full moon, only once the sky is dark.
-function moonLight(moonAltitude, lit, night) {
+export function moonLight(moonAltitude, lit, night) {
   const k = 0.32 * Math.pow(lit, 1.5) * night * smooth(-1, 6, moonAltitude);
   return [0.62, 0.72, 1.0].map((v) => v * k);
 }
 
-function smooth(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+export function smooth(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
-const fmtHour = (h) => {
+export const fmtHour = (h) => {
   if (h == null) return '—';
   const m = Math.round((((h % 24) + 24) % 24) * 60);
   return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;

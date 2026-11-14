@@ -299,7 +299,7 @@ const HYDRAULIC = (() => {
 
 const TRACKS = [NEON, BOULEVARD, FURNACE, HYDRAULIC];
 
-class DriveMusic {
+export class DriveMusic {
   // ctx(): the AudioContext to play through (shared with the car's sounds), or null.
   constructor(ctx) {
     this.ctx = ctx;

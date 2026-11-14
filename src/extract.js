@@ -5,6 +5,10 @@
 // as float32; block-definition geometry is read in its local coordinates and transformed in
 // JS doubles. This keeps site-coordinate models (e.g. 6-digit eastings) free of float jitter.
 
+import { V3 } from './math.js';
+import { MAT_VEGETATION, matchLayer } from './materials.js';
+import { addMagicLayers, magicMeshes, magicPlacement, magicSource } from './magicblocks.js';
+
 const MAX_BATCH_VERTS = 4_000_000;
 const CHUNKS_ACROSS = 32; // grid cells across the model (a square site; a long thin one has fewer)
 const EDGE_COS = Math.cos((30 * Math.PI) / 180);
@@ -13,7 +17,7 @@ const DEFAULT_MATERIAL = { name: '', rgb: [0.85, 0.84, 0.81], alpha: 1 }; // war
 const NO_REFS = { cLayer: -1, cMatLayer: -1, mLayer: -1 };
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const enumName = (e) => (e && e.constructor ? e.constructor.name.replace(/^[A-Za-z]+_/, '') : String(e));
+export const enumName = (e) => (e && e.constructor ? e.constructor.name.replace(/^[A-Za-z]+_/, '') : String(e));
 const rgbOf = (c) => [c.r / 255, c.g / 255, c.b / 255];
 
 // ---------------------------------------------------------------------------------------------
@@ -189,7 +193,7 @@ function weldVertices(pos) {
 
 // Area-weighted normals averaged across coincident vertices: turns faceted low-poly shapes
 // (typically tree canopies) into smoothly shaded ones.
-function smoothNormals(pos, idx) {
+export function smoothNormals(pos, idx) {
   const pos32 = pos instanceof Float32Array ? pos : Float32Array.from(pos);
   const { weld, nw } = weldVertices(pos32), acc = new Float64Array(nw * 3);
   for (let t = 0; t < idx.length; t += 3) {
@@ -295,7 +299,7 @@ const meshBuffers = (m) => {
 
 // origin: the point geometry is measured from. A file read to be shown with others takes the first file's
 // origin, so the files share coordinates; by default it is the middle of the file's objects.
-async function extractModel(rhino, doc, onProgress, origin = null, scale = 1) {
+export async function extractModel(rhino, doc, onProgress, origin = null, scale = 1) {
   const scene = await extractScene(rhino, doc, onProgress, origin, scale);
   onProgress?.(1, 'Building batches');
   await tick();
@@ -308,7 +312,7 @@ async function extractModel(rhino, doc, onProgress, origin = null, scale = 1) {
 // parts share one origin (see extractModel). Batches are built by the caller.
 // keys: one per part, the key its ids are given (a project's file id, which stays the same when other files are
 // turned off or added), or null for the part's number when there are several parts and no ids otherwise.
-function mergeScenes(parts, names, keys = null) {
+export function mergeScenes(parts, names, keys = null) {
   const sum = (a, b) => { for (const k of Object.keys(b)) a[k] = (a[k] || 0) + b[k]; return a; };
   const multi = names.length > 1;
   // Rhino's ids (layers, objects, block definitions) are only unique within one file, so each gets its file's
@@ -353,7 +357,7 @@ function mergeScenes(parts, names, keys = null) {
   return out;
 }
 
-async function extractScene(rhino, doc, onProgress, originOverride = null, scale = 1) {
+export async function extractScene(rhino, doc, onProgress, originOverride = null, scale = 1) {
   const objects = doc.objects();
   const stats = { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {} };
   const skip = (bucket, name) => (stats[bucket][name] = (stats[bucket][name] || 0) + 1);
@@ -536,7 +540,7 @@ async function extractScene(rhino, doc, onProgress, originOverride = null, scale
 
 const TYPE_LABEL = { Brep: 'Polysurface', Extrusion: 'Extrusion', Mesh: 'Mesh', SubD: 'SubD', InstanceReference: 'Block instance', Curve: 'Curve', Point: 'Point' };
 const xformOf = (t) => new Float64Array([t.m00, t.m01, t.m02, t.m03, t.m10, t.m11, t.m12, t.m13, t.m20, t.m21, t.m22, t.m23, t.m30, t.m31, t.m32, t.m33]);
-const mulRM = (a, b) => {
+export const mulRM = (a, b) => {
   const o = new Float64Array(16);
   for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { let s = 0; for (let k = 0; k < 4; k++) s += a[r * 4 + k] * b[k * 4 + c]; o[r * 4 + c] = s; }
   return o;
@@ -546,7 +550,7 @@ const seedOf = (a, b, c) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 
 
 // A block definition's setting for its sub-elements, chosen in the viewer: the sources that replace
 // each sub-element's own. Without one, they are as in the file.
-const SUB_SOURCES = { byParent: { cs: 3, ms: 3 }, byLayer: { cs: 0, ms: 0 } };
+export const SUB_SOURCES = { byParent: { cs: 3, ms: 3 }, byLayer: { cs: 0, ms: 0 } };
 
 // An object's colour and material from its attributes, its layer, and (inside a block) the
 // enclosing instance's resolved look. Also records where each came from, so that layer edits made
@@ -572,7 +576,7 @@ function resolveLook(scene, ai, parent) {
 // The block definitions in use, those a top-level instance reaches: id -> { id, name, tops (object
 // indexes of its top-level instances), kids and parents (definition ids), layers (of its own
 // objects), copies (in the whole model, counting those inside other blocks) }.
-function blockTable(scene) {
+export function blockTable(scene) {
   const { defs, items, layers } = scene, out = new Map();
   for (const [id, def] of defs) {
     const inner = def.entries.filter((e) => e.k === 'inst' && defs.has(e.idef)).map((e) => e.idef);
@@ -654,7 +658,7 @@ function extremePoints(p) {
 }
 
 // Turn the scene's items into GPU batches. Also refreshes per-item and per-layer statistics.
-function buildBatches(scene) {
+export function buildBatches(scene) {
   const { layers, items, defs } = scene, stats = scene.stats;
   Object.assign(stats, { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0 });
   for (const l of layers) l.count = 0;

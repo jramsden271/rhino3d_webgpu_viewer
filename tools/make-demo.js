@@ -56,7 +56,7 @@ const rhino3dm = require(path.join(__dirname, '../vendor/package/rhino3dm.js'));
 
   const bytes = doc.toByteArrayOptions(new rhino.File3dmWriteOptions());
   const out = path.join(__dirname, '../src/demo.js');
-  fs.writeFileSync(out, `// The demo model (London, a few blocks and shades), written by tools/make-demo.js: don't edit.\nconst DEMO_3DM = '${Buffer.from(bytes).toString('base64')}';\n`);
+  fs.writeFileSync(out, `// The demo model (London, a few blocks and shades), written by tools/make-demo.js: don't edit.\nexport const DEMO_3DM = '${Buffer.from(bytes).toString('base64')}';\n`);
   console.log(`Wrote ${out} (${(bytes.length / 1024).toFixed(1)} KB of .3dm)`);
   if (process.argv.includes('--3dm')) fs.writeFileSync(path.join(__dirname, '../demo.3dm'), bytes);
 })();

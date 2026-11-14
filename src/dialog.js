@@ -8,7 +8,9 @@
 // danger }] in display order; help: a function for a ? button next to the ×, if any; the result is the clicked button's value, or null when the dialog is
 // dismissed (Esc, the × button or a click on the backdrop). dialog.close(value) closes it from code.
 
-class Dialog {
+import { Widgets } from './widgets.js';
+
+export class Dialog {
   constructor({ title = '', body = '', html = false, buttons = [{ label: 'OK', value: true, primary: true }], width = 380, onOpen = null, help = null } = {}) {
     this.result = new Promise((resolve) => { this.resolve = resolve; });
     const back = (this.back = document.createElement('div'));

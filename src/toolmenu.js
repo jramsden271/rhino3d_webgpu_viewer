@@ -8,7 +8,7 @@
 //
 // The popup lives outside the toolbar, which would clip it (the toolbar scrolls when narrow).
 
-class ToolbarMenu {
+export class ToolbarMenu {
   // below: opens under the button (for a button at the top of the window) rather than above it.
   constructor(button, { label, layout = 'column', onOpen = null, below = false } = {}) {
     Object.assign(this, { button, onOpen, below });
@@ -79,7 +79,7 @@ class ToolbarMenu {
 
 // A column of choices with one current, for a menu's body, and any on/off items, each set by
 // setChecked. Arrow keys move between them.
-class ChoiceList {
+export class ChoiceList {
   constructor({ label, onPick }) {
     this.el = document.createElement('div');
     this.el.className = 'choice-list';

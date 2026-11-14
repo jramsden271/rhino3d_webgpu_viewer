@@ -15,13 +15,15 @@
 // A block's setting (state.blockMagic in main.js) is a record, { id }, so that per-block settings
 // can join it. Geometry that varies by date would go in further parts, or further entries.
 
+import { smoothNormals } from './extract.js';
+
 const MAGIC_LAYERS = {
   foliage: { name: 'Foliage', rgb: [71 / 255, 142 / 255, 41 / 255] }, // the name makes it Vegetation (materials.js)
   trunks: { name: 'Trunks', rgb: [97 / 255, 85 / 255, 46 / 255] }, // must match no magic material: "tree" would
 };
-const MAGIC_PARENT_LAYER = 'Magic blocks';
+export const MAGIC_PARENT_LAYER = 'Magic blocks';
 
-const MAGIC_BLOCKS = [
+export const MAGIC_BLOCKS = [
   { id: 'deciduous', name: 'Deciduous tree', fit: 'height', ground: true, randomRotation: true, parts: [
     { layer: 'foliage',
       pos: [-1.622,2.625,5.9,1.261,2.04,5.9,-1.236,-2,5.9,1.326,-2.145,5.9,0,-2.152,8.537,0,1.814,8.537,0,-1.249,4.014,0,1.231,4.041,2.3,0,4.575,2.784,0,7.53,-1.991,0,4.752,-3.186,0,7.53,-2.062,1.275,6.714,-1.533,0.948,8.408,-1.088,2.847,7.45,0.893,2.338,7.393,0,3.062,5.9,0.728,1.905,4.801,-0.754,1.975,4.761,-1.17,0.723,4.133,-1.913,1.182,5.218,-2.442,0,5.9,1.549,0.957,8.408,2.385,1.474,6.841,-1.896,-1.171,8.408,0,0,9,-1.897,-1.172,5.224,-2.354,-1.455,6.829,0,0,3.706,-1.17,-0.723,4.133,1.92,1.187,5.215,1.19,0.736,4.103,2.292,-1.417,6.805,1.988,-1.229,8.408,0.911,-2.384,7.423,-0.809,-2.117,7.252,0,-2.359,5.9,-0.724,-1.895,4.807,0.775,-2.028,4.73,1.355,-0.838,3.861,2.427,-1.5,5.121,2.565,0,5.9,-1.891,1.913,6.352,-1.747,2.045,7.206,-1.5,2.982,6.706,-2.351,0.538,8.051,-1.968,1.217,7.637,-2.443,0.736,7.17,-0.595,2.571,8.076,-1.409,1.948,8.033,-0.855,1.427,8.574,-0.584,3.418,6.715,-0.945,3.325,5.9,0.548,2.369,8.076,0,2.936,7.53,0.698,2.458,5.9,0.469,2.745,6.684,1.098,2.182,6.579,-0.452,2.648,5.238,-1.19,2.366,5.245,1.028,2.044,5.325,0.406,2.378,5.286,-0.378,1.633,4.358,0,2.04,4.723,0.377,1.627,4.363,-1.419,1.662,4.941,-1.757,1.778,5.52,-0.608,1.016,4.015,-0.999,1.381,4.391,-2.021,0.609,4.951,-1.613,0.997,4.614,-1.643,0.376,4.385,-2.057,1.271,5.9,-2.259,0,5.301,-2.239,0.619,5.543,-2.358,0.652,6.316,-2.808,0,6.724,1.613,1.889,7.106,1.751,1.772,6.319,0.788,1.316,8.574,1.274,1.761,8.03,2.889,0.87,7.245,2.273,1.405,7.722,2.426,0.555,8.051,-0.776,0.479,8.8,0,0.809,8.843,-2.962,-0.678,8.051,-1.788,0,8.537,0,-1.088,8.882,-0.91,-0.562,8.848,-1.003,-1.674,8.574,-2.61,-0.721,6.361,-3.227,-0.972,7.245,-2.02,-0.609,4.952,-2.257,-0.624,5.54,-1.695,-1.715,6.305,-2.061,-1.273,5.9,-1.629,-1.649,5.548,-1.23,0,4.042,-1.643,-0.376,4.385,0,0.64,3.796,-0.615,0.38,3.822,-0.609,-1.017,4.012,-0.616,-0.381,3.821,0,-0.646,3.778,0.998,1.379,4.393,0.61,1.018,4.01,1.645,1.664,5.545,1.38,1.616,4.968,1.754,0.401,4.282,1.635,1.011,4.596,2.113,0.637,4.908,1.86,-1.883,6.345,1.799,-2.106,7.219,1.143,-2.272,6.607,2.443,-0.559,8.051,2.361,-1.459,7.722,2.553,-0.769,7.227,0.563,-2.433,8.076,1.6,-2.212,8.033,1.108,-1.851,8.574,0.401,-2.35,6.571,0.658,-2.318,5.9,-0.526,-2.27,8.076,0,-2.325,7.385,-0.641,-2.257,5.9,-0.389,-2.277,6.55,-1.04,-2.068,6.544,0.387,-2.266,5.315,1.091,-2.17,5.29,-1.016,-2.02,5.332,-0.381,-2.231,5.325,0.392,-1.692,4.302,0,-2.014,4.738,-0.378,-1.632,4.359,1.666,-1.95,4.828,1.88,-1.902,5.495,0.647,-1.08,3.895,1.15,-1.59,4.166,2.599,-0.783,4.807,2.125,-1.313,4.419,1.995,-0.456,4.152,2.286,-1.413,5.9,2.512,0,5.234,2.61,-0.721,5.491,2.504,-0.692,6.342,2.726,0,6.7,1.003,-0.62,8.848,1.813,0,8.537,0.79,0.488,8.848,-1.577,-1.847,7.08,-1.386,-1.915,8.033,-2.573,-1.59,7.722,-0.996,-1.376,4.396,-1.376,-1.611,4.971,-1.611,-0.995,4.616,1.321,0,3.904,0.637,-0.394,3.748,0.622,0.384,3.799,2.642,0.73,6.366,2.339,0.646,5.527,2.123,1.312,5.9],
@@ -39,11 +41,11 @@ const MAGIC_BLOCKS = [
       idx: [0,1,8,0,8,7,1,2,9,1,9,8,2,3,10,2,10,9,3,4,11,3,11,10,4,5,12,4,12,11,5,6,13,5,13,12,6,0,7,6,7,13,7,8,15,7,15,14,8,9,16,8,16,15,9,10,17,9,17,16,10,11,18,10,18,17,11,12,19,11,19,18,12,13,20,12,20,19,13,7,14,13,14,20,14,15,22,14,22,21,15,16,23,15,23,22,16,17,24,16,24,23,17,18,25,17,25,24,18,19,26,18,26,25,19,20,27,19,27,26,20,14,21,20,21,27,21,22,29,21,29,28,22,23,30,22,30,29,23,24,31,23,31,30,24,25,32,24,32,31,25,26,33,25,33,32,26,27,34,26,34,33,27,21,28,27,28,34,28,29,36,28,36,35,29,30,37,29,37,36,30,31,38,30,38,37,31,32,39,31,39,38,32,33,40,32,40,39,33,34,41,33,41,40,34,28,35,34,35,41,35,36,37,35,37,38,35,38,39,35,39,40,35,40,41] },
   ] },
 ];
-const MAGIC_BY_ID = Object.fromEntries(MAGIC_BLOCKS.map((b) => [b.id, b]));
+export const MAGIC_BY_ID = Object.fromEntries(MAGIC_BLOCKS.map((b) => [b.id, b]));
 
 // The scene's layers for magic blocks, added after the file's own so its layer numbers still apply,
 // each with a material of its colour. The Layers panel leaves them out until they are in use.
-function addMagicLayers(layers, materials) {
+export function addMagicLayers(layers, materials) {
   const parent = layers.length;
   const layer = (name, rgb, parentIndex, id) => {
     const material = materials.length;
@@ -57,7 +59,7 @@ function addMagicLayers(layers, materials) {
 }
 
 // A library entry's meshes in the model's units (unit: model units per metre).
-function magicMeshes(block, unit) {
+export function magicMeshes(block, unit) {
   if (block.unit !== unit) {
     block.meshes = block.parts.map((p) => {
       const pos = Float32Array.from(p.pos, (v) => v * unit), idx = Uint32Array.from(p.idx);
@@ -74,7 +76,7 @@ function magicMeshes(block, unit) {
 // Where the ground is looked for under an instance of a block whose box is [x0, y0, z0, x1, y1, z1]
 // in its own coordinates, with transform xf: from a tenth of the way up the box at its centre in
 // plan, as a block's base often sits a little way into the ground. Also the box's height range.
-function magicSource(box, xf) {
+export function magicSource(box, xf) {
   const [x0, y0, z0, x1, y1, z1] = box, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
   let lo = Infinity, hi = -Infinity;
   for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) {
@@ -89,7 +91,7 @@ function magicSource(box, xf) {
 // the ground if the entry asks for that and the box stops short of it. ground: the height found, or
 // null (none below, or not looked for yet), when the box is used as it is. A source with no height
 // (a 2D symbol) gets the entry at its real size. seed: -1..1, stable for the instance.
-function magicPlacement(block, source, xf, ground, seed) {
+export function magicPlacement(block, source, xf, ground, seed) {
   const base = block.ground && ground != null ? Math.min(source.lo, ground) : source.lo;
   const height = source.hi - base;
   const s = height > block.height * 1e-3 ? height / block.height : 1;

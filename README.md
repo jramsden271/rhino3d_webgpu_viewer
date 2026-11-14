@@ -698,12 +698,15 @@ double precision before conversion, so there is no jitter when zoomed in.
 
 ### Requirements
 
-- [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 18 or later.
+- [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 18 or later to build; 22.12 or
+  later to run the Node test scripts, which load the sources as ES modules with `require`.
 - `tar` on the path, which Windows 10 and later, macOS and Linux all include.
 - A current Chrome or Microsoft Edge, for WebGPU.
 
-There is no `package.json` and no `npm install`: the build and tools use only Node's built-in
-modules, and the page has no framework or bundler.
+The sources in `src/` are ES modules: `main.js` imports what it uses, and so on down. The page has
+no framework. The one development dependency is [esbuild](https://esbuild.github.io/), which
+bundles the modules into the single built file; a library from npm can be added the same way
+(`npm install <name>`, then `import` it), and esbuild bundles it in too.
 
 ### Terms
 
@@ -724,11 +727,16 @@ cd rhino3d_webgpu_viewer
 ```
 
 ```bash
+npm install
+```
+
+```bash
 node build.js
 ```
 
-The first build needs an internet connection, to download rhino3dm from the npm registry into
-`vendor/` (git-ignored). After that it works offline.
+`npm install` fetches esbuild into `node_modules/`. The first build needs an internet connection,
+to download rhino3dm from the npm registry into `vendor/`. Both folders are git-ignored. After
+that it works offline.
 
 ### Running it
 
@@ -739,8 +747,11 @@ node tools/serve.js
 This serves the project on http://localhost:8123/ (`node tools/serve.js 9000` for another port).
 The server is only for development; the built viewer does not need it.
 
-- http://localhost:8123/src/index.html runs the sources unbuilt, so a reload shows an edit straight
-  away. It needs `vendor/`, so run `node build.js` once first.
+- http://localhost:8123/src/index.html runs the sources unbuilt, as ES modules loaded by the
+  browser, so a reload shows an edit straight away. It needs `vendor/`, so run `node build.js` once
+  first. Modules do not load from `file://`, so this needs the server. A library added from npm
+  is not found this way (the browser cannot resolve a bare `import 'name'`); use the built viewer
+  for anything that imports one, or add an import map to `src/index.html`.
 - http://localhost:8123/dist/index.html is the built viewer. Rebuild to see an edit.
 - Adding `?model=/samples/x.3dm` to either opens a model straight away. No models come with the
   repository: create a `samples/` folder and put your own there (it and `*.3dm` files are git-ignored).
@@ -762,7 +773,8 @@ To update rhino3dm, change `RHINO3DM_VERSION` in `build.js` and rebuild.
 
 ### Hosting
 
-Cloudflare Pages runs `node build.js` (build output directory `dist`) on each push and serves the
+Cloudflare Pages installs the dependencies in `package.json` (it does this by itself when it finds
+a lock file), then runs `node build.js` (build output directory `dist`) on each push and serves the
 result as static files: `main` is the live site, and `develop` is a preview at
 develop.<project>.pages.dev. No other branch is deployed. The build downloads rhino3dm from the npm
 registry. If a build fails, the last good deployment stays live. Models
@@ -770,7 +782,8 @@ still stay on the computer of whoever opens them: the site only delivers the pag
 
 ### Tests and tools
 
-There is no test framework; these are plain Node scripts. Only the first runs without any files
+There is no test framework; these are plain Node scripts that `require` the modules in `src/`
+(`src/package.json` marks that folder as ES modules for Node). Only the first runs without any files
 of your own, and the last three need `vendor/`. Behaviour in the browser is checked by hand.
 
 | Command | What it does |
@@ -789,7 +802,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 
 ```
 dist/index.html          the built viewer, the only file anyone needs (git-ignored; built by build.js)
-build.js                 inlines src/ + rhino3dm (JS and both WASM builds) into dist/
+build.js                 bundles src/main.js and its imports with esbuild, and inlines it, style.css and rhino3dm (JS and both WASM builds) into dist/
 src/index.html, style.css  page and UI
 src/magicblocks.js       magic block library and how an instance is placed
 src/extract.js           .3dm -> GPU batches (colours, blocks, curves, edges), sorted into grid cells so each view draws only the cells it can see

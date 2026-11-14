@@ -1,10 +1,14 @@
 // WebGPU renderer: reverse-Z depth, 4x MSAA, on-demand redraw, GPU picking for orbit/zoom
 // pivots, and sun lighting with cascaded shadow maps.
 
+import { M4, V3 } from './math.js';
+import { MAT_GLASS, MAT_VEGETATION, MAT_WATER, SPECIAL } from './materials.js';
+import { CLOUD_KM } from './clouds.js';
+
 const CASCADES = 4;
 const AO_DIV = 2;                // the occlusion is worked out at 1/AO_DIV of the window's width and height
 const SHADOW_SIZE = 2048;
-const MAX_LAMPS = 8;
+export const MAX_LAMPS = 8;
 const LAMP_SHADOW_SIZE = 512;
 const LAMP_SHADOW_LAYERS = 25;   // e.g. a torch (1) and four point lights (6 each)
 const LAMP_NEAR = 0.05;          // metres
@@ -18,7 +22,7 @@ const CUBE_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 
 
 // Which lamps get shadows, in order, while layers last: a narrow spot takes one layer, a point
 // light (or a spot wider than 60 degrees) six. Returns per lamp { layer, t, dirs } or null.
-function lampShadowPlan(lamps) {
+export function lampShadowPlan(lamps) {
   let next = 0;
   return lamps.map((l) => {
     const cube = !l.dir || l.outer > 60, need = cube ? 6 : 1;
@@ -998,7 +1002,7 @@ const SHADOW_SHADER = /* wgsl */ `
 // that see the sun, blended by where it falls between them. A point facing away from the sun, or
 // outside the part of the map that is its tile, gets nothing.
 const EXPOSURE_SIZE = 4096, EXPOSURE_MARGIN = 4; // texels round a tile, so the four stay on the map
-const EXPOSURE_FULL = 16; // what one view adds to a point in full sun
+export const EXPOSURE_FULL = 16; // what one view adds to a point in full sun
 const EXPOSURE_SHADER = /* wgsl */ `
 struct ExposureUniform { m: mat4x4f, sun: vec4f, p: vec4f };  // p: texel size (model units), depth bias, points, margin (uv)
 @group(0) @binding(0) var<uniform> E: ExposureUniform;
@@ -1026,7 +1030,7 @@ const FRAME_SIZE = 1280;
 // How far each surface type yields to others where surfaces nearly coincide (see meshClip).
 const SURFACE_PRIORITY = { 1: 0.5, 4: 1, 5: 0.5, 6: 0, 7: 2 }; // water, grass, road, paving, ground
 const BATCH_STRIDE = 256;
-const MSAA = 4;
+export const MSAA = 4;
 const DEPTH = 'depth32float';
 
 // Fit CASCADES orthographic shadow frusta to slices of the camera's view.
@@ -1034,7 +1038,7 @@ const DEPTH = 'depth32float';
 // sunDir: unit vector towards the sun; scene: { center, radius, receiverRadius }: radius bounds
 // everything that can cast a shadow, receiverRadius the area shadows need to be shown on (kept
 // tight so the far cascade stays sharp). Returns light matrices (column-major), splits, texel sizes.
-function shadowCascades(cam, sunDir, scene) {
+export function shadowCascades(cam, sunDir, scene) {
   const L = sunDir;
   let lx = V3.cross([0, 0, 1], L);
   if (V3.len(lx) < 1e-4) lx = [1, 0, 0];
@@ -1095,7 +1099,7 @@ const SUN_PATH_STYLE = {
   day: { rgba: [1, 0.784, 0.2, 1], width: 1.4, font: 13, lift: 14 },
 };
 
-class Renderer {
+export class Renderer {
   static async create(canvas) {
     if (!navigator.gpu) throw new Error('NO_WEBGPU');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
@@ -2199,4 +2203,4 @@ class Renderer {
   }
 }
 
-const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };
+export const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };

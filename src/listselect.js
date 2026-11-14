@@ -10,7 +10,7 @@
 // From the keyboard: all() selects every shown row, step(±1, extend) moves the selection up or
 // down a row (extend, as Shift: grows or shrinks it from the anchor).
 
-class RowSelection {
+export class RowSelection {
   // anchor: where a Shift range starts. cursor: the row a range ends at, where a keyboard step starts.
   constructor() { this.rows = []; this.keys = new Set(); this.anchor = null; this.cursor = null; }
 

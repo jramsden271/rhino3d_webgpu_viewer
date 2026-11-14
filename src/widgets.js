@@ -15,7 +15,7 @@
 // open, close, change state or move.
 //
 // The layout is a global preference: the order, and each widget's state and lock.
-const Widgets = (() => {
+export const Widgets = (() => {
   const NORMAL = 0, MINIMISED = 1; // a widget's state; more may be added
   const KEY = '3dm-viewer-widgets';
   const ANIM_MS = 180, DRAG_PX = 5, EASE = 'ease-out';

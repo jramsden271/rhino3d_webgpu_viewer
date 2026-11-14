@@ -11,7 +11,7 @@
 //        the speed felt at about 1.1 m is roughly two thirds of this)
 //   rh   relative humidity, %                     0 to 100 (vapour pressure up to 5 kPa)
 
-const UTCI_WIND_MIN = 0.5, UTCI_WIND_MAX = 17;
+export const UTCI_WIND_MIN = 0.5, UTCI_WIND_MAX = 17;
 
 // The polynomial in ta, va, dTr = tr - ta and pa (vapour pressure, kPa), besides a leading ta:
 // 210 terms, each [coefficient, power of ta, va, dTr, pa], flattened.
@@ -100,7 +100,7 @@ function utciSaturatedVapourPressure(ta) {
 const _utciPow = [new Float64Array(7), new Float64Array(7), new Float64Array(7), new Float64Array(7)];
 
 // UTCI in °C for one set of conditions.
-function utci(ta, tr, va, rh) {
+export function utci(ta, tr, va, rh) {
   va = Math.min(Math.max(va, UTCI_WIND_MIN), UTCI_WIND_MAX);
   const pa = utciSaturatedVapourPressure(ta) * rh / 1000; // hPa × rh/100, in kPa
   const x = [ta, va, tr - ta, pa];
@@ -118,7 +118,7 @@ function utci(ta, tr, va, rh) {
 // UTCI for many points at once: each input is an array or a single number shared by every
 // point (say one air temperature and wind speed with a mean radiant temperature per point).
 // Writes into `out` when given (a Float32Array suits a texture or vertex buffer).
-function utciMany(ta, tr, va, rh, out) {
+export function utciMany(ta, tr, va, rh, out) {
   const n = [ta, tr, va, rh].reduce((m, a) => (typeof a === 'number' ? m : Math.max(m, a.length)), 1);
   const at = (a, i) => (typeof a === 'number' ? a : a[i]);
   out ??= new Float64Array(n);
@@ -127,14 +127,14 @@ function utciMany(ta, tr, va, rh, out) {
 }
 
 // Whether the inputs are inside the ranges the polynomial was fitted over.
-function utciInRange(ta, tr, va, rh) {
+export function utciInRange(ta, tr, va, rh) {
   const d = tr - ta, pa = utciSaturatedVapourPressure(ta) * rh / 1000;
   return ta >= -50 && ta <= 50 && d >= -30 && d <= 70 && va >= UTCI_WIND_MIN && va <= UTCI_WIND_MAX && pa <= 5;
 }
 
 // The ten assessment bands of thermal stress, each up to (not including) `below` °C. 9-26 °C is
 // "no thermal stress", the usual comfort band. colourscales.js has their colours.
-const UTCI_CATEGORIES = [
+export const UTCI_CATEGORIES = [
   { name: 'Extreme cold stress', below: -40, stress: -4 },
   { name: 'Very strong cold stress', below: -27, stress: -3 },
   { name: 'Strong cold stress', below: -13, stress: -2 },
@@ -147,7 +147,7 @@ const UTCI_CATEGORIES = [
   { name: 'Extreme heat stress', below: Infinity, stress: 4 },
 ];
 
-function utciCategory(value) {
+export function utciCategory(value) {
   return UTCI_CATEGORIES.find((c) => value < c.below);
 }
 
@@ -158,7 +158,7 @@ function utciCategory(value) {
 // face, 180 on the back; 135, side-on and turned away from the glare, is SolarCal's default).
 // Shade, sky and ground reflections are left out: in shade the radiant temperature is taken to be
 // the air temperature.
-function solarMrtDelta(dnr, altitude, sharp = 135) {
+export function solarMrtDelta(dnr, altitude, sharp = 135) {
   if (!(dnr > 0) || !(altitude > 0)) return 0;
   const absorptivity = 0.7, emissivity = 0.95, exposedFraction = 0.725, radiantCoeff = 6.012;
   const flux = solarProjectionFactor(Math.min(altitude, 90), sharp) * dnr;
@@ -191,7 +191,7 @@ function solarProjectionFactor(altitude, sharp = 135) {
 // sun on the ground. Field studies put the whole sun-shade difference in mean radiant temperature
 // at about 20-30 °C, which this and solarMrtDelta together match. It ignores how long surfaces
 // take to heat up and cool down, and what the surfaces are made of.
-function surroundingsMrtDelta(dnr, altitude) {
+export function surroundingsMrtDelta(dnr, altitude) {
   if (!(dnr > 0) || !(altitude > 0)) return 0;
   return (dnr * Math.sin((Math.min(altitude, 90) * Math.PI) / 180)) / 60;
 }

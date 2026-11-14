@@ -23,6 +23,10 @@
 //
 // All lengths here are in metres; the model is in its own units (mpu = metres per unit).
 
+import { V3 } from './math.js';
+import { DriveMusic } from './music.js';
+import { PROBE } from './renderer.js';
+
 const DRIVE = {
   ACC: 10,           // acceleration (m/s²) at a standstill, falling to nothing at the top speed
   BRAKE: 20,         // braking (m/s²)
@@ -60,7 +64,7 @@ const DRIVE = {
 };
 
 // The cameras: behind the car, further back and higher, and at the driver's eyes.
-const DRIVE_CAMS = [
+export const DRIVE_CAMS = [
   { id: 'chase', label: 'Chase', back: 7.5, up: 2.6, ahead: 3, at: 1.1, ease: 5 },
   { id: 'far', label: 'High', back: 16, up: 8, ahead: 4, at: 0.8, ease: 3 },
   { id: 'driver', label: 'Driver', eye: [0.15, 0.35, 1.2] }, // on the left: mirrored by Driver.side
@@ -350,7 +354,7 @@ class DriveSound {
   }
 }
 
-class Driver {
+export class Driver {
   // ctx: { camera, renderer, mpu(): metres per model unit, bounds(): [min, max] of what is shown,
   //        onExit(), notice(text, ms), fade(), onCrash(strength),
   //        side(): 1 where the driver sits on the left, -1 on the right (countries driving on the left) }

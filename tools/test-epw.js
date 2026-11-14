@@ -5,8 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const src = ['sun.js', 'epw.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')).join('\n');
-const { EPW, epwLocation } = new Function(`${src}\nreturn { EPW, epwLocation };`)();
+const { EPW, epwLocation } = require('../src/epw.js');
 
 const files = process.argv.slice(2).flatMap((p) => (fs.statSync(p).isDirectory()
   ? fs.readdirSync(p).filter((f) => /\.epw$/i.test(f)).map((f) => path.join(p, f)) : [p]));

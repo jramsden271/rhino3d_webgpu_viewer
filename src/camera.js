@@ -2,6 +2,8 @@
 // angles of the target->eye direction. Parallel projection uses the same state, with the view
 // height derived from the distance so zooming behaves identically in both modes.
 
+import { M4, V3 } from './math.js';
+
 const Z_UP = [0, 0, 1];
 const PITCH_LIMIT = (89.99 * Math.PI) / 180;
 const DEFAULT_FOV = (40 * Math.PI) / 180;
@@ -11,13 +13,13 @@ const LEVEL_TOLERANCE = 1e-4; // radians: a camera this close to straight down o
 // How a camera may move, from its projection and tilt: a parallel camera looking straight down turns
 // like a dial ('top'), a parallel camera looking level turns left and right ('elevation'), and any
 // other orbits freely ('orbit').
-const movementRules = (c) => {
+export const movementRules = (c) => {
   if (c.ortho && c.pitch > PITCH_LIMIT - LEVEL_TOLERANCE) return 'top';
   if (c.ortho && Math.abs(c.pitch) < LEVEL_TOLERANCE) return 'elevation';
   return 'orbit';
 };
 
-class Camera {
+export class Camera {
   constructor() {
     this.target = [0, 0, 0];
     this.distance = 100;

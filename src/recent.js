@@ -27,7 +27,7 @@
 // A project's weather files are kept as copies, so they come back without another permission prompt. So are
 // its results files, each under its own key, as they can be large and the list is read often.
 
-const Recent = {
+export const Recent = {
   supported: typeof window.showOpenFilePicker === 'function' && 'indexedDB' in window,
 
   db() {

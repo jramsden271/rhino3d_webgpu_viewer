@@ -7,6 +7,8 @@
 // `below`, or smooth ({ stops: [[value, color], ...] }), clamped at both ends. A smooth scale's
 // labels: bands whose labels still apply to its values; its ticks: the values its legend marks, if not its stops.
 
+import { UTCI_CATEGORIES } from './utci.js';
+
 const scaleRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 
 const UTCI_COLOURS = ['#0D104B', '#262972', '#3452A4', '#3C65AF', '#37BCED', '#2EB349', '#F38322', '#C31F25', '#7F1416', '#580002'];
@@ -37,7 +39,7 @@ const LAWSON_BANDS = [
 const MAGMA = ['#000004', '#0A0822', '#1D1147', '#36106B', '#51127C', '#6A1C81', '#832681', '#9C2E7F', '#B73779', '#D0416F',
   '#E75263', '#F56B5C', '#FC8961', '#FEA772', '#FEC488', '#FDE2A3', '#FCFDBF'];
 
-const ColourScales = {
+export const ColourScales = {
   metrics: {
     utci: { name: 'UTCI', unit: '°C' },
     windSpeed: { name: 'Wind speed', unit: 'm/s' },

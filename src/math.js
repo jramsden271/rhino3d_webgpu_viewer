@@ -1,7 +1,7 @@
 // Small double-precision vector / matrix helpers. Matrices are column-major (WebGPU order)
 // unless noted; Rhino transforms are handled as row-major arrays in extract.js.
 
-const V3 = {
+export const V3 = {
   add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
   sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
   scale: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
@@ -16,7 +16,7 @@ const V3 = {
   },
 };
 
-const M4 = {
+export const M4 = {
   mul(a, b) {
     const o = new Float64Array(16);
     for (let c = 0; c < 4; c++)

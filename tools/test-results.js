@@ -3,8 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = ['utci.js', 'colourscales.js', 'results.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')).join('\n');
-const { parseResultsFile, parseCfdStreamlines, parseCfdMap, streamlineVertices, ColourScales, cfdMapValues, cfdMapVertices, cfdMapFind, cfdMapValueAt, UTCI_CATEGORIES } = new Function(`${src}\nreturn { parseResultsFile, parseCfdStreamlines, parseCfdMap, streamlineVertices, ColourScales, cfdMapValues, cfdMapVertices, cfdMapFind, cfdMapValueAt, UTCI_CATEGORIES };`)();
+const { parseResultsFile, parseCfdStreamlines, parseCfdMap, streamlineVertices, ColourScales, cfdMapValues, cfdMapVertices, cfdMapFind, cfdMapValueAt, UTCI_CATEGORIES } = { ...require('../src/utci.js'), ...require('../src/colourscales.js'), ...require('../src/results.js') };
 
 const bytes = (s) => new TextEncoder().encode(s);
 const data = (rows) => `\n[Data]\nNode Number, X [ m ], Y [ m ], Z [ m ], Velocity [ m s^-1 ]\n${rows.map((r) => r.join(', ')).join('\n')}\n`;

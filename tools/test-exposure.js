@@ -3,14 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
-const mulRM = (a, b) => {
-  const o = new Float64Array(16);
-  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { let s = 0; for (let k = 0; k < 4; k++) s += a[r * 4 + k] * b[k * 4 + c]; o[r * 4 + c] = s; }
-  return o;
-};
-const { Meshes, exposureTimes, exposureDays, exposureHours, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear } = new Function('mulRM',
-  `${read('sun.js')}\n${read('mesh.js')}\n${read('exposure.js')}\nreturn { Meshes, exposureTimes, exposureDays, exposureHours, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear };`)(mulRM);
+const { Meshes, exposureTimes, exposureDays, exposureHours, exposureSunDirs, exposureSurface, exposureLayerMeshes, exposurePointEstimate, exposureSummary, dayOfYear } = { ...require('../src/sun.js'), ...require('../src/mesh.js'), ...require('../src/exposure.js') };
 
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;
 // Each edge of a mesh, with how many triangles use it.
