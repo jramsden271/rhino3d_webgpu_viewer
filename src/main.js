@@ -29,17 +29,18 @@ const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
 
 // What is kept where:
-//   This machine (localStorage), for every project: the preferences below (render options, walk and drive,
+//   This machine (localStorage), for every project: the preferences below (theme, render options, walk and drive,
 //   comfort, colour scales, cloud speed, panel width, date and time controls), the dates and times added to
 //   the date and time sliders, and the widget layout (widgets.js).
 //   The project (recent.js, and project.json in a project zip): its files and which are active, its location
 //   and weather choices, its weather and results files, and the changes made to its model and how it is
 //   viewed (readStored). Lamps added in the viewer are not kept.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
+  theme: ['light', 'dark'].includes(prefs.theme) ? prefs.theme : 'system', // Settings: system, light or dark (applied by index.html's head)
   mode: prefs.mode ?? 1, xray: false, showEdges: true, showCurves: true, showPoints: true, layers: false, blocks: false,
   pointSize: 5, edgeColor: [0.08, 0.09, 0.1, 0.55],
   bgTop: [0.93, 0.94, 0.95, 1], bgBot: [0.78, 0.8, 0.84, 1],
@@ -5328,10 +5329,22 @@ async function renderRecent() {
 }
 
 // Settings: a placeholder for the settings that are the viewer's own rather than a project's.
+// System follows the computer's light or dark setting (the CSS media query); Light and Dark override it.
+function setTheme(t) {
+  state.theme = t;
+  if (t === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  savePrefs();
+}
+
 function openSettings() {
   const body = document.createElement('div');
-  body.innerHTML = `<p class="fine">Settings that apply to every project will go here.</p>
+  body.innerHTML = `<p class="fine">Settings that apply to every project, kept on this computer.</p>
+    <label class="field-row">Theme <select data-el="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
     <label class="fine"><input type="checkbox" data-el="dev"> Developer mode</label>`;
+  const theme = body.querySelector('[data-el="theme"]');
+  theme.value = state.theme;
+  theme.addEventListener('change', () => setTheme(theme.value));
   const dev = body.querySelector('[data-el="dev"]');
   dev.checked = !!state.devMode;
   dev.addEventListener('change', () => setDevMode(dev.checked));

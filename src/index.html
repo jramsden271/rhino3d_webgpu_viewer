@@ -7,6 +7,8 @@
 <!-- The cube from the 3DM Viewer button, in the accent colour (lighter on a dark browser theme); inline, so the built file stays self-contained -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2 1 20 22'%3E%3Cstyle%3Epath%7Bfill:%232563eb%7D@media (prefers-color-scheme:dark)%7Bpath%7Bfill:%236ea0ff%7D%7D%3C/style%3E%3Cpath d='M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.6l-6-3.4V9.7Zm8 10v-6.6l6-3.4v6.6l-6 3.4Z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<!-- The theme chosen in Settings, applied before anything draws (main.js keeps it up to date) -->
+<script>try { const t = JSON.parse(localStorage.getItem('3dm-viewer') || '{}').theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage unavailable */ }</script>
 </head>
 <body>
 <div id="app">

@@ -11,8 +11,23 @@
   --radius: 10px;
   color-scheme: light;
 }
+/* Dark: by the system's setting, unless Settings says Light; or always, when Settings says Dark
+   (data-theme on <html>, set before the page draws by the script in index.html's head). The two
+   blocks hold the same values. */
+:root[data-theme="dark"] {
+  --surface: rgba(28, 31, 36, 0.86);
+  --surface-solid: #1c1f24;
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #e8eaed;
+  --muted: #9aa3ae;
+  --accent: #6ea0ff;
+  --accent-soft: rgba(110, 160, 255, 0.16);
+  --hover: rgba(255, 255, 255, 0.07);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --surface: rgba(28, 31, 36, 0.86);
     --surface-solid: #1c1f24;
     --border: rgba(255, 255, 255, 0.1);
