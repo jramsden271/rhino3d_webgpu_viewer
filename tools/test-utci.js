@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { utci, utciMany, utciInRange, utciCategory, solarCal, SOLARCAL_POSTURES, skyLongwaveMrtDelta, surroundingsMrtDelta } = require('../src/utci.js');
+const { utci, utciMany, utciInRange, utciCategory, solarCal, SOLARCAL_POSTURES, skyLongwaveMrtDelta, surroundingsGains, openGroundView } = require('../src/utci.js');
 
 // [air temperature °C, mean radiant temperature °C, wind speed m/s, relative humidity %, UTCI °C]
 const REFERENCE = [
@@ -76,7 +76,15 @@ for (const [ir, t, sky, want] of [[330, 11, 1, -2.187932], [280, 20, 1, -12.3174
   check(Math.abs(got - want) < 1e-5, `skyLongwaveMrtDelta(${ir}, ${t}, ${sky}) = ${got}, expected ${want}`);
 }
 check(skyLongwaveMrtDelta(null, 20) === 0 && skyLongwaveMrtDelta(0, 20) === 0, 'no infrared reading: no change');
-check(Math.abs(surroundingsMrtDelta(600, 90) - 10) < 1e-9 && Math.abs(surroundingsMrtDelta(600, 30) - 5) < 1e-9 && surroundingsMrtDelta(600, -1) === 0, 'sun-warmed surroundings');
+// The surroundings: open sunlit ground reflects what SolarCal's formula gives in the open, and warms
+// the radiant temperature by dnr × sin(altitude) / 64.
+for (const posture of SOLARCAL_POSTURES) for (const [alt, dnr, dif] of [[60, 800, 120], [20, 400, 200], [45, 0, 300]]) {
+  const g = surroundingsGains(openGroundView(alt), dnr, dif);
+  const want = solarCal(alt, dnr, dif, { posture }).reflected, got = solarCal(alt, dnr, dif, { posture, reflectedFlux: g.reflectedFlux }).reflected;
+  check(Math.abs(got - want) < 1e-9, `open ground reflection ${posture} ${alt}°: ${got} vs ${want}`);
+  check(Math.abs(g.warmth - (dnr * Math.sin((alt * Math.PI) / 180)) / 64) < 1e-9, `open ground warmth ${alt}°: ${g.warmth}`);
+}
+check(surroundingsGains(openGroundView(-3), 500, 0).warmth === 0 && surroundingsGains({ direct: 0, diffuse: 0.5 }, 800, 100).warmth === 0, 'no sun on the surfaces: no warmth');
 
 const t0 = performance.now();
 let sink = 0;

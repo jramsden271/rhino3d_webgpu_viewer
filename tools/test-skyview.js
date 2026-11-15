@@ -1,7 +1,7 @@
-// Checks src/skyview.js: the texel weights, the texel looked up for a direction, and the two
-// factors for skies with known answers:  node tools/test-skyview.js
+// Checks src/skyview.js: the texel weights, the texel looked up for a direction, the two sky
+// factors for skies with known answers, and the surroundings on level ground:  node tools/test-skyview.js
 
-const { skyTexels, skyTexelAt, skyViewFactors, skyViewPoint } = require('../src/skyview.js');
+const { skyTexels, skyTexelAt, skyViewFactors, skyViewPoint, surroundingPoints, surroundingsView } = require('../src/skyview.js');
 
 let failures = 0;
 const check = (ok, msg) => { if (!ok) { failures++; console.log(`  FAIL ${msg}`); } };
@@ -32,7 +32,38 @@ for (const N of [64, 128, 256]) {
   let wrong = 0;
   for (let k = 0; k < n; k++) if (skyTexelAt([dirs[k * 3], dirs[k * 3 + 1], dirs[k * 3 + 2]], N) !== k) wrong++;
   check(wrong === 0, `N ${N}: ${wrong} texels not found again from their direction`);
-  check(skyTexelAt([1, 0, -0.01], N) === -1, `N ${N}: below the horizon`);
+  const { sphereW } = skyTexels(N);
+  let below = 0;
+  for (let k = 0; k < n; k++) if (dirs[k * 3 + 2] < 0) below += sphereW[k];
+  check(near(below, 0.5, 1e-9), `N ${N}: half the sphere below the horizon (${below})`);
+}
+
+// The surroundings: level ground 1.5 below the eye, and the open (nothing drawn at all).
+for (const N of [64, 128]) {
+  const { dirs } = skyTexels(N), n = dirs.length / 3, eye = [3, -2, 1.5];
+  const ground = new Float32Array(n * 4), open = new Float32Array(n * 4);
+  for (let k = 0; k < n; k++) {
+    const d = [dirs[k * 3], dirs[k * 3 + 1], dirs[k * 3 + 2]];
+    if (d[2] >= 0) continue;
+    const t = -eye[2] / d[2];
+    ground.set([eye[0] + d[0] * t, eye[1] + d[1] * t, 0, 1], k * 4);
+  }
+  const pts = surroundingPoints(ground, N, eye);
+  let flat = 0, count = 0;
+  for (let k = 0; k < n; k++) if (ground[k * 4 + 3] > 0.5) { count++; if (Math.abs(pts.normals[k * 3 + 2] - 1) > 1e-3) flat++; }
+  check(flat <= count * 0.002, `N ${N}: ${flat} of ${count} ground normals not straight up`);
+  check(pts.pos.length / 3 <= count / 4 + 2 * N, `N ${N}: one point per 2 x 2 block (${pts.pos.length / 3})`);
+  for (const alt of [10, 35, 60]) {
+    const a = (alt * Math.PI) / 180, sun = [Math.cos(a) * 0.6, Math.cos(a) * 0.8, Math.sin(a)];
+    const lit = new Float32Array(pts.pos.length / 3).fill(1), want = { direct: Math.sin(a) / 2, diffuse: 0.5 };
+    const g = surroundingsView(ground, N, pts, sun, lit), o = surroundingsView(open, N, surroundingPoints(open, N, eye), sun, null);
+    for (const [name, v] of [['ground', g], ['open', o]]) {
+      check(near(v.direct, want.direct, 2e-3) && near(v.diffuse, want.diffuse, 2e-3) && near(v.surfaces, 0.5, 1e-9) && near(v.sunlit, 1, 1e-9),
+        `N ${N}, sun ${alt}°, ${name}: direct ${v.direct.toFixed(4)} (${want.direct.toFixed(4)}), diffuse ${v.diffuse.toFixed(4)}, surfaces ${v.surfaces}, sunlit ${v.sunlit}`);
+    }
+    const shade = surroundingsView(ground, N, pts, sun, lit.fill(0));
+    check(shade.direct === 0 && shade.sunlit === 0 && near(shade.diffuse, 0.5, 2e-3), `N ${N}: ground all in shade`);
+  }
 }
 
 const near2 = (p, q) => near(p[0], q[0], 1e-12) && near(p[1], q[1], 1e-12);

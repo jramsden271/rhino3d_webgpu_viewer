@@ -155,7 +155,7 @@ export function utciCategory(value) {
 // mean radiant temperature, °C, in three parts:
 //   direct     the sun's beam on the body, only when the person is in sunlight
 //   diffuse    light from the sky, in sun or shade
-//   reflected  sunlight and skylight off the ground, in sun or shade
+//   reflected  sunlight and skylight off the ground (and walls), in sun or shade
 // The formulas are ASHRAE 55's, as in jsthermalcomfort's solar_gain (and pythermalcomfort's), which
 // tools/test-utci.js checks this against. That version is for indoors behind glazing and takes the
 // diffuse light to be a fifth of the direct beam; outdoors the weather file's measured diffuse
@@ -169,9 +169,11 @@ export function utciCategory(value) {
 //              person's front, degrees: 0 in the face, 180 on the back; 135, side-on and turned away
 //              from the glare, is SolarCal's default), skyView (fraction of the sky the person sees, 1
 //              in the open), groundReflectance (0.25, ladybug-comfort's default for outdoors; ASHRAE's
-//              indoor floor default is 0.6), absorptivity (short-wave, 0.7)
+//              indoor floor default is 0.6), absorptivity (short-wave, 0.7), reflectedFlux (W/m²: the
+//              light the surfaces round the person reflect onto them, as surroundingsGains works it out
+//              from what they see; it replaces the formula's open, sunlit ground and the sky view)
 export const SOLARCAL_POSTURES = ['standing', 'sitting'];
-export function solarCal(altitude, beam, diffuse, { lit = true, groundBeam = beam, posture = 'standing', sharp = 135, skyView = 1, groundReflectance = 0.25, absorptivity = 0.7 } = {}) {
+export function solarCal(altitude, beam, diffuse, { lit = true, groundBeam = beam, posture = 'standing', sharp = 135, skyView = 1, groundReflectance = 0.25, absorptivity = 0.7, reflectedFlux = null } = {}) {
   const sitting = posture === 'sitting', fEff = sitting ? 0.696 : 0.725; // fraction of the body that exchanges radiation
   const up = altitude > 0 ? Math.min(altitude, 90) : 0;
   const iDiff = diffuse > 0 ? diffuse : 0, iDir = up > 0 && beam > 0 ? beam : 0, iGround = up > 0 && groundBeam > 0 ? groundBeam : 0;
@@ -180,7 +182,7 @@ export function solarCal(altitude, beam, diffuse, { lit = true, groundBeam = bea
   const rise = (flux) => (flux * absorptivity) / 0.95 / (6 * fEff);
   const direct = lit && iDir ? rise(fEff * solarProjectionFactor(up, sharp, sitting) * iDir) : 0;
   const sky = rise(fEff * skyView * 0.5 * iDiff);
-  const reflected = rise(fEff * skyView * 0.5 * (iGround * Math.sin((up * Math.PI) / 180) + iDiff) * groundReflectance);
+  const reflected = rise(fEff * (reflectedFlux ?? skyView * 0.5 * (iGround * Math.sin((up * Math.PI) / 180) + iDiff) * groundReflectance));
   return { direct, diffuse: sky, reflected, total: direct + sky + reflected };
 }
 
@@ -231,15 +233,32 @@ export function skyTemperature(horizIr, emissivity = 0.95) {
   return (horizIr / (emissivity * 5.6697e-8)) ** 0.25 - 273.15;
 }
 
-// Sun-warmed surroundings: a placeholder for the extra mean radiant temperature of a sunlit
-// street over a shaded one, from ground and walls heated by the sun, °C. Sunlit paving runs
-// roughly 20-30 °C hotter than shaded paving in summer (about absorbed sun / 24 W/m²K, with
-// absorptivity 0.8), and the ground fills about half of a standing person's view, so the radiant
-// temperature rises by about half that: dnr × sin(altitude) / 60, or 10 °C for 600 W/m² of direct
-// sun on the ground. Field studies put the whole sun-shade difference in mean radiant temperature
-// at about 20-30 °C, which this and the direct part of solarCal together match. It ignores how long surfaces
-// take to heat up and cool down, and what the surfaces are made of.
-export function surroundingsMrtDelta(dnr, altitude) {
-  if (!(dnr > 0) || !(altitude > 0)) return 0;
-  return (dnr * Math.sin((Math.min(altitude, 90) * Math.PI) / 180)) / 60;
+// The surfaces round a person (ground, walls and anything else, above and below the horizon) as the
+// sun and sky light them, from what the person sees of them: view { direct, diffuse }, the shares of
+// the whole sphere of directions round the person, weighted as skyview.js's surroundingsView gives
+// them (direct by how square each surface faces the sun where it is in sun, diffuse by how much sky
+// it faces). dnr and diffuse: the direct normal and diffuse horizontal radiation, W/m². Gives:
+//  - reflectedFlux: the light they reflect onto the person (W/m², for solarCal), reflectance 0.25;
+//  - warmth: the rise in mean radiant temperature, °C, from their being warmed by the sun. Each
+//    surface in sun is taken to be warmer than the air by the sun it absorbs (1 - reflectance) over
+//    a heat transfer coefficient of 24 W/m²K (convection and radiation together), so sunlit paving
+//    in summer comes out 20-30 °C above the air, as measured; surfaces in shade are taken to be at
+//    the air temperature. Each counts in the radiant temperature by its share of the view.
+// Open level ground in the sun all round (view { direct: sin(altitude) / 2, diffuse: 1/2 }) reflects
+// what solarCal's formula gives in the open, and adds dnr × sin(altitude) / 64 of warmth: about
+// 9 °C for 600 W/m² of direct sun on the ground. It ignores how long surfaces take to heat up and
+// cool down, and what they are made of.
+export const SURFACE_REFLECTANCE = 0.25, SURFACE_H = 24;
+export function surroundingsGains({ direct, diffuse: dif }, dnr, diffuse) {
+  const iDir = dnr > 0 ? dnr : 0, iDiff = diffuse > 0 ? diffuse : 0;
+  return {
+    reflectedFlux: SURFACE_REFLECTANCE * (iDir * direct + iDiff * dif),
+    warmth: ((1 - SURFACE_REFLECTANCE) * iDir * direct) / SURFACE_H,
+  };
+}
+
+// The view of open level ground in the sun all round, for surroundingsGains: what is assumed with
+// no model to look at. altitude: the sun's, degrees.
+export function openGroundView(altitude) {
+  return { direct: altitude > 0 ? Math.sin((Math.min(altitude, 90) * Math.PI) / 180) / 2 : 0, diffuse: 0.5, surfaces: 0.5, sunlit: altitude > 0 ? 1 : 0 };
 }

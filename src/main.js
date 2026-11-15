@@ -11,7 +11,7 @@ import { Zip } from './zip.js';
 import { dateFromDayOfYear, dayOfYear, daysInYear, fmtHour, moonLight, moonPosition, siderealTime, solarPosition, sunLight, sunPathDiagram, sunVector } from './sun.js';
 import { EPW, EPW_YEAR } from './epw.js';
 import { CLOUD_SPEED_MAX, cloudShadeAt, weatherSky } from './clouds.js';
-import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, skyLongwaveMrtDelta, solarCal, surroundingsMrtDelta, utci, utciCategory, utciInRange } from './utci.js';
+import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, openGroundView, skyLongwaveMrtDelta, solarCal, surroundingsGains, utci, utciCategory, utciInRange } from './utci.js';
 import { ColourScales } from './colourscales.js';
 import { RESULT_PARSERS, cfdMapFind, cfdMapValueAt, cfdMapValues, cfdMapVertices, parseResultsFile, resultParsersFor, streamlineVertices } from './results.js';
 import { Meshes } from './mesh.js';
@@ -24,7 +24,7 @@ import { DRIVE_CAMS, Driver } from './drive.js';
 import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascades } from './renderer.js';
 import { DEMO_3DM } from './demo.js';
 import { Widgets } from './widgets.js';
-import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint } from './skyview.js';
+import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint, surroundingPoints, surroundingsView } from './skyview.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
@@ -407,6 +407,7 @@ function loop() {
     positionInspector(); syncCompass();
     if (comfortShown()) checkSunlight();
     if (comfortShown() || state.skyView.panel) checkSkyView();
+    if (comfortShown()) checkSurroundings();
   }
   requestAnimationFrame(loop);
 }
@@ -4746,8 +4747,8 @@ function sunState(r) {
 // UTCI at the camera from the weather file at the Date and Time widgets' date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised by the sun and sky on the person
-// (SolarCal: skylight and light off the ground always, the direct sun when the camera is in
-// sunlight) and, in sunlight, by sun-warmed surroundings (a placeholder), and lowered by the cold sky.
+// (SolarCal: skylight always, the direct sun when the camera is in sunlight), by the light the
+// surfaces seen reflect and the warmth of those in sun (checkSurroundings), and lowered by the cold sky.
 
 // Whether a widget showing the comfort figures is open: Thermal comfort or Radiant temperature.
 const comfortShown = () => state.comfort.panel || state.mrtPanel;
@@ -4773,20 +4774,21 @@ function comfortNow() {
   const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
   // With simulated clouds the sun on the person is the beam between the clouds, cut by the cloud
   // over the camera if there is one (the same cloud field as the sky and its shadows). The
-  // sunlit surroundings keep the hour's average: ground and walls do not cool as a cloud passes.
+  // surroundings keep the hour's average: ground and walls do not cool as a cloud passes.
   const sim = comfortClouds(pos);
   const beam = sim?.shade != null ? sim.gap * sim.shade : w.directNormal;
-  // Without a location the sun's height is unknown: the skylight is still counted, the sun and its
-  // reflection off the ground are not.
-  // Only the sky seen counts for the skylight, the light off the ground and the cold sky (the rest of
-  // the view is surfaces, taken to be at the air temperature).
-  const seen = skySeen();
-  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, groundBeam: w.directNormal, posture: state.comfort.posture, skyView: seen });
-  const dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
+  // Without a location the sun's height is unknown: the skylight is still counted, the sun on the
+  // person and on the surroundings are not. Only the sky seen counts for the skylight and the cold
+  // sky; the rest of the view is surfaces, which reflect light onto the person and, where the sun is
+  // on them, are warmer than the air (surroundingsGains). Without a model, open ground in the sun.
+  const seen = skySeen(), view = surroundingsNow(pos);
+  const g = surroundingsGains(view, w.directNormal, w.diffuseHorizontal ?? 0);
+  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, posture: state.comfort.posture, skyView: seen, reflectedFlux: g.reflectedFlux });
+  const dSurr = g.warmth;
   const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta, seen); // the cold sky, day and night
   const tr = ta + sc.total + dSurr + dSky;
   // Wind below the UTCI's 0.5 m/s is raised to it (utci does), so it is not counted as out of range.
-  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, seen, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
+  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, seen, view, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
 }
 
 // The simulated cloud at the camera: null with the option off; { off: reason } when there are no
@@ -4853,13 +4855,14 @@ function syncComfortPanel() {
     <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s</dd>
     <dt>Sun</dt><dd>${sunRow}</dd>
     <dt>Sky seen</dt><dd>${!model ? 'All of it (no model)' : skyView ? `<b>${f(r.seen * 100, 0)}</b>% · from the model` : 'Working it out…'}</dd>
+    <dt>Surfaces in sun</dt><dd>${!r.pos || r.pos.altitude <= 0 ? 'None (no sun)' : `<b>${f(r.view.sunlit * 100, 0)}</b>% of those seen${!model ? ' (open ground, no model)' : surroundings ? '' : ' · working it out…'}`}</dd>
     <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C ${radiantParts(r, f)}</dd></dl>
     ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
 }
 
 // What the radiant temperature adds to the air temperature, part by part (those that add anything).
 function radiantParts(r, f) {
-  const parts = [[r.sc.direct, 'sun on you'], [r.sc.diffuse, 'skylight'], [r.sc.reflected, 'off the ground'], [r.dSurr, 'sunlit surroundings'], [r.dSky, 'cold sky']]
+  const parts = [[r.sc.direct, 'sun on you'], [r.sc.diffuse, 'skylight'], [r.sc.reflected, 'reflected light'], [r.dSurr, 'sun-warmed surfaces'], [r.dSky, 'cold sky']]
     .filter(([v]) => Math.abs(v) >= 0.05).map(([v, what]) => `${v < 0 ? '−' : '+'} ${f(Math.abs(v))} ${what}`);
   return `<span class="fine">(${parts.length ? `air ${parts.join(' ')}` : '= air'})</span>`;
 }
@@ -4876,9 +4879,10 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
     <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
-    <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation) and <b>light off the ground</b> (direct and diffuse, with the ground reflecting a quarter), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person is turned side-on to the sun, and <b>Posture</b> sets whether they stand or sit, which changes how much of the body the direct sun falls on. In sunlight the warmth of sunlit ground and walls nearby is added too, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Sun and shade end up about 15 to 27 °C apart in radiant temperature in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI.</p>
+    <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person is turned side-on to the sun, and <b>Posture</b> sets whether they stand or sit, which changes how much of the body the direct sun falls on.</p>
+    <p>The ground and walls the person sees add two more parts. Every surface seen, all round and above and below the horizon, is tested for sun, as the sun exposure tool does, and counts by its share of the view (<b>Surfaces in sun</b> in the details). <b>Reflected light</b>: the surfaces reflect a quarter of the sun and skylight on them onto the person. <b>Sun-warmed surfaces</b>: those in sun are warmer than the air by the sun they absorb (about 25 °C for sunlit paving at midday in summer), which warms the person too; those in shade are taken to be at the air temperature. So in a building's shadow the ground round about is mostly shaded and adds little, and a sunlit street adds most. Where nothing is drawn below the horizon, open ground in the sun is assumed, and without a model, open ground all round.</p>
     <p>The <b>cold sky</b> takes some off, day and night: the sky is colder than the air, much colder when it is clear, and the half of the body facing it loses heat to it. Its temperature comes from the weather file's horizontal infrared radiation, as ladybug-comfort works it out; ground and walls are taken to be at the air temperature.</p>
-    <p>Only the sky the person can see counts for the skylight, the light off the ground and the cold sky: the share of the sky seen from the camera, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Buildings and trees take the rest of the view and are taken to be at the air temperature. Not counted yet: surfaces heating up and cooling down over the day, and their materials, and the light they reflect.</p>
+    <p>Only the sky the person can see counts for the skylight and the cold sky: the share of the sky seen from the camera, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Not counted yet: surfaces heating up and cooling down over the day (a surface is as warm as the sun on it now), their materials, and light reflected more than once.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
 }
@@ -4904,8 +4908,8 @@ function bindComfortPanel() {
 const MRT_PARTS = [
   { id: 'direct', label: 'Sun on you', title: 'The direct sun on the person, in sunlight only (SolarCal)', of: (r) => r.sc.direct },
   { id: 'diffuse', label: 'Skylight', title: 'Diffuse light from the sky seen, in sun or shade (SolarCal)', of: (r) => r.sc.diffuse },
-  { id: 'reflected', label: 'Off the ground', title: 'Sun and skylight reflected off the ground, in sun or shade (SolarCal)', of: (r) => r.sc.reflected },
-  { id: 'surr', label: 'Sunlit surroundings', title: 'Warmth from sun-warmed ground and walls nearby, in sunlight only (a rough allowance)', of: (r) => r.dSurr },
+  { id: 'reflected', label: 'Reflected light', title: 'Sun and skylight reflected onto the person by the ground and walls seen, in sun or shade', of: (r) => r.sc.reflected },
+  { id: 'surr', label: 'Warm surfaces', title: 'Warmth from the ground and walls seen that are in sun, warmer than the air', of: (r) => r.dSurr },
   { id: 'sky', label: 'Cold sky', title: 'Heat lost to the sky seen, colder than the air, day and night', of: (r) => r.dSky },
 ];
 
@@ -4968,8 +4972,8 @@ function syncMrtPanel() {
 function showMrtHelp() {
   Dialog.open({ title: 'Radiant temperature', html: true, width: 420, body: `<p>The <b>mean radiant temperature</b> is the temperature of the surroundings as the body feels them through radiation: sun, sky, ground and walls. With the air temperature, humidity and wind it makes up the UTCI in the Thermal comfort widget, at the same place, date and time.</p>
     <p>It starts from the air temperature, and each bar shows how much one part adds (warmer, to the right) or takes away (cooler, to the left), in °C:</p>
-    <p><b>Sun on you</b>: the direct sun on the person, in sunlight only. <b>Skylight</b>: the diffuse light from the sky that can be seen. <b>Off the ground</b>: sun and skylight reflected up from the ground. These three are SolarCal (ASHRAE 55, Appendix C), for the posture set in the Thermal comfort widget. <b>Sunlit surroundings</b>: a rough allowance for sun-warmed ground and walls nearby, in sunlight only. <b>Cold sky</b>: heat lost to the sky, which is colder than the air, most of all when it is clear.</p>
-    <p><b>Altogether</b> is their sum: the mean radiant temperature less the air temperature. The skylight, the light off the ground and the cold sky count only the sky that can be seen, as worked out in the Sky view widget. See the Thermal comfort widget's ? for more on each part.</p>` });
+    <p><b>Sun on you</b>: the direct sun on the person, in sunlight only. <b>Skylight</b>: the diffuse light from the sky that can be seen. These two are SolarCal (ASHRAE 55, Appendix C), for the posture set in the Thermal comfort widget. <b>Reflected light</b>: sun and skylight reflected onto the person by the ground and walls seen. <b>Warm surfaces</b>: the warmth of the ground and walls seen that are in sun, warmer than the air. <b>Cold sky</b>: heat lost to the sky, which is colder than the air, most of all when it is clear.</p>
+    <p><b>Altogether</b> is their sum: the mean radiant temperature less the air temperature. The skylight and the cold sky count only the sky that can be seen, as worked out in the Sky view widget, and the last two only the surfaces seen, and which of them are in sun. See the Thermal comfort widget's ? for more on each part.</p>` });
 }
 
 function bindMrtPanel() {
@@ -5012,6 +5016,35 @@ function checkSkyView() {
 
 // The share of the sky the person sees, for the radiant temperature: the whole sky without a model.
 const skySeen = () => (model && skyView ? skyView.sky : 1);
+
+// The surfaces the person sees and which are in sun (skyview.js's surroundingsView), for the radiant
+// temperature: worked out from the latest sky view while a comfort widget is open, again when the sun
+// moves or the model's materials change. surroundings: null, or { key, view }.
+let surroundings = null, surrBusy = false, surrFailed = '';
+function checkSurroundings() {
+  if (!model || !renderer || !skyView) { surroundings = null; return; }
+  const pos = activeLocation() ? sunPosition() : null, up = pos && pos.altitude > 0;
+  const sun = up ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : [0, 0, -1];
+  const key = [skyView.key, sun.map((v) => v.toFixed(4)), modelKey('appearance')].join('|');
+  if (surrBusy || key === surroundings?.key || key === surrFailed) return;
+  surrBusy = true;
+  const V = skyView, m = model;
+  V.pts ??= surroundingPoints(V.data, SKY_N, V.eye);
+  const lit = up ? renderer.surroundingsLit(V.pts, sun, 0.1 / (METRES_PER_UNIT[m.units] || 1)) : Promise.resolve(null);
+  lit.then((l) => {
+    if (up && !l) surrFailed = key;
+    if (model !== m || skyView !== V || (up && !l)) return;
+    surroundings = { key, view: surroundingsView(V.data, SKY_N, V.pts, sun, l) };
+    syncComfortPanel();
+  }).catch(() => {}).finally(() => {
+    surrBusy = false;
+    // Something may have changed meanwhile.
+    if (comfortShown()) setTimeout(checkSurroundings, 0);
+  });
+}
+
+// The view of the surroundings for the radiant temperature: measured, or open ground in the sun.
+const surroundingsNow = (pos) => (model && surroundings ? surroundings.view : openGroundView(pos ? pos.altitude : 0));
 
 function toggleSkyViewPanel() {
   const V = state.skyView;
@@ -5104,7 +5137,7 @@ function drawSkyViewPicture(r) {
 function showSkyViewHelp() {
   Dialog.open({ title: 'Sky view', html: true, width: 420, body: `<p>How much of the sky can be seen from the camera, or from where you stand while walking. Buildings, trees and anything else shown cut it down; hide a layer and it no longer counts.</p>
     <p>The <b>sky view factor</b> is the usual measure in urban climate studies: the share of the sky seen by a level surface facing up, where the sky overhead counts for most and the sky near the horizon for little. 1 is an open sky; in the middle of a long street as wide as its buildings are high it is about 0.45.</p>
-    <p>The <b>share of the sky seen</b> counts all of the sky the same, near the horizon as much as overhead, which is closer to what an upright person sees. The Thermal comfort widget uses it for the skylight, the light off the ground and the cold sky in the radiant temperature.</p>
+    <p>The <b>share of the sky seen</b> counts all of the sky the same, near the horizon as much as overhead, which is closer to what an upright person sees. The Thermal comfort widget uses it for the skylight and the cold sky in the radiant temperature.</p>
     <p>The <b>picture</b> is the sky as a fisheye lens looking straight up would see it, laid out like a plan: north at the top and east on the right, the horizon round the edge and straight up in the middle, with rings at 30° and 60° up. <b>Sky mask</b> shows the sky white and everything else black; <b>Fisheye</b> shows the model in its colours. <b>Sun path</b> adds the sun's path on the Date widget's date, with a dot each hour, and the sun at the Time widget's time: where the path crosses something, the sun is hidden.</p>` });
 }
 
