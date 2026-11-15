@@ -24,6 +24,7 @@ import { DRIVE_CAMS, Driver } from './drive.js';
 import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascades } from './renderer.js';
 import { DEMO_3DM } from './demo.js';
 import { Widgets } from './widgets.js';
+import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint } from './skyview.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('gfx');
@@ -36,7 +37,7 @@ const canvas = $('gfx');
 //   and weather choices, its weather and results files, and the changes made to its model and how it is
 //   viewed (readStored). Lamps added in the viewer are not kept.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, skyViewMode: state.skyView.mode, skyViewSunPath: state.skyView.sunPath, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -64,6 +65,8 @@ const state = {
   // clouds: count the simulated cloud over the camera, rather than the hour's average sun.
   comfort: { panel: false, details: false, wind: prefs.comfortWind >= 0 && prefs.comfortWind <= 1 ? prefs.comfortWind : 0.5, clouds: prefs.comfortClouds === true,
     posture: SOLARCAL_POSTURES.includes(prefs.comfortPosture) ? prefs.comfortPosture : 'standing' },
+  // The Sky view widget: its picture ('mask' black and white, or 'fisheye' in the model's colours) and the sun's path on it.
+  skyView: { panel: false, mode: prefs.skyViewMode === 'fisheye' ? 'fisheye' : 'mask', sunPath: prefs.skyViewSunPath !== false },
 };
 // Sun study settings. lat, lon and utcOffset follow the site location (applyLocation); north is
 // the open model's. Dates are in EPW_YEAR: the year changes sun angles too little to matter.
@@ -402,6 +405,7 @@ function loop() {
     if (state.devMode) diagFrame(t);
     positionInspector(); syncCompass();
     if (state.comfort.panel) checkSunlight();
+    if (state.comfort.panel || state.skyView.panel) checkSkyView();
   }
   requestAnimationFrame(loop);
 }
@@ -2488,6 +2492,7 @@ function syncDateWeather() {
   syncDatePanel();
   syncWeatherPanel();
   syncComfortPanel();
+  syncSkyViewPanel();
   syncExposurePanel();
 }
 
@@ -3761,7 +3766,7 @@ function syncExposurePanel() {
 
 // The Tools button is pressed while any widget it opens is open.
 function syncToolsButton() {
-  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
 }
 
 function showExposureHelp() {
@@ -3776,8 +3781,9 @@ function showExposureHelp() {
 }
 
 function bindExposurePanel() {
-  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); } });
-  toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' }] }]);
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); } });
+  toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' },
+    { id: 'skyView', label: 'Sky view', title: 'How much of the sky can be seen from the camera, as a number and a fisheye picture' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
   // Weather, thermal comfort and lights: the toolbar's controls for them, their on/off icons
   // included, live in this menu, above the analysis tools.
@@ -4767,12 +4773,15 @@ function comfortNow() {
   const beam = sim?.shade != null ? sim.gap * sim.shade : w.directNormal;
   // Without a location the sun's height is unknown: the skylight is still counted, the sun and its
   // reflection off the ground are not.
-  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, groundBeam: w.directNormal, posture: state.comfort.posture });
+  // Only the sky seen counts for the skylight, the light off the ground and the cold sky (the rest of
+  // the view is surfaces, taken to be at the air temperature).
+  const seen = skySeen();
+  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, groundBeam: w.directNormal, posture: state.comfort.posture, skyView: seen });
   const dSurr = sun ? surroundingsMrtDelta(w.directNormal, pos.altitude) : 0;
-  const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta); // the cold sky, day and night
+  const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta, seen); // the cold sky, day and night
   const tr = ta + sc.total + dSurr + dSky;
   // Wind below the UTCI's 0.5 m/s is raised to it (utci does), so it is not counted as out of range.
-  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
+  return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, seen, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
 }
 
 // The simulated cloud at the camera: null with the option off; { off: reason } when there are no
@@ -4837,6 +4846,7 @@ function syncComfortPanel() {
     <dt>Relative humidity</dt><dd><b>${f(r.rh, 0)}</b>%</dd>
     <dt>Wind</dt><dd>${f(r.w.windSpeed)} × ${f(C.wind, 2)} = <b>${f(r.va)}</b> m/s</dd>
     <dt>Sun</dt><dd>${sunRow}</dd>
+    <dt>Sky seen</dt><dd>${!model ? 'All of it (no model)' : skyView ? `<b>${f(r.seen * 100, 0)}</b>% · from the model` : 'Working it out…'}</dd>
     <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C ${radiantParts(r, f)}</dd></dl>
     ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
 }
@@ -4862,7 +4872,7 @@ function showComfortHelp() {
     <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation) and <b>light off the ground</b> (direct and diffuse, with the ground reflecting a quarter), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person is turned side-on to the sun, and <b>Posture</b> sets whether they stand or sit, which changes how much of the body the direct sun falls on. In sunlight the warmth of sunlit ground and walls nearby is added too, a rough allowance of about 10 °C for 600 W/m² of direct sun on the ground. Sun and shade end up about 15 to 27 °C apart in radiant temperature in summer, in line with field measurements, which typically adds 4 to 7 °C to the UTCI.</p>
     <p>The <b>cold sky</b> takes some off, day and night: the sky is colder than the air, much colder when it is clear, and the half of the body facing it loses heat to it. Its temperature comes from the weather file's horizontal infrared radiation, as ladybug-comfort works it out; ground and walls are taken to be at the air temperature.</p>
-    <p>Not counted yet: the person is taken to see the whole sky (no street or building cuts it down), which counts the most skylight and the most cold sky there can be; surfaces heating up and cooling down over the day, and their materials.</p>
+    <p>Only the sky the person can see counts for the skylight, the light off the ground and the cold sky: the share of the sky seen from the camera, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Buildings and trees take the rest of the view and are taken to be at the air temperature. Not counted yet: surfaces heating up and cooling down over the day, and their materials, and the light they reflect.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
     <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
 }
@@ -4879,6 +4889,145 @@ function bindComfortPanel() {
   $('comfortPosture').addEventListener('change', (e) => { state.comfort.posture = e.target.value; syncComfortPanel(); savePrefs(); });
   $('comfortAdd').addEventListener('click', openAttachDialog);
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
+}
+
+// The Sky view widget ---------------------------------------------------------------------------
+// How much of the sky can be seen from the camera (skyview.js). It is worked out again when the
+// camera moves or what is shown changes, while this widget or the Thermal comfort widget is open:
+// the radiant temperature counts only the sky that is seen.
+
+const SKY_N = 256; // texels across each face of the cube drawn round the camera
+const SKY_FACES = skyFaces(SKY_N);
+// skyView: null (no model, or not worked out yet) or { key, eye, data (what each texel sees), svf, sky }.
+let skyView = null, skyViewBusy = false, skyViewAt = 0, skyViewLater = 0;
+const skyViewKey = () => [...camera.eye].map((v) => v.toFixed(4)).concat(modelKey('objects', 'visibility')).join('|');
+
+function checkSkyView() {
+  if (!model || !renderer) { if (skyView) { skyView = null; syncSkyViewPanel(); } return; }
+  const key = skyViewKey();
+  if (key === skyView?.key) return;
+  const now = performance.now();
+  if (skyViewBusy || now - skyViewAt < 200) {
+    // Look again shortly, so the last camera move is not missed.
+    if (!skyViewLater) skyViewLater = setTimeout(() => { skyViewLater = 0; if (state.comfort.panel || state.skyView.panel) checkSkyView(); }, 210);
+    return;
+  }
+  skyViewAt = now;
+  skyViewBusy = true;
+  const eye = [...camera.eye], m = model;
+  renderer.skyView(eye, 0.05 / (METRES_PER_UNIT[m.units] || 1), SKY_N, SKY_FACES).then((data) => {
+    if (model !== m || !data) return;
+    skyView = { key, eye, data, ...skyViewFactors(data, SKY_N) };
+    syncSkyViewPanel();
+    syncComfortPanel();
+  }).finally(() => { skyViewBusy = false; });
+}
+
+// The share of the sky the person sees, for the radiant temperature: the whole sky without a model.
+const skySeen = () => (model && skyView ? skyView.sky : 1);
+
+function toggleSkyViewPanel() {
+  const V = state.skyView;
+  V.panel = !V.panel;
+  $('skyViewPanel').hidden = !V.panel;
+  toolsList?.setOpen('skyView', V.panel);
+  syncToolsButton();
+  if (V.panel) { syncSkyViewPanel(); checkSkyView(); }
+}
+
+function syncSkyViewPanel() {
+  const V = state.skyView;
+  if (!V.panel) return;
+  const r = model && skyView;
+  $('skyViewMode').value = V.mode;
+  $('skyViewSunPath').checked = V.sunPath;
+  $('skyViewPic').hidden = !r;
+  setHtml($('skyViewRead'), !model ? '<span class="fine">Open a model to see its sky from the camera.</span>' : !r ? '<span class="fine">Working it out…</span>'
+    : `<div class="sky-top"><span class="sky-val">${r.svf.toFixed(2)}</span><span class="sky-what">sky view factor</span></div>
+      <div class="fine" data-full>${Math.round(r.sky * 100)}% of the sky seen${walker.active ? '' : ' · at the camera'}</div>`);
+  if (r) drawSkyViewPicture(r);
+}
+
+// The fisheye picture of the sky above the camera, with rings at 30° and 60° up, the compass points,
+// and the sun and its path through the day. Drawn again only when something in it changes.
+function drawSkyViewPicture(r) {
+  const V = state.skyView, cv = $('skyViewCanvas'), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const size = Math.round(cv.clientWidth * dpr);
+  if (!size) return;
+  const pos = activeLocation() ? sunPosition() : null, S = state.sun;
+  const ink = getComputedStyle(cv).color;
+  const key = [r.key, V.mode, V.sunPath, size, S.north, S.doy, S.hour, S.lat, S.lon, S.utcOffset, modelKey('appearance'), ink].join('|');
+  if (cv.dataset.key === key) return;
+  cv.dataset.key = key;
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d'), m = Math.round(16 * dpr), D = size - 2 * m, R = D / 2, c = size / 2;
+  const img = ctx.createImageData(D, D);
+  const light = pos && pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, S.north) : undefined;
+  const colourOf = (id) => { const o = model.objects[id]; return o && (o.ai.cs === 1 ? o.ai.oc : model.layers[o.ai.layer]?.rgb); };
+  drawSkyView(img.data, D, r.data, SKY_N, { mode: V.mode === 'fisheye' ? 'model' : 'mask', north: S.north, colourOf, light });
+  ctx.clearRect(0, 0, size, size);
+  ctx.putImageData(img, m, m);
+  const at = (az, alt) => { const [x, y] = skyViewPoint(az, alt); return [m + x * D, m + y * D]; };
+  // Rings at 30° and 60° up, the lines to the compass points, and the horizon.
+  ctx.lineWidth = dpr;
+  ctx.strokeStyle = V.mode === 'mask' ? 'rgba(128, 128, 128, 0.7)' : 'rgba(255, 255, 255, 0.55)';
+  ctx.beginPath();
+  for (const alt of [30, 60]) { const rr = (R * (90 - alt)) / 90; ctx.moveTo(c + rr, c); ctx.arc(c, c, rr, 0, 2 * Math.PI); }
+  ctx.moveTo(c - R, c); ctx.lineTo(c + R, c); ctx.moveTo(c, c - R); ctx.lineTo(c, c + R);
+  ctx.stroke();
+  ctx.strokeStyle = ink;
+  ctx.beginPath(); ctx.arc(c, c, R, 0, 2 * Math.PI); ctx.stroke();
+  ctx.fillStyle = ink;
+  ctx.font = `${Math.round(11 * dpr)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [t, az] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
+    const a = (az * Math.PI) / 180;
+    ctx.fillText(t, c + Math.sin(a) * (R + m / 2), c - Math.cos(a) * (R + m / 2));
+  }
+  if (!pos) return;
+  // The sun's path through the day, with a dot each hour, and the sun now.
+  if (V.sunPath) {
+    ctx.strokeStyle = ctx.fillStyle = '#f59e0b';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    let up = false;
+    for (let mins = 0; mins <= 24 * 60; mins += 5) {
+      const p = solarPosition({ ...sunOpts(), hour: mins / 60 });
+      if (p.altitude < 0) { up = false; continue; }
+      const [x, y] = at(p.azimuth, p.altitude);
+      if (up) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      up = true;
+    }
+    ctx.stroke();
+    for (let h = 0; h <= 24; h++) {
+      const p = solarPosition({ ...sunOpts(), hour: h });
+      if (p.altitude < 0) continue;
+      const [x, y] = at(p.azimuth, p.altitude);
+      ctx.beginPath(); ctx.arc(x, y, 1.8 * dpr, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+  if (pos.altitude > 0) {
+    const [x, y] = at(pos.azimuth, pos.altitude);
+    ctx.beginPath(); ctx.arc(x, y, 5 * dpr, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffd23f'; ctx.fill();
+    ctx.strokeStyle = '#b45309'; ctx.lineWidth = 1.5 * dpr; ctx.stroke();
+  }
+}
+
+function showSkyViewHelp() {
+  Dialog.open({ title: 'Sky view', html: true, width: 420, body: `<p>How much of the sky can be seen from the camera, or from where you stand while walking. Buildings, trees and anything else shown cut it down; hide a layer and it no longer counts.</p>
+    <p>The <b>sky view factor</b> is the usual measure in urban climate studies: the share of the sky seen by a level surface facing up, where the sky overhead counts for most and the sky near the horizon for little. 1 is an open sky; in the middle of a long street as wide as its buildings are high it is about 0.45.</p>
+    <p>The <b>share of the sky seen</b> counts all of the sky the same, near the horizon as much as overhead, which is closer to what an upright person sees. The Thermal comfort widget uses it for the skylight, the light off the ground and the cold sky in the radiant temperature.</p>
+    <p>The <b>picture</b> is the sky as a fisheye lens looking straight up would see it, laid out like a plan: north at the top and east on the right, the horizon round the edge and straight up in the middle, with rings at 30° and 60° up. <b>Sky mask</b> shows the sky white and everything else black; <b>Fisheye</b> shows the model in its colours. <b>Sun path</b> adds the sun's path on the Date widget's date, with a dot each hour, and the sun at the Time widget's time: where the path crosses something, the sun is hidden.</p>` });
+}
+
+function bindSkyViewPanel() {
+  $('skyViewClose').addEventListener('click', () => state.skyView.panel && toggleSkyViewPanel());
+  $('skyViewHelp').addEventListener('click', showSkyViewHelp);
+  $('skyViewMode').addEventListener('change', (e) => { state.skyView.mode = e.target.value; syncSkyViewPanel(); savePrefs(); });
+  $('skyViewSunPath').addEventListener('change', (e) => { state.skyView.sunPath = e.target.checked; syncSkyViewPanel(); savePrefs(); });
+  // The picture is drawn at the size it is shown.
+  new ResizeObserver(() => syncSkyViewPanel()).observe($('skyViewCanvas'));
 }
 
 // The toolbar's render mode menu: what is drawn, on and off, then the modes. Picking leaves it open,
@@ -5574,6 +5723,7 @@ function bindUi() {
   bindLightsPanel();
   bindComfortPanel();
   bindExposurePanel();
+  bindSkyViewPanel();
   window.addEventListener('keydown', onKey);
   const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });

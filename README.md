@@ -619,9 +619,12 @@ here even though you can walk through them; glass counts as opaque. It reads:
   measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI. The cold sky takes some
   off, day and night: half the sky's temperature less the air's (ladybug-comfort's
   `longwave_mrt_delta_from_horiz_ir`), with the sky temperature from the weather file's horizontal
-  infrared radiation, and ground and walls taken to be at the air temperature. Not counted yet: how
-  much of the sky the person sees (taken to be all of it), and surfaces heating up and cooling down
-  over the day, and their materials.
+  infrared radiation, and ground and walls taken to be at the air temperature.
+
+  The skylight, the light off the ground and the cold sky count only the sky the person sees: the
+  share of the sky seen from the camera, worked out as in [Sky view](#sky-view) (shown as **Sky
+  seen** in the details; all of it with no model). Not counted yet: surfaces heating up and cooling
+  down over the day, their materials, and the light they reflect.
 - **Clouds** are counted in one of two ways:
   - By default, the direct sun is the weather file's hourly direct normal radiation: an
     average that already allows for that hour's cloud by dimming the sun evenly. This is how
@@ -645,6 +648,31 @@ into it.
 
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.
+
+## Sky view
+
+Click **Tools → Sky view** for how much of the sky can be seen from the camera, or from where you
+stand while walking. It is worked out again as the camera moves, and when layers are shown or
+hidden: everything shown cuts the sky down, trees and glass included.
+
+- The **sky view factor** is the usual measure in urban climate studies: the share of the sky
+  seen by a level surface facing up, so the sky overhead counts most and the sky near the horizon
+  little. 1 is an open sky; a wall of even height all round, rising to an angle *h*, gives cos²*h*.
+- The **share of the sky seen** counts all of the sky the same (1 − sin *h* for that wall), which is
+  closer to what an upright person sees. The Thermal comfort panel uses it.
+
+The picture is the sky as a fisheye lens looking straight up would see it (an equidistant
+projection), laid out like a plan: north at the top, east on the right, the horizon round the edge,
+and rings at 30° and 60° up. **Sky mask** draws the sky white and everything else black; **Fisheye**
+draws the model in its layer or object colours, shaded by which way surfaces face. **Sun path** adds
+the sun's path on the Date widget's date, with a dot each hour, and the sun at the Time widget's
+time, so you can see when buildings hide it.
+
+The renderer draws the half of the world above the eye onto five faces of a cube (a hemicube,
+256 × 256 texels a face), recording what each texel sees; each texel is weighted by its solid
+angle (and, for the sky view factor, by its cosine from straight up), and the weights of the
+texels that see nothing are added up. `node tools/test-skyview.js` checks the weights against
+open sky, half a sky, and walls of known height.
 
 ## Lights
 
@@ -792,8 +820,8 @@ still stay on the computer of whoever opens them: the site only delivers the pag
 ### Tests and tools
 
 There is no test framework; these are plain Node scripts that `require` the modules in `src/`
-(`src/package.json` marks that folder as ES modules for Node). Only the first runs without any files
-of your own, and the last three need `vendor/`. Behaviour in the browser is checked by hand.
+(`src/package.json` marks that folder as ES modules for Node). `test-epw.js` and the last three need files
+of your own, and the last three also need `vendor/`. Behaviour in the browser is checked by hand.
 
 | Command | What it does |
 | --- | --- |
@@ -802,6 +830,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | `node tools/test-magic.js` | Checks where a magic block is placed |
 | `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
+| `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
@@ -819,6 +848,7 @@ src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking,
 src/sun.js               solar position, sun direction and colour
 src/mesh.js              meshes made for analysis: join, weld, split long edges, normals
 src/exposure.js          sun exposure: the times in a period, and the surface to test from a layer
+src/skyview.js           sky view: the hemicube layout, sky view factors, and the fisheye picture
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
 src/clouds.js            cloud cover, sun and sky strength from the weather file; clear-sky models
 src/utci.js              UTCI (Universal Thermal Climate Index), its stress categories, SolarCal sun on a person

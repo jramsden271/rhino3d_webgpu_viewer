@@ -724,3 +724,14 @@ body.walking .walk-frame { display: block; }
   select option:hover, select option:focus-visible { background: var(--hover); outline: none; }
   select option:checked { background: var(--accent-soft); color: var(--accent); }
 }
+
+/* Sky view */
+.sky-read { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+.sky-top { display: flex; align-items: baseline; gap: 8px; }
+.sky-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sky-what { color: var(--muted); }
+.sky-pic { display: flex; justify-content: center; }
+.sky-pic[hidden] { display: none; }
+.sky-pic canvas { width: 100%; max-width: 260px; aspect-ratio: 1; color: var(--muted); }
+.sky-opts { display: flex; flex-direction: column; gap: 8px; }
+#skyViewPanel.min .sun-body { padding-top: 6px; padding-bottom: 6px; }

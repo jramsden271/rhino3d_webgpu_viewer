@@ -2136,6 +2136,68 @@ export class Renderer {
     }, () => null).finally(() => { this.probeBusy = false; });
   }
 
+  // The half of the world above eye, as skyview.js lays it out: five views of a cube round eye (the
+  // top, and the upper half of each side) into a 3N x N texture, drawn with the pick pipeline so each
+  // texel holds the world position of the surface it sees and its object + 1 (0 for the sky). Every
+  // visible mesh is drawn, trees and water included. Resolves to a new Float32Array (4 floats per
+  // texel), or null if the GPU rejected the work. Calls are queued, one after another.
+  skyView(eye, near, N, faces) {
+    const run = async () => {
+      if (!this.batches.length) return new Float32Array(3 * N * N * 4);
+      const dev = this.device, U = GPUBufferUsage, RA = GPUTextureUsage.RENDER_ATTACHMENT;
+      if (this.skyN !== N) {
+        this.skyTex?.destroy(); this.skyDepth?.destroy(); this.skyRead?.destroy();
+        this.skyN = N;
+        this.skyTex = dev.createTexture({ size: [3 * N, N], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.skyDepth = dev.createTexture({ size: [3 * N, N], format: DEPTH, usage: RA });
+        this.skyRead = dev.createBuffer({ size: 3 * N * N * 16, usage: U.MAP_READ | U.COPY_DST });
+        this.skyBufs ??= faces.map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
+      }
+      if (!this.skyBGs || this.skyFlagsBuf !== this.objFlagsBuf) {
+        this.skyFlagsBuf = this.objFlagsBuf;
+        this.skyBGs = this.skyBufs.map((buffer) => this.probeBindGroup(buffer));
+      }
+      // A side face shows only its upper half: clip y is moved so the horizon is the bottom edge.
+      const upper = new Float64Array(16);
+      upper[0] = 1; upper[5] = 2; upper[10] = 1; upper[15] = 1; upper[13] = -1;
+      const vps = faces.map((F) => {
+        const vp = M4.mul(M4.perspective(Math.PI / 2, 1, near), M4.lookAt(eye, V3.add(eye, F.f), F.up));
+        return F.half ? M4.mul(upper, vp) : vp;
+      });
+      vps.forEach((vp, i) => dev.queue.writeBuffer(this.skyBufs[i], 0, Float32Array.from(vp)));
+      const shown = this.batches.filter((b) => b.visible && b.kind === 'mesh');
+      dev.pushErrorScope('validation');
+      const enc = dev.createCommandEncoder();
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: this.skyTex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+        depthStencilAttachment: { view: this.skyDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+      });
+      pass.setPipeline(this.pipes.pick);
+      faces.forEach((F, i) => {
+        pass.setViewport(...F.rect, 0, 1);
+        pass.setScissorRect(...F.rect);
+        pass.setBindGroup(0, this.skyBGs[i]);
+        this.cull(vps[i], true);
+        for (const b of shown) {
+          if (!this.seen(b)) continue;
+          pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+          pass.setIndexBuffer(b.gpu.idx, 'uint32');
+          this.drawCells(pass, b);
+        }
+      });
+      pass.end();
+      enc.copyTextureToBuffer({ texture: this.skyTex }, { buffer: this.skyRead, bytesPerRow: 3 * N * 16 }, [3 * N, N]);
+      dev.queue.submit([enc.finish()]);
+      const failed = await dev.popErrorScope();
+      await this.skyRead.mapAsync(GPUMapMode.READ);
+      const out = failed ? null : new Float32Array(this.skyRead.getMappedRange()).slice();
+      this.skyRead.unmap();
+      return out;
+    };
+    this.skyQueue = (this.skyQueue || Promise.resolve()).then(run, run);
+    return this.skyQueue;
+  }
+
   // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys
   // them, and a bind group still holding one made every probe fail, leaving the walker with a stale map.
   probeBindGroup(buffer) {
