@@ -5033,7 +5033,9 @@ function checkSurroundings() {
   const lit = up ? renderer.surroundingsLit(V.pts, sun, 0.1 / (METRES_PER_UNIT[m.units] || 1)) : Promise.resolve(null);
   lit.then((l) => {
     if (up && !l) surrFailed = key;
-    if (model !== m || skyView !== V || (up && !l)) return;
+    // Kept even if the camera has moved on meanwhile (as it does all the time while walking): it is
+    // a moment old, and the next one starts at once.
+    if (model !== m || (up && !l)) return;
     surroundings = { key, view: surroundingsView(V.data, SKY_N, V.pts, sun, l) };
     syncComfortPanel();
   }).catch(() => {}).finally(() => {
