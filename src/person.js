@@ -63,52 +63,96 @@ function builder() {
       }
       return B;
     },
+    // A smooth surface through closed cross-sections, bottom to top, closed at both ends: each
+    // { z, x (its middle, forward), rx (half its depth), ry (half its width), p (squareness: 2 an
+    // ellipse, more a rounded rectangle) }. Normals are smoothed from the faces.
+    loft(sections, colour, seg = 24) {
+      const P = [], tri = [];
+      for (const S of sections) {
+        const e = 2 / (S.p || 2);
+        for (let i = 0; i < seg; i++) {
+          const t = (i / seg) * 2 * Math.PI, c = Math.cos(t), sn = Math.sin(t);
+          P.push([S.x + S.rx * Math.sign(c) * Math.abs(c) ** e, S.ry * Math.sign(sn) * Math.abs(sn) ** e, S.z]);
+        }
+      }
+      const n = sections.length, lo = P.length, hi = lo + 1, first = sections[0], last = sections[n - 1];
+      P.push([first.x, 0, first.z], [last.x, 0, last.z]);
+      // Each ring runs anticlockwise seen from above, so these face outwards.
+      for (let j = 0; j < n - 1; j++) for (let i = 0; i < seg; i++) {
+        const a = j * seg + i, b = j * seg + ((i + 1) % seg), c = a + seg, d = b + seg;
+        tri.push([a, b, d], [a, d, c]);
+      }
+      for (let i = 0; i < seg; i++) {
+        tri.push([lo, (i + 1) % seg, i]);
+        tri.push([hi, (n - 1) * seg + i, (n - 1) * seg + ((i + 1) % seg)]);
+      }
+      const N = P.map(() => [0, 0, 0]);
+      for (const [a, b, c] of tri) {
+        const f = cross(P[b].map((v, k) => v - P[a][k]), P[c].map((v, k) => v - P[a][k]));
+        for (const v of [a, b, c]) for (let k = 0; k < 3; k++) N[v][k] += f[k];
+      }
+      const base = pos.length / 3;
+      P.forEach((p, i) => vert(p, norm(N[i]), colour));
+      for (const t of tri) idx.push(...t.map((v) => base + v));
+      return B;
+    },
     done: () => ({ pos: Float32Array.from(pos), nrm: Float32Array.from(nrm), col: Uint8Array.from(col), idx: Uint32Array.from(idx), gloss: 0.15 }),
   };
   return B;
 }
 
-// The figure: 'standing' (1.75 m tall) or 'sitting' (on a 0.45 m stool).
+// The body from the crotch to the neck, standing (dz moves it up or down): wide at the hips, in at
+// the waist, widest across the chest under the arms, then the shoulders slope up into the neck.
+const TORSO = [
+  { z: 0.8, x: 0, rx: 0.085, ry: 0.13 },
+  { z: 0.88, x: -0.005, rx: 0.11, ry: 0.17, p: 2.2 },
+  { z: 0.97, x: 0, rx: 0.105, ry: 0.165, p: 2.2 },
+  { z: 1.06, x: 0.005, rx: 0.095, ry: 0.145, p: 2.2 },
+  { z: 1.16, x: 0.015, rx: 0.105, ry: 0.155, p: 2.4 },
+  { z: 1.27, x: 0.02, rx: 0.115, ry: 0.165, p: 2.6 },
+  { z: 1.35, x: 0.015, rx: 0.11, ry: 0.176, p: 2.8 },
+  { z: 1.41, x: 0, rx: 0.09, ry: 0.176, p: 3 },
+  { z: 1.455, x: -0.01, rx: 0.07, ry: 0.13, p: 2.5 },
+  { z: 1.49, x: -0.005, rx: 0.052, ry: 0.06 },
+  { z: 1.58, x: 0, rx: 0.045, ry: 0.045 },
+];
+
+// The figure: 'standing' (1.75 m tall) or 'sitting' (on a 0.45 m stool), its torso lowered by SIT.
+const SIT = 0.35;
 export function personGeometry(posture = 'standing') {
-  const c = PERSON_COLOUR, B = builder();
+  const c = PERSON_COLOUR, B = builder(), sitting = posture === 'sitting', dz = sitting ? -SIT : 0;
   const side = (f) => { f(1); f(-1); };
-  if (posture === 'sitting') {
+  B.loft(TORSO.map((S) => ({ ...S, z: S.z + dz })), c);
+  // Head and nose (so the way it faces shows).
+  B.sphere([0.005, 0, 1.65 + dz], [0.1, 0.078, 0.11], c, 16, 12);
+  B.sphere([0.093, 0, 1.635 + dz], [0.02, 0.013, 0.02], c, 8, 6);
+  side((s) => {
+    // The shoulder joint, below the top of the shoulder, and the arm hanging from it.
+    const sh = [-0.005, s * 0.178, 1.37 + dz];
+    B.sphere(sh, 0.056, c, 12, 8);
+    if (sitting) {
+      // Hands resting on the thighs.
+      const el = [0.05, s * 0.212, 0.76], wr = [0.27, s * 0.17, 0.64];
+      B.capsule(sh, el, [0.048, 0.038], c).capsule(el, wr, [0.038, 0.028], c);
+      B.sphere([0.31, s * 0.165, 0.62], [0.055, 0.03, 0.022], c, 10, 6);
+    } else {
+      const el = [-0.01, s * 0.205, 1.09], wr = [0.03, s * 0.212, 0.85];
+      B.capsule(sh, el, [0.052, 0.038], c).capsule(el, wr, [0.038, 0.028], c);
+      B.sphere([0.035, s * 0.212, 0.78], [0.028, 0.018, 0.075], c, 10, 6);
+    }
+    // Legs and feet: thighs from inside the hips.
+    const hip = [0, s * 0.09, 0.88 + dz], knee = sitting ? [0.43, s * 0.1, 0.52] : [0.015, s * 0.1, 0.5];
+    const ankle = sitting ? [0.45, s * 0.105, 0.085] : [0, s * 0.105, 0.085];
+    B.capsule(hip, knee, [0.085, 0.052], c).capsule(knee, ankle, [0.05, 0.035], c);
+    B.sphere([ankle[0] + 0.06, s * 0.105, 0.04], [0.12, 0.045, 0.04], c, 12, 8);
+  });
+  if (sitting) {
     // The stool: a round seat on four legs.
     B.limb([0, 0, 0.41], [0, 0, 0.45], 0.19, STOOL_COLOUR, 16).sphere([0, 0, 0.45], [0.19, 0.19, 0.005], STOOL_COLOUR, 16, 4).sphere([0, 0, 0.41], [0.19, 0.19, 0.005], STOOL_COLOUR, 16, 4);
     for (const [x, y] of [[0.12, 0.12], [0.12, -0.12], [-0.12, 0.12], [-0.12, -0.12]]) B.limb([x * 1.25, y * 1.25, 0], [x, y, 0.41], 0.016, STOOL_COLOUR, 6);
-    // Seated: thighs level, shins down, hands on the knees.
-    side((s) => {
-      B.capsule([0.02, s * 0.09, 0.53], [0.42, s * 0.1, 0.52], [0.075, 0.06], c);
-      B.capsule([0.42, s * 0.1, 0.52], [0.44, s * 0.1, 0.1], [0.055, 0.045], c);
-      B.box([0.4, s * 0.1 - 0.045, 0], [0.62, s * 0.1 + 0.045, 0.07], c);
-      B.capsule([0, s * 0.2, 1.02], [0.1, s * 0.23, 0.79], [0.05, 0.045], c);
-      B.capsule([0.1, s * 0.23, 0.79], [0.33, s * 0.16, 0.6], [0.045, 0.04], c);
-      B.sphere([0.36, s * 0.15, 0.59], 0.05, c, 8, 6);
-    });
-    torso(B, c, 0.5);
-  } else {
-    side((s) => {
-      B.capsule([0, s * 0.09, 0.9], [0.01, s * 0.1, 0.48], [0.075, 0.06], c);
-      B.capsule([0.01, s * 0.1, 0.48], [0, s * 0.1, 0.1], [0.055, 0.045], c);
-      B.box([-0.04, s * 0.1 - 0.045, 0], [0.18, s * 0.1 + 0.045, 0.07], c);
-      B.capsule([0, s * 0.21, 1.41], [0.02, s * 0.24, 1.14], [0.05, 0.045], c);
-      B.capsule([0.02, s * 0.24, 1.14], [0.1, s * 0.22, 0.92], [0.045, 0.04], c);
-      B.sphere([0.11, s * 0.215, 0.88], 0.05, c, 8, 6);
-    });
-    torso(B, c, 0.88);
   }
   return B.done();
 }
 
-// Hips to head, from z0 (the hips) up: a body, neck and head, with a nose so the way it faces shows.
-function torso(B, c, z0) {
-  B.sphere([0, 0, z0 + 0.06], [0.12, 0.17, 0.11], c);
-  B.sphere([0, 0, z0 + 0.3], [0.12, 0.17, 0.24], c, 14, 10);
-  B.sphere([0, 0, z0 + 0.47], [0.12, 0.215, 0.08], c);
-  B.limb([0, 0, z0 + 0.52], [0, 0, z0 + 0.62], 0.05, c, 8);
-  B.sphere([0, 0, z0 + 0.74], [0.1, 0.09, 0.115], c);
-  B.sphere([0.1, 0, z0 + 0.72], [0.025, 0.018, 0.022], c, 8, 6);
-}
-
 // How tall the figure is, m: for picking it on screen.
-export const PERSON_HEIGHT = { standing: 1.75, sitting: 1.35 };
+export const PERSON_HEIGHT = { standing: 1.76, sitting: 1.41 };

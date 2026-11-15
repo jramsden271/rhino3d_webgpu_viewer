@@ -5039,7 +5039,7 @@ function bindPersonPanel() {
     fadeIntoWalk(at, Math.atan2(-f[1], -f[0]));
   });
   $('personFacing').innerHTML = PERSON_FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
-  $('personFacing').addEventListener('change', (e) => { state.person.facing = e.target.value; saveViewState(); syncComfortPanel(); redraw(); });
+  $('personFacing').addEventListener('change', (e) => { state.person.facing = e.target.value || 'side'; saveViewState(); syncComfortPanel(); redraw(); });
   for (const b of document.querySelectorAll('.person-drop')) b.addEventListener('click', () => setPersonPlacing(!state.person.placing));
   // "Place a person" links in the widgets.
   for (const id of ['comfortPanel', 'mrtPanel', 'skyViewPanel']) $(id).addEventListener('click', (e) => { if (e.target.closest('[data-place]')) setPersonPlacing(true); });
