@@ -60,7 +60,7 @@ const state = {
   weatherOn: true,  // the Weather widget's switch: off, none of its View items show, whatever is ticked
   // The View items, as ticked under Weather in the render mode menu. Each also needs a location or a weather file
   // (VIEW_NEEDS), and the switch on: viewOn says whether it shows.
-  view: { sun: false, sky: true, clouds: true, haze: true, path: false },
+  view: { sun: true, sky: true, clouds: true, haze: true, path: false },
   // Thermal comfort panel; wind: the factor (0-1) applied to the weather file's wind speed.
   // details: the Details section is open.
   // clouds: count the simulated cloud over the camera, rather than the hour's average sun.
@@ -1567,7 +1567,7 @@ function restoreSun(saved) {
   if (w) {
     const tick = (x, d) => (typeof x === 'boolean' ? x : d);
     state.weatherOn = tick(w.on, true);
-    Object.assign(state.view, { sun: tick(w.sun, false), sky: tick(w.sky, true), clouds: tick(w.clouds, true), haze: tick(w.haze, true), path: tick(w.path, false) });
+    Object.assign(state.view, { sun: tick(w.sun, true), sky: tick(w.sky, true), clouds: tick(w.clouds, true), haze: tick(w.haze, true), path: tick(w.path, false) });
   }
   syncDateWeather();
   redraw();

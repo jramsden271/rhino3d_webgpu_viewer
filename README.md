@@ -517,7 +517,7 @@ to, so these last only while they are open.
 
 ## Sun and shadows
 
-Tick **Sun** under Weather in the render mode menu to light the model by the sun with cast shadows, at
+**Sun** under Weather in the render mode menu (on by default) lights the model by the sun with cast shadows, at
 the Date and Time widgets' date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
