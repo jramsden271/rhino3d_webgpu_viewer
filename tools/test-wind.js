@@ -2,7 +2,7 @@
 // (the solver itself runs on the GPU and is checked in the browser):
 //   node tools/test-wind.js
 
-const { windGrid, windInlet, windVoxels, windVoxelShell, windMapTops, windMapMesh, compass16, WIND_OPEN, WIND_PEDESTRIAN } = require('../src/wind.js');
+const { windGrid, windInlet, windVoxels, windVoxelShell, windMapTops, windMapMesh, compass16, windOpen, WIND_TERRAINS, WIND_PEDESTRIAN } = require('../src/wind.js');
 
 let failures = 0;
 const check = (ok, msg) => { if (!ok) { failures++; console.log(`  FAIL ${msg}`); } };
@@ -44,10 +44,16 @@ for (const from of [0, 90, 225, 270]) {
 
 // The inlet: rising with height, as fast at the top as the solver allows.
 {
-  const { inlet, u10, uRef } = windInlet(40, 1.5);
-  check(inlet.every((v, k) => k === 0 || v >= inlet[k - 1]), 'the inlet speeds up with height');
-  check(inlet[39] <= 0.1 && inlet[39] > 0.09, `top speed ${inlet[39]}`);
-  check(near(uRef / u10, WIND_OPEN, 1e-9), 'the reference is the open wind at pedestrian height');
+  for (const t of WIND_TERRAINS) {
+    const { inlet, u10, uRef } = windInlet(40, 1.5, t.id);
+    check(inlet.every((v, k) => k === 0 || v >= inlet[k - 1]), `${t.id}: the inlet speeds up with height`);
+    check(inlet[39] <= 0.1 && inlet[39] > 0.09, `${t.id}: top speed ${inlet[39]}`);
+    check(near(uRef / u10, Math.pow(WIND_PEDESTRIAN / 10, t.alpha), 1e-9), `${t.id}: the profile's power law`);
+  }
+  // The weather station's wind brought to the site (ASHRAE): over open country, the plain power law
+  // down from 10 m; rougher terrain, less.
+  check(near(windOpen('open'), Math.pow(0.15, 0.14), 1e-9), `open country: ${windOpen('open')}`);
+  check(near(windOpen('suburban'), 0.472, 0.005) && near(windOpen('urban'), 0.24, 0.005), `suburban ${windOpen('suburban')}, city centre ${windOpen('urban')}`);
 }
 
 // Solids, on 1 m cells: a ground plane, a closed box standing on it, and a canopy (a single
@@ -72,6 +78,14 @@ for (const from of [0, 90, 225, 270]) {
     check(column(18, 2) === '10000000000000000000', `${way}: open ground: ${column(18, 2)}`);
     check(near(V.stand[4 + 20 * 4], 8.2, 1e-4) && near(V.level[4 + 20 * 4], 8.2 + WIND_PEDESTRIAN, 1e-4), `${way}: read above the roof`);
     check(near(V.stand[13 + 20 * 13], 0.2, 1e-4) && near(V.level[13 + 20 * 13], 0.2 + WIND_PEDESTRIAN, 1e-4), `${way}: read above the ground under the canopy`);
+  }
+  // Along a ground's edge that runs between column middles, the surface still passes through the
+  // edge column's cells: read at the ground's height there, not the top of the cell.
+  {
+    const slab = box(0, 0, -0.5, 10.3, 20, 0.2);
+    const V = await windVoxels(G, [slab], 1);
+    check(near(V.stand[10 + 20 * 5], 0.2, 1e-4) && near(V.stand[9 + 20 * 5], 0.2, 1e-4), `the edge column stands on the ground: ${V.stand[10 + 20 * 5]}`);
+    check(Number.isNaN(V.stand[11 + 20 * 5]), 'beyond the edge, nothing');
   }
   // Nothing at all: read above the floor, nowhere to stand.
   const E = await windVoxels(G, [], 1);
@@ -98,5 +112,18 @@ for (const from of [0, 90, 225, 270]) {
   check(idx.length === 6 * 4, `quads either side of the step only (${idx.length / 6})`);
   const none = windMapTops(G, new Float32Array(12).fill(NaN), [0, 0, 0], [1.6, 3, 10]);
   check(none.filter(Number.isFinite).length === 6 && none.every((z, c) => Number.isFinite(z) === (c % 4 < 2)), 'nothing beyond the model, the floor within it');
+  // Cut along the model's edge: out to x = 1.6 exactly, flat, the cut's points valued from the columns.
+  const cut = windMapMesh(G, none, 0, [0, 0, 0], [1.6, 3, 10]);
+  const used = [...new Set(cut.idx)], xs = used.map((v) => cut.pos[v * 3]);
+  check(near(Math.max(...xs), 1.6, 1e-6) && near(Math.min(...xs), 0.5, 1e-6), `the map reaches the edge: ${Math.min(...xs)} to ${Math.max(...xs)}`);
+  check(used.every((v) => near(cut.pos[v * 3 + 2], 0, 1e-6)), 'the map stays flat to the edge');
+  const { cols, weights } = cut.extra;
+  check(cut.count === cut.pos.length / 3 && cols.length === (cut.count - 12) * 3 && cols.length > 0, `the cut adds points (${cols.length / 3})`);
+  check([...Array(cols.length / 3)].every((_, e) => near(weights[e * 3] + weights[e * 3 + 1] + weights[e * 3 + 2], 1, 1e-6)), "the cut's points' weights add up to 1");
+  // A step across the grid's diagonal: a triangle on each side of it, not a whole-cell staircase.
+  const diag = Float32Array.from([0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 10, 10]);
+  const D = windMapMesh(G, diag, 0);
+  // Three flat cells (6), and one triangle in each of the three cells the step crosses.
+  check(D.idx.length / 3 === 9, `triangles along the diagonal (${D.idx.length / 3})`);
 }
 

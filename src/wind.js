@@ -20,7 +20,16 @@ import { sunVector } from './sun.js';
 import { ColourScales } from './colourscales.js';
 
 export const WIND_PEDESTRIAN = 1.5;   // m above the surface, where the results are read
-export const WIND_ALPHA = 0.25;       // the inlet profile's power law exponent: suburban to urban terrain
+// The site's terrain: how fast the wind rises with height (power law exponent alpha) and the height it
+// is free of the ground (delta, m), as ASHRAE Fundamentals gives them. The wind blows in over this.
+export const WIND_TERRAINS = [
+  { id: 'open', label: 'Open country', alpha: 0.14, delta: 270, title: 'Open, flat ground with few obstructions: fields, airports, the coast' },
+  { id: 'suburban', label: 'Suburban', alpha: 0.22, delta: 370, title: 'Towns, suburbs and wooded country: obstructions the size of houses, close together' },
+  { id: 'urban', label: 'City centre', alpha: 0.33, delta: 460, title: 'Large city centres: many tall buildings close together' },
+];
+// Where the weather file's wind is measured: 10 m up in open country (as at an airport).
+const WIND_MET = { z: 10, alpha: 0.14, delta: 270 };
+const terrainOf = (id) => WIND_TERRAINS.find((t) => t.id === id) || WIND_TERRAINS[1];
 const U_TOP = 0.1;                    // the inlet's speed at the top of the grid, in cells per step
 const NICE_CELLS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50];
 export const WIND_RESOLUTIONS = [
@@ -60,15 +69,21 @@ export function windGrid({ mn, mx, from, north, mpu, cells, maxCells = Infinity 
   return { nx, ny, nz, dx, cell, dir, left, s0: a0 - up / mpu, t0: b0 - side / mpu, floor: mn[2], zTop: nz * dx, height };
 }
 
-// The inlet's speed at each cell's height (cells per step), at 10 m, and at WIND_PEDESTRIAN (the
-// reference for the speed ratio).
-export function windInlet(nz, dx) {
-  const top = nz * dx, inlet = new Float32Array(nz), at = (z) => U_TOP * Math.pow(Math.max(z, 1) / top, WIND_ALPHA);
+// The inlet's speed at each cell's height (cells per step) over the terrain (an id of WIND_TERRAINS),
+// at 10 m, and at WIND_PEDESTRIAN.
+export function windInlet(nz, dx, terrain) {
+  const { alpha } = terrainOf(terrain);
+  const top = nz * dx, inlet = new Float32Array(nz), at = (z) => U_TOP * Math.pow(Math.max(z, 1) / top, alpha);
   for (let k = 0; k < nz; k++) inlet[k] = at((k + 0.5) * dx);
   return { inlet, u10: at(10), uRef: at(WIND_PEDESTRIAN) };
 }
-// The wind in the open at WIND_PEDESTRIAN, as a share of the wind at 10 m (the weather file's height).
-export const WIND_OPEN = Math.pow(WIND_PEDESTRIAN / 10, WIND_ALPHA);
+// The wind in the open on the site at WIND_PEDESTRIAN, as a share of the weather file's (10 m up in
+// open country): up from the weather station to where the ground no longer slows it, and back down
+// over the site's terrain (ASHRAE Fundamentals, chapter 24).
+export function windOpen(terrain) {
+  const t = terrainOf(terrain);
+  return Math.pow(WIND_MET.delta / WIND_MET.z, WIND_MET.alpha) * Math.pow(WIND_PEDESTRIAN / t.delta, t.alpha);
+}
 
 // The model in the grid: which cells are solid, from its meshes ([{ pos, idx, xf (row-major 4 × 4,
 // or null) }], model units). Two passes:
@@ -126,7 +141,7 @@ export async function windVoxels(G, meshes, mpu, tick = null) {
     }
   }
   // Closed volumes, then where each column's results are read.
-  const level = new Float32Array(nxy), stand = new Float32Array(nxy).fill(NaN);
+  const level = new Float32Array(nxy), stand = new Float32Array(nxy).fill(NaN), stack = new Int32Array(nxy * 2).fill(-1);
   const isSolid = (c) => (solid[c >>> 5] >>> (c & 31)) & 1;
   for (let col = 0; col < nxy; col++) {
     const L = cols[col], i = col % nx, j = (col - i) / nx;
@@ -150,8 +165,28 @@ export async function windVoxels(G, meshes, mpu, tick = null) {
     if (k0 === nz) { level[col] = WIND_PEDESTRIAN / G.dx; continue; }
     let k1 = k0;
     while (k1 < nz && isSolid(col + nxy * k1)) k1++;
-    let top = k1;
+    let top = NaN;
     for (let h = hits.length - 1; h >= 0; h--) if (hits[h][0] >= k0 - 0.01 && hits[h][0] <= k1 + 0.01) { top = hits[h][0]; break; }
+    stack[col * 2] = k0; stack[col * 2 + 1] = k1;
+    stand[col] = top;
+  }
+  // A column whose middle misses the surface though the surface passes through its cells (along an
+  // edge) takes the surface's height from the columns beside it that meet it within its cells, or,
+  // with none, the top of its cells.
+  const exact = Float32Array.from(stand);
+  for (let col = 0; col < nxy; col++) {
+    if (stack[col * 2] < 0) continue;
+    const k0 = stack[col * 2], k1 = stack[col * 2 + 1], i = col % nx, j = (col - i) / nx;
+    let top = exact[col];
+    if (!Number.isFinite(top)) {
+      // The highest, since the cells stand up to the top surface: beside a wall, the roof's.
+      top = -Infinity;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const ii = i + di, jj = j + dj, v = exact[ii + nx * jj];
+        if (ii >= 0 && ii < nx && jj >= 0 && jj < ny && v >= k0 - 0.01 && v <= k1 + 0.01) top = Math.max(top, v);
+      }
+      if (top === -Infinity) top = k1;
+    }
     stand[col] = floor + top * cell;
     level[col] = top + WIND_PEDESTRIAN / G.dx;
   }
@@ -213,31 +248,82 @@ export function windMapTops(G, tops, mn, mx) {
 }
 
 // The map the results are drawn on: a point on the surface in each column with one (lifted a little),
-// joined into triangles except across steps (a building's edge). tops: windMapTops.
-export function windMapMesh(G, tops, lift) {
-  const { nx, ny, cell, dir, left, s0, t0 } = G, pos = new Float32Array(nx * ny * 3), idx = [];
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const s = s0 + (i + 0.5) * cell, t = t0 + (j + 0.5) * cell, c = i + nx * j, z = tops[c];
-    pos.set([dir[0] * s + left[0] * t, dir[1] * s + left[1] * t, (Number.isFinite(z) ? z : G.floor) + lift], c * 3);
+// joined into triangles except across steps (a building's edge), where a triangle of the three
+// corners on one side still is, so a step across the grid's diagonal comes out straight. With the
+// model's extent (mn, mx), the map reaches a column beyond its edge and is cut along it, rather than
+// stopping in whole cells (a sawtooth wherever the edge runs across the grid). tops: windMapTops.
+// Returns { pos, idx, z (each column's height, NaN where not drawn), extra: the points the cut adds,
+// each the weights of three columns (cols, weights, 3 each) for its value, count (all the points) }.
+export function windMapMesh(G, tops, lift, mn, mx) {
+  const { nx, ny, cell, dir, left, s0, t0 } = G, nxy = nx * ny, z = Float32Array.from(tops);
+  if (mn) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const c = i + nx * j;
+    if (Number.isFinite(tops[c])) continue;
+    let sum = 0, n = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const ii = i + di, jj = j + dj, v = tops[ii + nx * jj];
+      if (ii >= 0 && ii < nx && jj >= 0 && jj < ny && Number.isFinite(v)) { sum += v; n++; }
+    }
+    if (n) z[c] = sum / n;
   }
-  const ok = (c) => Number.isFinite(tops[c]), step = 1.5 * cell;
+  const pos = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const s = s0 + (i + 0.5) * cell, t = t0 + (j + 0.5) * cell, c = i + nx * j;
+    pos.push(dir[0] * s + left[0] * t, dir[1] * s + left[1] * t, (Number.isFinite(z[c]) ? z[c] : G.floor) + lift);
+  }
+  const ok = (c) => Number.isFinite(z[c]), step = 1.5 * cell;
+  const fits = (p, q, r) => ok(p) && ok(q) && ok(r) && Math.max(z[p], z[q], z[r]) - Math.min(z[p], z[q], z[r]) <= step;
+  const tris = [];
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const a = i + nx * j, b = a + 1, c = a + nx, d = c + 1;
-    if (!ok(a) || !ok(b) || !ok(c) || !ok(d)) continue;
-    const zs = [tops[a], tops[b], tops[c], tops[d]];
-    if (Math.max(...zs) - Math.min(...zs) > step) continue;
-    idx.push(a, b, d, a, d, c);
+    const ad = [fits(a, b, d) && [a, b, d], fits(a, d, c) && [a, d, c]], bc = [fits(a, b, c) && [a, b, c], fits(b, d, c) && [b, d, c]];
+    const n = (p) => !!p[0] + !!p[1];
+    for (const tri of n(ad) >= n(bc) ? ad : bc) if (tri) tris.push(tri);
   }
-  return { pos, idx: Uint32Array.from(idx) };
+  const idx = [], cols = [], weights = [];
+  if (!mn) { for (const t of tris) idx.push(...t); return { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), z, extra: { cols, weights }, count: nxy }; }
+  // Cut each triangle to the model's extent: its points carry their weights of the triangle's three
+  // corners, for the values of the points the cut adds.
+  const at = (c) => [pos[c * 3], pos[c * 3 + 1], pos[c * 3 + 2]];
+  const planes = [[0, 1, mn[0]], [0, -1, -mx[0]], [1, 1, mn[1]], [1, -1, -mx[1]]]; // [axis, sign, bound]: inside where sign * p[axis] >= bound
+  const inside = (p, [k, sg, bd]) => sg * p[k] >= bd - 1e-9;
+  for (const t of tris) {
+    const ps = t.map(at);
+    if (ps.every((p) => planes.every((pl) => inside(p, pl)))) { idx.push(...t); continue; }
+    let poly = ps.map((p, k) => ({ p, w: [k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0], c: t[k] }));
+    for (const pl of planes) {
+      const out = [];
+      for (let k = 0; k < poly.length; k++) {
+        const P = poly[k], Q = poly[(k + 1) % poly.length], pi = inside(P.p, pl), qi = inside(Q.p, pl);
+        if (pi) out.push(P);
+        if (pi !== qi) {
+          const [ax, sg, bd] = pl, u = (bd - sg * P.p[ax]) / (sg * (Q.p[ax] - P.p[ax]));
+          out.push({ p: P.p.map((v, m) => v + (Q.p[m] - v) * u), w: P.w.map((v, m) => v + (Q.w[m] - v) * u), c: -1 });
+        }
+      }
+      poly = out;
+      if (poly.length < 3) break;
+    }
+    if (poly.length < 3) continue;
+    const ids = poly.map((v) => {
+      if (v.c >= 0) return v.c;
+      pos.push(...v.p);
+      cols.push(...t);
+      weights.push(...v.w);
+      return pos.length / 3 - 1;
+    });
+    for (let k = 1; k < ids.length - 1; k++) idx.push(ids[0], ids[k], ids[k + 1]);
+  }
+  return { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), z, extra: { cols, weights }, count: pos.length / 3 };
 }
 
 // The widget. app gives what it needs from the viewer (see main.js).
 export function createWindTool(app) {
   const $ = app.$;
   const W = {
-    panel: false, on: true, source: 'epw', dir: 225, speed: 5, res: 'coarse', show: 'ratio', solids: false,
-    // The latest run: { key, from, grid, voxels (windVoxels), shell (windVoxelShell, false if too big,
-    // null not made yet), mapTops, ratio (Float32Array per column, or null), status, progress, done }
+    panel: false, on: true, source: 'epw', dir: 225, speed: 5, res: 'coarse', terrain: 'suburban', show: 'ratio', solids: false,
+    // The latest run: { key, from, terrain, grid, voxels (windVoxels), shell (windVoxelShell, false if too
+    // big, null not made yet), map (windMapMesh), ratio (Float32Array per column, or null), status, progress, done }
     run: null, token: 0, solver: null, ref: null,
   };
 
@@ -253,7 +339,7 @@ export function createWindTool(app) {
     return { from: W.dir, speed: W.speed, epw: false };
   }
   // What a run depends on.
-  const runKey = (from) => [Math.round(from), W.res, app.modelKey(), app.north()].join('|');
+  const runKey = (from) => [Math.round(from), W.res, W.terrain, app.modelKey(), app.north()].join('|');
 
   function stale() {
     const r = W.run, w = wind();
@@ -268,7 +354,7 @@ export function createWindTool(app) {
     W.solver ??= new WindSolver(renderer.device);
     const G = windGrid({ mn, mx, from: w.from, north: app.north(), mpu, cells: res.cells, maxCells: WindSolver.maxCells(renderer.device) });
     W.ref ??= new WindSolver(renderer.device);
-    W.run = { key: runKey(w.from), from: w.from, grid: G, voxels: null, shell: null, ratio: null, status: 'Reading the model…', progress: 0, done: false };
+    W.run = { key: runKey(w.from), from: w.from, terrain: W.terrain, grid: G, voxels: null, shell: null, ratio: null, status: 'Reading the model…', progress: 0, done: false };
     renderer.setWindShell(null);
     sync();
     const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -277,7 +363,7 @@ export function createWindTool(app) {
     if (token !== W.token) return;
     W.run.voxels = vox;
     syncShell();
-    const { inlet, u10 } = windInlet(G.nz, G.dx);
+    const { inlet, u10 } = windInlet(G.nz, G.dx, W.terrain);
     W.solver.setup({ nx: G.nx, ny: G.ny, nz: G.nz, solid: vox.solid, inlet });
     // The reference: the same wind over the empty grid (a slice of it a few cells wide, its sides
     // joined round). The wind near the ground drifts as it crosses the grid and as the run goes on
@@ -286,9 +372,8 @@ export function createWindTool(app) {
     const RY = 4;
     W.ref.setup({ nx: G.nx, ny: RY, nz: G.nz, solid: new Uint32Array(Math.ceil((G.nx * RY * G.nz) / 32)), inlet, periodicY: true });
     const refLevel = new Float32Array(G.nx * RY).fill(WIND_PEDESTRIAN / G.dx);
-    W.run.mapTops = windMapTops(G, vox.stand, mn, mx);
-    const mesh = windMapMesh(G, W.run.mapTops, 0.05 / mpu);
-    renderer.setWindMap(mesh.pos, mesh.idx, null);
+    W.run.map = windMapMesh(G, windMapTops(G, vox.stand, mn, mx), 0.05 / mpu, mn, mx);
+    renderer.setWindMap(W.run.map.pos, W.run.map.idx, null);
     // Steps: the wind crosses the grid once to settle (at the speed at 10 m), then once more while
     // the average is taken.
     const cross = Math.ceil(G.nx / u10), warm = Math.min(Math.max(cross, 1500), 30000), total = warm + Math.min(Math.max(cross, 1500), 30000);
@@ -355,8 +440,14 @@ export function createWindTool(app) {
   function recolour() {
     const r = W.run, renderer = app.renderer;
     if (!r?.ratio || !renderer) return;
-    const w = wind(), mps = W.show === 'speed' && w, v = new Float32Array(r.ratio.length);
-    for (let i = 0; i < v.length; i++) v[i] = Number.isFinite(r.mapTops[i]) ? (mps ? r.ratio[i] * w.speed * WIND_OPEN : r.ratio[i]) : 1e30;
+    const w = wind(), mps = W.show === 'speed' && w, m = r.map, n = r.ratio.length, v = new Float32Array(m.count);
+    const k = mps ? w.speed * windOpen(r.terrain) : 1, { cols, weights } = m.extra;
+    for (let i = 0; i < n; i++) v[i] = Number.isFinite(m.z[i]) ? r.ratio[i] * k : 1e30;
+    for (let e = 0; e < cols.length / 3; e++) {
+      let sum = 0;
+      for (let q = 0; q < 3; q++) sum += weights[e * 3 + q] * r.ratio[cols[e * 3 + q]];
+      v[n + e] = sum * k;
+    }
     renderer.setWindMap(undefined, null, v, ColourScales.ramp(scale()));
     sync();
   }
@@ -393,6 +484,7 @@ export function createWindTool(app) {
     $('windSpeed').value = W.speed;
     $('windSpeedOut').value = `${W.speed.toFixed(1)} m/s`;
     $('windRes').value = W.res;
+    $('windTerrain').value = W.terrain;
     $('windShow').value = W.show;
     $('windShow').querySelector('[value="speed"]').disabled = !w;
     app.setHtml($('windRead'), !model ? 'Open a model to see the wind round it.'
@@ -411,8 +503,9 @@ export function createWindTool(app) {
 
   function help() {
     app.Dialog.open({ title: 'Wind (CFD-lite)', html: true, width: 460, body: `<p>Where the wind is sheltered and where it is exposed round what is shown, and roughly how strong it is, 1.5 m above the ground (and roofs). It is worked out on the graphics card by computational fluid dynamics (a lattice Boltzmann solver), kept light so that it takes seconds rather than hours: a guide to the pattern of the wind for early design, not a substitute for a wind study by a specialist.</p>
-      <p><b>Wind</b>: from the weather file at the Date and Time widgets' date and time (its direction and speed, measured 10 m up in the open), or set by hand. The wind blowing in rises with height as it does over a suburb or town.</p>
-      <p><b>Speed ratio</b>: the wind's speed as a share of what it would be at the same place 1.5 m up with nothing there (worked out alongside, over the same grid left empty). Below 1 is sheltered; above 1, buildings speed it up, as round corners and through gaps. It does not depend on the wind's speed, so a change of speed needs no new run. <b>Wind speed</b> is the speed in m/s: the weather file's speed is taken as the wind blowing in at 10 m, and 1.5 m up in the open it is ${Math.round(WIND_OPEN * 100)}% of that.</p>
+      <p><b>Wind</b>: from the weather file at the Date and Time widgets' date and time (its direction and speed, measured 10 m up in the open), or set by hand. The weather file's wind is taken as measured 10 m up in open country, as at an airport; a wind set by hand is taken the same way.</p>
+      <p><b>Site terrain</b>: what the land round the site is like, which slows the wind near the ground. The wind blows in rising with height as it does over that terrain, and the weather station's wind is brought to the site through the height where the ground no longer slows it (as ASHRAE Fundamentals does). Out in the open on the site, 1.5 m up, the wind is ${WIND_TERRAINS.map((t) => `${Math.round(windOpen(t.id) * 100)}% of the weather file's over ${t.label.toLowerCase()}`).join(', ')}. Run again after changing it.</p>
+      <p><b>Speed ratio</b>: the wind's speed as a share of what it would be at the same place 1.5 m up with nothing there (worked out alongside, over the same grid left empty). Below 1 is sheltered; above 1, buildings speed it up, as round corners and through gaps. It does not depend on the wind's speed, so a change of speed needs no new run. <b>Wind speed</b> is the speed in m/s: the speed ratio times the wind out in the open on the site, 1.5 m up (see Site terrain).</p>
       <p><b>Resolution</b>: the size of the cells the air is divided into, chosen to fit the model and the room round it in about that many cells; the status line says what it came to. Finer takes longer and needs more of the graphics card's memory.</p>
       <p><b>Show what the wind sees</b>: the model as the solver has it, in cells. Every cell a surface passes through is solid, and so is the inside of every closed object, so a canopy is a slab a cell thick with the air free to pass under it. Thin walls come out a cell thick, and gaps narrower than about two cells close up: check that the gaps that matter are open, or try a finer resolution.</p>
       <p>What it leaves out, so read the colours as a pattern rather than exact figures:</p>
@@ -433,6 +526,8 @@ export function createWindTool(app) {
     $('windSpeed').addEventListener('input', (e) => { W.speed = +e.target.value; recolour(); sync(); });
     $('windRes').innerHTML = WIND_RESOLUTIONS.map((r) => `<option value="${r.id}" title="${r.title}">${r.label}</option>`).join('');
     $('windRes').addEventListener('change', (e) => { W.res = e.target.value; sync(); });
+    $('windTerrain').innerHTML = WIND_TERRAINS.map((t) => `<option value="${t.id}" title="${t.title}">${t.label}</option>`).join('');
+    $('windTerrain').addEventListener('change', (e) => { W.terrain = e.target.value; recolour(); sync(); });
     $('windShow').addEventListener('change', (e) => { W.show = e.target.value; recolour(); sync(); });
     $('windRun').addEventListener('click', () => run());
     $('windStop').addEventListener('click', stop);

@@ -594,17 +594,23 @@ design, taking seconds rather than hours, not a substitute for a specialist's wi
 do not feed the thermal comfort figures yet.
 
 - **Wind**: from the weather file at the Date and Time widgets' date and time (its direction, and its
-  speed measured 10 m up in the open), or set by hand (always, without a weather file).
+  speed measured 10 m up in the open), or set by hand (always, without a weather file). Either way the
+  speed is taken as measured 10 m up in open country, as at an airport.
+- **Site terrain**: Open country, Suburban (the default) or City centre, which slows the wind near the
+  ground. The wind blows in rising with height as over that terrain (ASHRAE's power law: exponent 0.14,
+  0.22 or 0.33), and the weather station's wind is brought to the site up through the height where the
+  ground no longer slows it (270, 370 or 460 m) and back down: out in the open on the site, 1.5 m up,
+  it is 77%, 47% or 24% of the weather file's.
 - **Resolution**: Coarse (about half a million cells, the default), Medium (1.5 million) or Fine
   (4 million). The cell size is chosen to fit the model and the room round it in about that many
   cells; the status line says what it came to. On a recent graphics card, Coarse takes about 10 s for a
   small site and Medium under a minute.
 - **Show**: the **speed ratio**, the wind's speed as a share of what it would be at the same place
   1.5 m up with nothing there (below 1 sheltered, above 1 where buildings speed it up: round corners and
-  through gaps), or the **wind speed** in m/s, taking the weather file's speed as the wind blowing in
-  at 10 m. The speed ratio does not depend on the wind's speed, so a change of speed needs no new run.
+  through gaps), or the **wind speed** in m/s: the speed ratio times the wind out in the open on the
+  site, 1.5 m up (see Site terrain). The speed ratio does not depend on the wind's speed, so a change of speed needs no new run.
 - **Run** works it out; the map fills in as it goes, settling, then averaging. A change to the wind's
-  direction, the resolution or the model (hidden objects and layers too) marks the results out of
+  direction, the resolution, the terrain or the model (hidden objects and layers too) marks the results out of
   date: run again. They are not kept: they go when the model closes.
 - **Show what the wind sees** draws the model as the solver has it: translucent cells, the tops
   paler than the sides. Thin walls come out a cell thick and gaps narrower than about two cells close
@@ -620,11 +626,13 @@ How it works (`src/lbm.js`, `src/wind.js`):
   turned up). So a canopy or an arcade roof is a slab a cell thick, open underneath, and an open
   surface such as a ground plane is a layer a cell thick. Vegetation is left out, since it is porous
   and the solver does not model that yet. The results are read 1.5 m above the top of the lowest
-  stack of solid cells in each column: the ground, under a canopy too, or a roof.
+  stack of solid cells in each column: the ground, under a canopy too, or a roof, at the surface's own
+  height (along an edge, where a column's middle misses it, the height of the columns beside it). The
+  map is cut along the model's extent rather than stopping in whole cells.
 - A lattice Boltzmann solver (D3Q19, BGK collision with a Smagorinsky subgrid model for the eddies
   smaller than a cell) runs in compute shaders, keeping each cell's 19 values as half floats (less
   their value at rest, which keeps their precision): about 80 bytes of graphics memory a cell.
-- The wind blows in with a power-law profile (exponent 0.25, suburban to urban), and the top holds
+- The wind blows in with the site terrain's power-law profile, and the top holds
   it. Walls stop the air (no slip). The ground, roofs and the sides of the box let it slide (free
   slip): at a metre or more a cell, holding the lowest cells still slows them far more than real
   ground does, and holding the wind at the sides boxed the air in, so the whole site sped up round
