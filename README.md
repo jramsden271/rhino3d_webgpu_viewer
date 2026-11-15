@@ -525,7 +525,7 @@ to, so these last only while they are open.
 
 ## Sun and shadows
 
-Tick **Sun** under Weather in the render mode menu to light the model by the sun with cast shadows, at
+**Sun** under Weather in the render mode menu (on by default) lights the model by the sun with cast shadows, at
 the Date and Time widgets' date and time. In perspective views the sky shows the sun itself, and both
 follow the time of day: a low sun turns orange-red with a warm glow along the horizon, the
 sky darkens through twilight, and at night the stars come out (placed for the location, date
@@ -613,23 +613,36 @@ here even though you can walk through them; glass counts as opaque. It reads:
   radiation for the hour, for someone turned side-on to the sun, standing or sitting (the
   panel's **Posture**):
   - skylight, from the diffuse horizontal radiation, in sun or shade;
-  - light off the ground (direct and diffuse, ground reflectance 0.25, as ladybug-comfort uses
-    outdoors), in sun or shade;
   - the direct sun on the person, in sunlight only (the sunlight line above, including weak
     sunlight): typically 10-25 °C.
 
-  In sunlight a placeholder for sun-warmed ground and walls nearby is added too: direct normal ×
-  sin(altitude) / 60, about 10 °C for 600 W/m² of direct sun on the ground. Sunlit paving is
-  roughly 20-30 °C hotter than shaded paving in summer, and the ground fills about half of a
-  person's view.
+  The surfaces the person sees (ground, walls, anything drawn, above and below the horizon) add
+  two more parts, from the view round the camera that [Sky view](#sky-view) draws: each surface
+  seen is tested for sun with a depth map from the sun (as Sun exposure does), and its facing is
+  taken from its neighbours in the view. Each counts by its share of the sphere of directions round
+  the person:
+  - **reflected light**: a quarter (reflectance 0.25, as ladybug-comfort uses outdoors) of the
+    direct sun on it (by how square it faces the sun, where it is in sun) and of the skylight on it
+    (by how much sky it faces);
+  - **sun-warmed surfaces**: a surface in sun is taken to be warmer than the air by the sun it
+    absorbs over 24 W/m²K, which puts sunlit paving 20-30 °C above the air in summer, as measured;
+    one in shade is taken to be at the air temperature.
 
-  Sun and shade come out about 15-27 °C apart in radiant temperature, in line with field
+  Below the horizon, where nothing is drawn, open ground in the sun is assumed; with no model, open
+  ground all round. That case reflects what SolarCal's own formula gives in the open and adds
+  direct normal × sin(altitude) / 64, about 9 °C for 600 W/m² of direct sun on the ground. The
+  details show the share of the surfaces seen that are in sun.
+
+  Sun and shade typically come out 15-30 °C apart in radiant temperature, in line with field
   measurements of 18-30 °C, which typically adds 4-7 °C to the UTCI. The cold sky takes some
   off, day and night: half the sky's temperature less the air's (ladybug-comfort's
   `longwave_mrt_delta_from_horiz_ir`), with the sky temperature from the weather file's horizontal
-  infrared radiation, and ground and walls taken to be at the air temperature. Not counted yet: how
-  much of the sky the person sees (taken to be all of it), and surfaces heating up and cooling down
-  over the day, and their materials.
+  infrared radiation, and ground and walls taken to be at the air temperature.
+
+  The skylight and the cold sky count only the sky the person sees: the share of the sky seen from
+  the camera, worked out as in [Sky view](#sky-view) (shown as **Sky seen** in the details; all of
+  it with no model). Not counted yet: surfaces heating up and cooling down over the day (each is as
+  warm as the sun on it now), their materials, and light reflected more than once.
 - **Clouds** are counted in one of two ways:
   - By default, the direct sun is the weather file's hourly direct normal radiation: an
     average that already allows for that hour's cloud by dimming the sun evenly. This is how
@@ -641,7 +654,7 @@ here even though you can walk through them; glass counts as opaque. It reads:
     typically by a few degrees in summer, and the panel says whether the camera is in a gap or
     under a cloud. The clouds are invented: the weather file gives how much of the sky is
     cloudy, not where the clouds are, so this shows what a passing cloud does rather than what
-    happened. Over time the two agree on average. The sun-warmed surroundings keep the hourly
+    happened. Over time the two agree on average. The surfaces round about keep the hourly
     value either way (ground and walls do not cool as a cloud passes). It needs a location and
     an hour with some cloud, and counts the clouds whether or not the Weather widget shows them;
     otherwise the panel says so and uses the hourly figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
@@ -653,6 +666,40 @@ into it.
 
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.
+
+## Radiant temperature
+
+Click **Tools → Radiant temperature** for the mean radiant temperature of the Thermal comfort panel
+(same place, date, time and posture) and how it is made up: a bar for each part, to the right where
+it warms the person and to the left where it cools them, in °C from the air temperature. The parts
+are the sun on you, skylight, reflected light, warm surfaces and the cold sky (see
+[Thermal comfort](#thermal-comfort)), and **Altogether** is their sum. It needs a weather file.
+
+## Sky view
+
+Click **Tools → Sky view** for how much of the sky can be seen from the camera, or from where you
+stand while walking. It is worked out again as the camera moves, and when layers are shown or
+hidden: everything shown cuts the sky down, trees and glass included.
+
+- The **sky view factor** is the usual measure in urban climate studies: the share of the sky
+  seen by a level surface facing up, so the sky overhead counts most and the sky near the horizon
+  little. 1 is an open sky; a wall of even height all round, rising to an angle *h*, gives cos²*h*.
+- The **share of the sky seen** counts all of the sky the same (1 − sin *h* for that wall), which is
+  closer to what an upright person sees. The Thermal comfort panel uses it.
+
+The picture is the sky as a fisheye lens looking straight up would see it (an equidistant
+projection), laid out like a plan: north at the top, east on the right, the horizon round the edge,
+and rings at 30° and 60° up. **Sky mask** draws the sky white and everything else black; **Fisheye**
+draws the model in its layer or object colours, shaded by which way surfaces face. **Sun path** adds
+the sun's path on the Date widget's date, with a dot each hour, and the sun at the Time widget's
+time, so you can see when buildings hide it.
+
+The renderer draws the world round the eye onto the six faces of a cube (256 × 256 texels a
+face), recording what each texel sees; for the sky, each texel above the horizon is weighted by its
+solid angle (and, for the sky view factor, by its cosine from straight up), and the weights of the
+texels that see nothing are added up. The texels that see surfaces, above and below the horizon,
+give the Thermal comfort panel its reflected light and sun-warmed surfaces. `node tools/test-skyview.js` checks the weights against
+open sky, half a sky, and walls of known height.
 
 ## Lights
 
@@ -800,8 +847,8 @@ still stay on the computer of whoever opens them: the site only delivers the pag
 ### Tests and tools
 
 There is no test framework; these are plain Node scripts that `require` the modules in `src/`
-(`src/package.json` marks that folder as ES modules for Node). Only the first runs without any files
-of your own, and the last three need `vendor/`. Behaviour in the browser is checked by hand.
+(`src/package.json` marks that folder as ES modules for Node). `test-epw.js` and the last three need files
+of your own, and the last three also need `vendor/`. Behaviour in the browser is checked by hand.
 
 | Command | What it does |
 | --- | --- |
@@ -810,6 +857,7 @@ of your own, and the last three need `vendor/`. Behaviour in the browser is chec
 | `node tools/test-magic.js` | Checks where a magic block is placed |
 | `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
+| `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, the surroundings on level ground, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
 | `node tools/probe.js <file.3dm>` | Summarises a file's contents and whether Breps have render meshes |
@@ -827,6 +875,7 @@ src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking,
 src/sun.js               solar position, sun direction and colour
 src/mesh.js              meshes made for analysis: join, weld, split long edges, normals
 src/exposure.js          sun exposure: the times in a period, and the surface to test from a layer
+src/skyview.js           sky view: the hemicube layout, sky view factors, and the fisheye picture
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
 src/clouds.js            cloud cover, sun and sky strength from the weather file; clear-sky models
 src/utci.js              UTCI (Universal Thermal Climate Index), its stress categories, SolarCal sun on a person
@@ -850,8 +899,8 @@ ladybug-comfort does) and relative humidity in %. `utciMany` runs it over arrays
 `utciCategory` gives the stress band and its colour. `solarCal` gives the rise in mean radiant
 temperature from sun and sky (SolarCal, ASHRAE 55's formulas and projection factor tables, as in
 jsthermalcomfort's `solar_gain`, but with the weather file's measured diffuse radiation),
-`skyLongwaveMrtDelta` the long-wave loss to the sky, and `surroundingsMrtDelta` the placeholder for
-sun-warmed surroundings. `node tools/test-utci.js` checks the UTCI against values from
+`skyLongwaveMrtDelta` the long-wave loss to the sky, and `surroundingsGains` the light reflected
+and the warmth given off by the surfaces seen, from `skyview.js`'s `surroundingsView`. `node tools/test-utci.js` checks the UTCI against values from
 ladybug-comfort, the sky loss against its formula, and `solarCal` against jsthermalcomfort,
 which is a development dependency for that test only and is not bundled into the page.
 

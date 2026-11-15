@@ -728,3 +728,41 @@ body.walking .walk-frame { display: block; }
   select option:hover, select option:focus-visible { background: var(--hover); outline: none; }
   select option:checked { background: var(--accent-soft); color: var(--accent); }
 }
+
+/* Sky view */
+.sky-read { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+.sky-top { display: flex; align-items: baseline; gap: 8px; }
+.sky-val { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sky-what { color: var(--muted); }
+.sky-pic { display: flex; justify-content: center; }
+.sky-pic[hidden] { display: none; }
+.sky-pic canvas { width: 100%; max-width: 260px; aspect-ratio: 1; color: var(--muted); }
+.sky-opts { display: flex; flex-direction: column; gap: 8px; }
+#skyViewPanel.min .sun-body { padding-top: 6px; padding-bottom: 6px; }
+
+/* Radiant temperature: bars either side of zero */
+:root { --warm: #e07b39; --cool: #3b82c4; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --warm: #f0955a; --cool: #6aa8e0; } }
+:root[data-theme="dark"] { --warm: #f0955a; --cool: #6aa8e0; }
+.sky-val small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.mrt-chart { position: relative; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.mrt-row { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 6px; min-height: 18px; }
+.mrt-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrt-track { position: relative; height: 18px; }
+.mrt-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; border: 1px solid; }
+.mrt-bar.warm { border-color: var(--warm); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warm) 45%, transparent) 0 3px, color-mix(in srgb, var(--warm) 15%, transparent) 3px 6px); }
+.mrt-bar.cool { border-color: var(--cool); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--cool) 45%, transparent) 0 3px, color-mix(in srgb, var(--cool) 15%, transparent) 3px 6px); }
+.mrt-row.total { padding-top: 6px; border-top: 1px solid var(--border); font-weight: 600; }
+.mrt-row.total .mrt-bar.warm { background: color-mix(in srgb, var(--warm) 70%, transparent); }
+.mrt-row.total .mrt-bar.cool { background: color-mix(in srgb, var(--cool) 70%, transparent); }
+.mrt-val { position: absolute; top: 50%; transform: translateY(-50%); padding: 0 4px; color: var(--muted); white-space: nowrap; }
+.mrt-row.total .mrt-val { color: var(--text); }
+.mrt-val.none { opacity: 0.6; }
+.mrt-axis .mrt-track, .mrt-foot .mrt-track { height: 14px; }
+.mrt-tick { position: absolute; transform: translateX(-50%); color: var(--muted); font-size: 11px; }
+.mrt-grid { position: absolute; top: 20px; bottom: 34px; left: 0; right: 0; display: grid; grid-template-columns: 104px 1fr; gap: 6px; pointer-events: none; }
+.mrt-grid .mrt-track { height: auto; }
+.mrt-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.mrt-line.zero { border-left-color: var(--muted); }
+.mrt-dir { position: absolute; font-size: 11px; color: var(--muted); padding: 0 4px; white-space: nowrap; }
+.mrt-unit { text-align: right; }

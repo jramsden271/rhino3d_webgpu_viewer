@@ -1875,35 +1875,74 @@ export class Renderer {
   // Sun exposure: the points to test (exposureSurface's pos and nrm), kept on the GPU for
   // exposureRun. Null frees them.
   setExposurePoints(surface) {
-    const X = this.exposure;
-    if (X) for (const k of ['pts', 'nrm', 'lit', 'read']) X[k].destroy();
+    this.freeSunPoints(this.exposure);
     this.exposure = null;
     if (!surface) return;
-    const dev = this.device, U = GPUBufferUsage, n = surface.pos.length / 3;
+    this.exposureTest ??= this.makeSunTest(EXPOSURE_SIZE);
+    this.exposure = this.makeSunPoints(this.exposureTest, surface.pos, surface.nrm);
+  }
+
+  // A sun test's own depth map and buffers, so two can be under way at once (Sun exposure, and the
+  // surroundings for thermal comfort). size: the depth map's width and height, in texels.
+  makeSunTest(size) {
+    const dev = this.device, U = GPUBufferUsage;
+    if (!this.exposurePipe) {
+      this.exposurePipe = dev.createComputePipeline({ layout: 'auto', compute: { module: dev.createShaderModule({ code: EXPOSURE_SHADER }), entryPoint: 'main' } });
+      this.exposureCmp = dev.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
+    }
+    size = Math.min(size, dev.limits.maxTextureDimension2D);
+    return {
+      depth: dev.createTexture({ size: [size, size], format: DEPTH, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }),
+      uni: dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST }),
+      shadowBuf: dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST }),
+      shadowBG: null,
+    };
+  }
+
+  freeSunPoints(X) { if (X) for (const k of ['pts', 'nrm', 'lit', 'read']) X[k].destroy(); }
+
+  // How much each of a set of points sees the sun (towards sun, model space): pts { pos, nrm } as
+  // skyview.js's surroundingPoints gives them, kept on the GPU while the same object is passed.
+  // texel: the depth map texel to aim for (model units). Resolves to a Float32Array (0-1 per point),
+  // or null if the work failed. Calls are queued, one after another, apart from Sun exposure's.
+  surroundingsLit(pts, sun, texel) {
+    const run = async () => {
+      this.surrTest ??= this.makeSunTest(2048);
+      if (this.surrPts?.src !== pts) {
+        this.freeSunPoints(this.surrPts);
+        this.surrPts = this.makeSunPoints(this.surrTest, pts.pos, pts.nrm);
+        this.surrPts.src = pts;
+      }
+      const X = this.surrPts, got = await this.sunTestRun(this.surrTest, X, { dirs: [sun], texel, stop: () => this.surrPts !== X });
+      if (!got) return null;
+      const out = new Float32Array(got.length);
+      for (let i = 0; i < got.length; i++) out[i] = Math.min(1, got[i] / EXPOSURE_FULL);
+      return out;
+    };
+    this.surrQueue = (this.surrQueue || Promise.resolve()).then(run, run);
+    return this.surrQueue;
+  }
+
+  // Points (pos and normals: 3 floats each, model space) on the GPU for a sun test T (makeSunTest).
+  makeSunPoints(T, pos, normals) {
+    const dev = this.device, U = GPUBufferUsage, n = pos.length / 3;
     const vec4s = (a) => {
       const out = new Float32Array(n * 4);
       for (let i = 0; i < n; i++) out.set(a.subarray(i * 3, i * 3 + 3), i * 4);
-      const buf = dev.createBuffer({ size: out.byteLength, usage: U.STORAGE | U.COPY_DST });
+      const buf = dev.createBuffer({ size: Math.max(16, out.byteLength), usage: U.STORAGE | U.COPY_DST });
       dev.queue.writeBuffer(buf, 0, out);
       return buf;
     };
     const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < surface.pos.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], surface.pos[i]); hi[k] = Math.max(hi[k], surface.pos[i]); }
-    if (!this.exposurePipe) {
-      this.exposurePipe = dev.createComputePipeline({ layout: 'auto', compute: { module: dev.createShaderModule({ code: EXPOSURE_SHADER }), entryPoint: 'main' } });
-      const size = Math.min(EXPOSURE_SIZE, dev.limits.maxTextureDimension2D);
-      this.exposureDepth = dev.createTexture({ size: [size, size], format: DEPTH, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
-      this.exposureUni = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
-      this.exposureShadowBuf = dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
-      this.exposureCmp = dev.createSampler({ compare: 'greater-equal', magFilter: 'linear', minFilter: 'linear' });
-    }
-    this.exposure = { n, lo, hi, pts: vec4s(surface.pos), nrm: vec4s(surface.nrm),
-      lit: dev.createBuffer({ size: n * 4, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST }),
-      read: dev.createBuffer({ size: n * 4, usage: U.MAP_READ | U.COPY_DST }) };
-    this.exposure.bg = dev.createBindGroup({ layout: this.exposurePipe.getBindGroupLayout(0), entries: [
-      { binding: 0, resource: { buffer: this.exposureUni } }, { binding: 1, resource: { buffer: this.exposure.pts } },
-      { binding: 2, resource: { buffer: this.exposure.nrm } }, { binding: 3, resource: { buffer: this.exposure.lit } },
-      { binding: 4, resource: this.exposureDepth.createView() }, { binding: 5, resource: this.exposureCmp }] });
+    for (let i = 0; i < pos.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], pos[i]); hi[k] = Math.max(hi[k], pos[i]); }
+    const X = { n, lo, hi, pts: vec4s(pos), nrm: vec4s(normals),
+      lit: dev.createBuffer({ size: Math.max(4, n * 4), usage: U.STORAGE | U.COPY_SRC | U.COPY_DST }),
+      read: dev.createBuffer({ size: Math.max(4, n * 4), usage: U.MAP_READ | U.COPY_DST }) };
+    X.bg = dev.createBindGroup({ layout: this.exposurePipe.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: T.uni } }, { binding: 1, resource: { buffer: X.pts } },
+      { binding: 2, resource: { buffer: X.nrm } }, { binding: 3, resource: { buffer: X.lit } },
+      { binding: 4, resource: T.depth.createView() }, { binding: 5, resource: this.exposureCmp }] });
+    return X;
   }
 
   // Tests the points from setExposurePoints against the shown model, from each of the sun
@@ -1912,9 +1951,16 @@ export class Renderer {
   // each point saw the sun, summed over dirs (Uint32Array; EXPOSURE_FULL for each view in full
   // sun), or null if stop() turned true. progress(f) is told how far it has got.
   async exposureRun({ dirs, texel, stop, progress }) {
-    const X = this.exposure, dev = this.device;
+    const X = this.exposure;
     if (!X) return null;
-    const size = this.exposureDepth.width, inner = size - 2 * EXPOSURE_MARGIN;
+    return this.sunTestRun(this.exposureTest, X, { dirs, texel, progress, stop: () => stop() || this.exposure !== X });
+  }
+
+  // Tests points X (makeSunPoints) with sun test T (makeSunTest), as exposureRun does.
+  async sunTestRun(T, X, { dirs, texel, stop, progress }) {
+    const dev = this.device;
+    if (!X.n) return new Uint32Array(0);
+    const size = T.depth.width, inner = size - 2 * EXPOSURE_MARGIN;
     // Everything that can cast a shadow, along each direction.
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
     for (const b of this.batches) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], b.min[k]); mx[k] = Math.max(mx[k], b.max[k]); }
@@ -1946,18 +1992,18 @@ export class Renderer {
         m[15] = 1;
         const uni = new Float32Array(24);
         uni.set(m); uni.set([L[0], L[1], L[2], 0], 16); uni.set([t, (1.5 * t) / range, X.n, EXPOSURE_MARGIN / size], 20);
-        dev.queue.writeBuffer(this.exposureShadowBuf, 0, m);
-        dev.queue.writeBuffer(this.exposureUni, 0, uni);
-        if (this.exposureShadowBG?.flags !== this.objFlagsBuf) {
-          this.exposureShadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
-            { binding: 0, resource: { buffer: this.exposureShadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
-          this.exposureShadowBG.flags = this.objFlagsBuf;
+        dev.queue.writeBuffer(T.shadowBuf, 0, m);
+        dev.queue.writeBuffer(T.uni, 0, uni);
+        if (T.shadowBG?.flags !== this.objFlagsBuf) {
+          T.shadowBG = dev.createBindGroup({ layout: this.shadowLayout, entries: [
+            { binding: 0, resource: { buffer: T.shadowBuf, size: 64 } }, { binding: 1, resource: { buffer: this.objFlagsBuf } }] });
+          T.shadowBG.flags = this.objFlagsBuf;
         }
         const enc = dev.createCommandEncoder();
         const pass = enc.beginRenderPass({ colorAttachments: [],
-          depthStencilAttachment: { view: this.exposureDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
+          depthStencilAttachment: { view: T.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' } });
         pass.setPipeline(this.shadowPipe);
-        pass.setBindGroup(0, this.exposureShadowBG, [0]);
+        pass.setBindGroup(0, T.shadowBG, [0]);
         this.cull(m);
         for (const b of this.batches) {
           if (!b.visible || b.kind !== 'mesh' || !b.castsShadow || !this.seen(b)) continue;
@@ -1977,7 +2023,7 @@ export class Renderer {
       if (performance.now() - last > 30 || di === dirs.length - 1) {
         await dev.queue.onSubmittedWorkDone();
         await new Promise((res) => setTimeout(res, 0));
-        if (stop() || this.exposure !== X) return null;
+        if (stop()) return null;
         progress?.((di + 1) / dirs.length);
         last = performance.now();
       }
@@ -1988,7 +2034,7 @@ export class Renderer {
     await X.read.mapAsync(GPUMapMode.READ);
     const out = new Uint32Array(X.read.getMappedRange()).slice();
     X.read.unmap();
-    return stop() || this.exposure !== X ? null : out;
+    return stop() ? null : out;
   }
 
   // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
@@ -2134,6 +2180,72 @@ export class Renderer {
         walls.set(all.subarray(((G + r) * G + k * W) * 4, ((G + r) * G + (k + 1) * W) * 4), ((k * H + r) * W) * 4);
       return { ground: all.subarray(0, G * G * 4), walls, water: q.water ? all.subarray((G + H) * G * 4, (G + H + G) * G * 4) : null };
     }, () => null).finally(() => { this.probeBusy = false; });
+  }
+
+  // The world round eye, as skyview.js lays it out: the views of a cube round eye (the top and bottom,
+  // and each side in an upper and a lower half) into a 3N x 2N texture, drawn with the pick pipeline so each
+  // texel holds the world position of the surface it sees and its object + 1 (0 for the sky). Every
+  // visible mesh is drawn, trees and water included. Resolves to a new Float32Array (4 floats per
+  // texel), or null if the GPU rejected the work. Calls are queued, one after another.
+  skyView(eye, near, N, faces) {
+    const run = async () => {
+      if (!this.batches.length) return new Float32Array(3 * N * 2 * N * 4);
+      const dev = this.device, U = GPUBufferUsage, RA = GPUTextureUsage.RENDER_ATTACHMENT;
+      if (this.skyN !== N) {
+        this.skyTex?.destroy(); this.skyDepth?.destroy(); this.skyRead?.destroy();
+        this.skyN = N;
+        this.skyTex = dev.createTexture({ size: [3 * N, 2 * N], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.skyDepth = dev.createTexture({ size: [3 * N, 2 * N], format: DEPTH, usage: RA });
+        this.skyRead = dev.createBuffer({ size: 3 * N * 2 * N * 16, usage: U.MAP_READ | U.COPY_DST });
+        this.skyBufs ??= faces.map(() => dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST }));
+      }
+      if (!this.skyBGs || this.skyFlagsBuf !== this.objFlagsBuf) {
+        this.skyFlagsBuf = this.objFlagsBuf;
+        this.skyBGs = this.skyBufs.map((buffer) => this.probeBindGroup(buffer));
+      }
+      // A half side face shows only its upper or lower half: clip y is moved so the horizon is the
+      // bottom or top edge.
+      const halfOf = (half) => {
+        const m = new Float64Array(16);
+        m[0] = 1; m[5] = 2; m[10] = 1; m[15] = 1; m[13] = -half;
+        return m;
+      };
+      const vps = faces.map((F) => {
+        const vp = M4.mul(M4.perspective(Math.PI / 2, 1, near), M4.lookAt(eye, V3.add(eye, F.f), F.up));
+        return F.half ? M4.mul(halfOf(F.half), vp) : vp;
+      });
+      vps.forEach((vp, i) => dev.queue.writeBuffer(this.skyBufs[i], 0, Float32Array.from(vp)));
+      const shown = this.batches.filter((b) => b.visible && b.kind === 'mesh');
+      dev.pushErrorScope('validation');
+      const enc = dev.createCommandEncoder();
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: this.skyTex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+        depthStencilAttachment: { view: this.skyDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+      });
+      pass.setPipeline(this.pipes.pick);
+      faces.forEach((F, i) => {
+        pass.setViewport(...F.rect, 0, 1);
+        pass.setScissorRect(...F.rect);
+        pass.setBindGroup(0, this.skyBGs[i]);
+        this.cull(vps[i], true);
+        for (const b of shown) {
+          if (!this.seen(b)) continue;
+          pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+          pass.setIndexBuffer(b.gpu.idx, 'uint32');
+          this.drawCells(pass, b);
+        }
+      });
+      pass.end();
+      enc.copyTextureToBuffer({ texture: this.skyTex }, { buffer: this.skyRead, bytesPerRow: 3 * N * 16 }, [3 * N, 2 * N]);
+      dev.queue.submit([enc.finish()]);
+      const failed = await dev.popErrorScope();
+      await this.skyRead.mapAsync(GPUMapMode.READ);
+      const out = failed ? null : new Float32Array(this.skyRead.getMappedRange()).slice();
+      this.skyRead.unmap();
+      return out;
+    };
+    this.skyQueue = (this.skyQueue || Promise.resolve()).then(run, run);
+    return this.skyQueue;
   }
 
   // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys

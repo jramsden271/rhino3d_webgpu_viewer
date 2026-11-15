@@ -201,6 +201,30 @@
       </div>
     </div>
   </section>
+  <section id="mrtPanel" class="chrome panel sun-panel" hidden aria-label="Radiant temperature" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h14M4 18h6"/><path d="M4 3v18"/></svg>Radiant temperature</span>
+      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div id="mrtRead" class="sky-read"></div>
+      <div id="mrtChart" data-full></div>
+    </div>
+  </section>
+  <section id="skyViewPanel" class="chrome panel sun-panel" hidden aria-label="Sky view" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 15H7v-5h4v6h3v-4h3.5v3h3"/></svg>Sky view</span>
+      <span class="panel-actions"><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div id="skyViewRead" class="sky-read"></div>
+      <div id="skyViewPic" class="sky-pic" data-full hidden><canvas id="skyViewCanvas" role="img" aria-label="The sky above the camera, as a fisheye picture"></canvas></div>
+      <div class="sky-opts" data-full>
+        <label class="field-row" title="Sky mask: the sky white, everything else black. Fisheye: the model in its colours">Picture <select id="skyViewMode"><option value="mask">Sky mask</option><option value="fisheye">Fisheye</option></select></label>
+        <label class="check" title="The sun's path on the Date widget's date, a dot each hour, and the sun at the Time widget's time"><input type="checkbox" id="skyViewSunPath"> Sun path</label>
+      </div>
+    </div>
+  </section>
   <section id="exposurePanel" class="chrome panel sun-panel" hidden aria-label="Sun exposure" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="15" cy="6.5" r="3"/><path d="M15 1.5v1M20 6.5h1M18.5 3l.7-.7M2.5 20l5-7h14l-5 7z"/></svg>Sun exposure</span>
