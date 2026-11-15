@@ -669,7 +669,7 @@ round. The card holds:
 - **Walk from here** (title bar) starts walking at the person, looking the way they face;
   **Remove** (or `Delete`) takes them away.
 
-Drag a figure to move it: a drag shorter than 40 px only turns the person to face the way you drag;
+Drag a figure to move it: a drag shorter than 120 px only turns the person to face the way you drag;
 a longer one moves them, feet on the surface under the cursor, facing the way they travel.
 
 The Thermal comfort, Radiant temperature and Sky view widgets show the same for the selected person,
