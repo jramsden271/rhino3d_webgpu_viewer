@@ -668,8 +668,8 @@ round. The card holds:
   the fisheye picture.
 - **Walk from here** (title bar) starts walking as the person, from where they stand and looking
   the way they face. When you stop, they are left where you stopped, facing the way you looked.
-  While walking, the other people are shown: click one to hop to them (the one you were walking as
-  stays where you were), and walk on as them. **Remove** (or `Delete`) takes a person away.
+  While walking, the other people are shown: click one for their card, whose **Walk from here** hops
+  to them (the one you were walking as stays where you were), and you walk on as them. **Remove** (or `Delete`) takes a person away.
 
 Drag a figure to move it: a drag shorter than 120 px only turns the person to face the way you drag;
 a longer one moves them, feet on the surface under the cursor, facing the way they travel.

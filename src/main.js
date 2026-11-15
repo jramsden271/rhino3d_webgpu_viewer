@@ -3984,7 +3984,7 @@ function bindPointer() {
       if (choosingStart()) startWalkAt(e);
       else if (expo.picking) pickExposureLayer(e);
       else if (state.person.placing) placePersonAt(e);
-      else if (walker.active && !walker.pending && personAt(e) != null) hopTo(personAt(e));
+      else if (walker.active && !walker.pending && personAt(e) != null) selectPerson(personAt(e));
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
     if (pointers.size === 0) { drag = null; driver.dragging = false; canvas.classList.remove('dragging'); }
@@ -4857,7 +4857,9 @@ const selectedPerson = () => (!model || state.personSel == null ? null : personB
 const personName = (p) => `Person ${p.id}`;
 
 // Whom the analysis is for: 'you' (walking or driving), a person's id, or null.
-const subjectId = () => (!model ? null : walker.active || driver.active ? 'you' : selectedPerson()?.id ?? null);
+// The selected person whose card can show: not while driving, nor the one you are walking as.
+const cardPerson = () => { const p = selectedPerson(); return p && !driver.active && !(walker.active && p.id === state.walkPerson) ? p : null; };
+const subjectId = () => (!model ? null : cardPerson()?.id ?? (walker.active || driver.active ? 'you' : null));
 
 // The sunlight, sky view and surroundings worked out are for one subject at a time (subject.id).
 // When the subject changes, those are put away with the one they were for, and the new subject's
@@ -4885,12 +4887,13 @@ function sunKey() {
 }
 
 // The point the analysis is done at: { eye (model space), who: 'you' | 'person', person, posture,
-// facing }, or null: you, while walking or driving, else the selected person.
+// facing }, or null: the selected person whose card shows (cardPerson), else you while walking or
+// driving.
 function analysisPoint() {
   if (!model) return null;
   syncSubject();
-  if (walker.active || driver.active) return { eye: [...camera.eye], who: 'you', posture: driver.active ? 'sitting' : 'standing', facing: 'side' };
-  const p = selectedPerson();
+  const p = cardPerson();
+  if (!p && (walker.active || driver.active)) return { eye: [...camera.eye], who: 'you', posture: driver.active ? 'sitting' : 'standing', facing: 'side' };
   if (!p) return null;
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   return { eye: [p.at[0], p.at[1], p.at[2] + PERSON_CENTRE[p.posture] * u], who: 'person', person: p, posture: p.posture, facing: p.facing };
@@ -4996,7 +4999,12 @@ function syncPersonFigures() {
   if (!renderer) return;
   const mpu = model ? METRES_PER_UNIT[model.units] || 1 : 1, show = !!model, still = !moving(), u = 1 / mpu;
   // The card goes while walking or driving, and comes back after.
-  if (still !== figuresShown) { figuresShown = still; syncPersonCard(); }
+  if (still !== figuresShown) {
+    figuresShown = still;
+    // Walking or driving other than as the selected person lets them go.
+    if (!still && state.personSel !== state.walkPerson) selectPerson(null);
+    syncPersonCard();
+  }
   const live = new Set();
   for (const p of show ? state.people.filter((q) => still || q.id !== state.walkPerson) : []) {
     const slot = `person${p.id}`, bearing = personBearing(p);
@@ -5136,8 +5144,9 @@ function leaveWalkPerson(spot) {
   return p;
 }
 
-// Walking: clicking another person hops to them. The person you were walking as stays where you
-// were; you go on walking as the new one, from where they stand, looking the way they face.
+// Walking: Walk from here in another person's card (click them to open it) hops to them. The person
+// you were walking as stays where you were; you go on walking as the new one, from where they
+// stand, looking the way they face.
 function hopTo(id) {
   const p = personById(id);
   if (!p || !walker.active) return;
@@ -5212,7 +5221,7 @@ function showPersonHelp() {
     <p><b>Posture</b> (in each card; this widget's sets it for new people): standing or sitting. It sets how much of the body the sun falls on, and the height everything is measured at, the middle of the body: ${PERSON_CENTRE.standing} m up standing, ${PERSON_CENTRE.sitting} m sitting. Sitting low sees more of the ground and less of the sky.</p>
     <p><b>Facing</b> (in each card): side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. Turning a person by dragging sets it too, to the degree.</p>
     <p><b>Wind factor</b> (for everyone): the share of the weather file's wind (measured in the open, 10 m up) that reaches people: a stand-in for shelter, which the viewer cannot work out yet. 1 is open ground; 0.5, the default, is a typical allowance for streets and buildings.</p>
-    <p><b>Walk from here</b> (in the card) starts walking as the person, where they stand and looking the way they face; when you stop, they are left where you stopped, facing the way you looked. While walking, click another person to hop to them: the one you were walking as stays where you were. When you stop walking otherwise, you can place a person where you stopped.</p>` });
+    <p><b>Walk from here</b> (in the card) starts walking as the person, where they stand and looking the way they face; when you stop, they are left where you stopped, facing the way you looked. While walking, click another person for their card, and its <b>Walk from here</b> hops to them: the one you were walking as stays where you were. While their card is open, the comfort widgets show them rather than you. When you stop walking otherwise, you can place a person where you stopped.</p>` });
 }
 
 function bindPersonPanel() {
@@ -5237,7 +5246,7 @@ function bindPersonPanel() {
 const personCard = { pin: null, open: { utci: false, mrt: false, sky: false } };
 
 function syncPersonCard() {
-  const p = selectedPerson(), box = $('personCard'), show = !!p && !moving();
+  const p = cardPerson(), box = $('personCard'), show = !!p;
   box.hidden = !show;
   if (!show) return;
   $('pcTitle').textContent = personName(p);
@@ -5307,7 +5316,8 @@ function bindPersonCard() {
   $('pcRemove').addEventListener('click', () => { if (state.personSel != null) removePerson(state.personSel); });
   $('pcWalk').addEventListener('click', () => {
     const p = selectedPerson();
-    if (!p || moving()) return;
+    if (!p || driver.active) return;
+    if (walker.active) { hopTo(p.id); return; }
     // Looking the way the person faces (the camera's yaw points from where it looks back to the eye).
     const f = sunVector(personBearing(p), 0, state.sun.north);
     state.walkPerson = p.id;
