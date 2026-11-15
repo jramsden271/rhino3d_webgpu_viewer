@@ -649,6 +649,14 @@ into it.
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.
 
+## Radiant temperature
+
+Click **Tools → Radiant temperature** for the mean radiant temperature of the Thermal comfort panel
+(same place, date, time and posture) and how it is made up: a bar for each part, to the right where
+it warms the person and to the left where it cools them, in °C from the air temperature. The parts
+are the sun on you, skylight, light off the ground, sunlit surroundings and the cold sky (see
+[Thermal comfort](#thermal-comfort)), and **Altogether** is their sum. It needs a weather file.
+
 ## Sky view
 
 Click **Tools → Sky view** for how much of the sky can be seen from the camera, or from where you

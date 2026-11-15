@@ -201,6 +201,16 @@
       </div>
     </div>
   </section>
+  <section id="mrtPanel" class="chrome panel sun-panel" hidden aria-label="Radiant temperature" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h14M4 18h6"/><path d="M4 3v18"/></svg>Radiant temperature</span>
+      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div id="mrtRead" class="sky-read"></div>
+      <div id="mrtChart" data-full></div>
+    </div>
+  </section>
   <section id="skyViewPanel" class="chrome panel sun-panel" hidden aria-label="Sky view" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 15H7v-5h4v6h3v-4h3.5v3h3"/></svg>Sky view</span>

@@ -52,6 +52,7 @@ const state = {
   lightsOn: true,
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
+  mrtPanel: false, // the Radiant temperature widget
   datePanel: false, timePanel: false,
   // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
   dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
@@ -342,7 +343,7 @@ function driftClouds(now) {
   clouds.last = now;
   // They move while they are seen, in the sky or by their shadows, or counted by the thermal comfort widget.
   const seen = viewOn('clouds') && (viewOn('sun') || (viewOn('sky') && !camera.ortho));
-  if (!site.epw || !clouds.speed || !(seen || (state.comfort.panel && state.comfort.clouds))) return false;
+  if (!site.epw || !clouds.speed || !(seen || (comfortShown() && state.comfort.clouds))) return false;
   const wx = currentSky(sunPosition().altitude);
   if (!wx || wx.cover < 0.01 || wx.wind < 0.05) return false;
   const to = sunVector(wx.windFrom + 180, 0, state.sun.north), d = wx.wind * clouds.speed * dt;
@@ -382,7 +383,7 @@ function loop() {
   const drifting = live && driftClouds(now);
   if (live && (drifting || renderer.hasWater(state.mode)) && now - anim.drawn >= ANIM_FRAME) renderer.dirty = true;
   // A cloud may have moved over the camera.
-  if (drifting && state.comfort.panel && state.comfort.clouds && now - comfortAt > 200) { comfortAt = now; syncComfortPanel(); }
+  if (drifting && comfortShown() && state.comfort.clouds && now - comfortAt > 200) { comfortAt = now; syncComfortPanel(); }
   if (walker.active) {
     walker.update(performance.now());
     renderer.dirty = true; lastInput = performance.now();
@@ -404,8 +405,8 @@ function loop() {
     if (thumb.take) { thumb.take = false; captureThumb(); } // the frame can only be read before this task ends
     if (state.devMode) diagFrame(t);
     positionInspector(); syncCompass();
-    if (state.comfort.panel) checkSunlight();
-    if (state.comfort.panel || state.skyView.panel) checkSkyView();
+    if (comfortShown()) checkSunlight();
+    if (comfortShown() || state.skyView.panel) checkSkyView();
   }
   requestAnimationFrame(loop);
 }
@@ -3766,7 +3767,7 @@ function syncExposurePanel() {
 
 // The Tools button is pressed while any widget it opens is open.
 function syncToolsButton() {
-  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.mrtPanel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
 }
 
 function showExposureHelp() {
@@ -3781,9 +3782,10 @@ function showExposureHelp() {
 }
 
 function bindExposurePanel() {
-  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); } });
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); else if (id === 'mrt') toggleMrtPanel(); } });
   toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' },
-    { id: 'skyView', label: 'Sky view', title: 'How much of the sky can be seen from the camera, as a number and a fisheye picture' }] }]);
+    { id: 'skyView', label: 'Sky view', title: 'How much of the sky can be seen from the camera, as a number and a fisheye picture' },
+    { id: 'mrt', label: 'Radiant temperature', title: 'The mean radiant temperature at the camera, and how sun, sky and ground make it up' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
   // Weather, thermal comfort and lights: the toolbar's controls for them, their on/off icons
   // included, live in this menu, above the analysis tools.
@@ -4747,6 +4749,9 @@ function sunState(r) {
 // (SolarCal: skylight and light off the ground always, the direct sun when the camera is in
 // sunlight) and, in sunlight, by sun-warmed surroundings (a placeholder), and lowered by the cold sky.
 
+// Whether a widget showing the comfort figures is open: Thermal comfort or Radiant temperature.
+const comfortShown = () => state.comfort.panel || state.mrtPanel;
+
 function toggleComfortPanel() {
   const C = state.comfort;
   C.panel = !C.panel;
@@ -4796,6 +4801,7 @@ function comfortClouds(pos) {
 }
 
 function syncComfortPanel() {
+  syncMrtPanel();
   if (!state.comfort.panel) return;
   const C = state.comfort, f = (x, d = 1) => x.toFixed(d);
   $('comfortWind').value = C.wind;
@@ -4891,6 +4897,87 @@ function bindComfortPanel() {
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
 
+// The Radiant temperature widget ----------------------------------------------------------------
+// The mean radiant temperature of the Thermal comfort widget (comfortNow), part by part: how much
+// each warms or cools it from the air temperature, as bars either side of zero.
+
+const MRT_PARTS = [
+  { id: 'direct', label: 'Sun on you', title: 'The direct sun on the person, in sunlight only (SolarCal)', of: (r) => r.sc.direct },
+  { id: 'diffuse', label: 'Skylight', title: 'Diffuse light from the sky seen, in sun or shade (SolarCal)', of: (r) => r.sc.diffuse },
+  { id: 'reflected', label: 'Off the ground', title: 'Sun and skylight reflected off the ground, in sun or shade (SolarCal)', of: (r) => r.sc.reflected },
+  { id: 'surr', label: 'Sunlit surroundings', title: 'Warmth from sun-warmed ground and walls nearby, in sunlight only (a rough allowance)', of: (r) => r.dSurr },
+  { id: 'sky', label: 'Cold sky', title: 'Heat lost to the sky seen, colder than the air, day and night', of: (r) => r.dSky },
+];
+
+function toggleMrtPanel() {
+  state.mrtPanel = !state.mrtPanel;
+  $('mrtPanel').hidden = !state.mrtPanel;
+  toolsList?.setOpen('mrt', state.mrtPanel);
+  syncToolsButton();
+  if (state.mrtPanel) { syncMrtPanel(); checkSunlight(); checkSkyView(); }
+}
+
+// Steps between the axis's ticks, in °C.
+const MRT_STEPS = [1, 2, 5, 10, 20];
+
+function syncMrtPanel() {
+  if (!state.mrtPanel) return;
+  const r = comfortNow(), f = (x) => x.toFixed(1);
+  $('mrtAdd').hidden = r.missing !== 'epw';
+  if (r.missing) {
+    setHtml($('mrtRead'), `<span class="fine">${r.missing === 'epw' ? 'Add a weather file (EPW): the radiant temperature needs its weather.' : 'The weather file has no temperature, humidity or wind at this time.'}</span>`);
+    setHtml($('mrtChart'), '');
+    return;
+  }
+  const rise = r.tr - r.ta;
+  setHtml($('mrtRead'), `<div class="sky-top"><span class="sky-val">${f(r.tr)}<small> °C</small></span><span class="sky-what">mean radiant temperature</span></div>
+    <div class="fine" data-full>Air ${f(r.ta)} °C, ${rise < 0 ? 'less' : 'plus'} ${f(Math.abs(rise))} °C from sun and sky · ${dayName(state.sun.doy)} ${fmtHour(state.sun.hour)}</div>`);
+  const rows = MRT_PARTS.map((p) => ({ ...p, v: p.of(r) }));
+  const total = { id: 'total', label: 'Altogether', title: 'The mean radiant temperature less the air temperature', v: rise };
+  // The axis: from the most negative to the most positive value (and 0), with room beyond each end
+  // for the labels beside the bars; ticks every step, at most four or five across.
+  const vals = [...rows, total].map((p) => p.v);
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = Math.max(hi - lo, 4) * 0.25;
+  if (lo < -0.05) lo -= pad;
+  if (hi > 0.05) hi += pad;
+  if (hi - lo < 4) hi = lo + 4;
+  const step = MRT_STEPS.find((s) => (hi - lo) / s <= 4) || 50;
+  const x = (v) => ((v - lo) / (hi - lo)) * 100, zero = x(0);
+  const ticks = [];
+  for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) ticks.push(t);
+  const fmtTick = (t) => `${t < 0 ? '−' : t > 0 ? '+' : ''}${Math.abs(t)}`;
+  const bar = (p) => {
+    const v = p.v, none = Math.abs(v) < 0.05, a = x(Math.min(0, v)), w = Math.abs(x(v) - zero);
+    const label = none ? '0' : `${v < 0 ? '−' : '+'}${f(Math.abs(v))}`;
+    const at = none ? `left:${zero}%` : v < 0 ? `right:${100 - a}%` : `left:${a + w}%`;
+    return `<div class="mrt-row${p.id === 'total' ? ' total' : ''}" title="${escapeHtml(p.title)}">
+      <span class="mrt-label">${p.label}</span>
+      <span class="mrt-track">${none ? '' : `<span class="mrt-bar ${v < 0 ? 'cool' : 'warm'}" style="left:${a}%;width:${w}%"></span>`}<span class="mrt-val${v < 0 ? ' neg' : ''}${none ? ' none' : ''}" style="${at}">${label}</span></span></div>`;
+  };
+  setHtml($('mrtChart'), `<div class="mrt-chart" style="--zero:${zero}%">
+    <div class="mrt-row mrt-axis"><span></span><span class="mrt-track">${ticks.map((t) => `<span class="mrt-tick" style="left:${x(t)}%">${fmtTick(t)}</span>`).join('')}</span></div>
+    <div class="mrt-grid"><span></span><span class="mrt-track">${ticks.map((t) => `<span class="mrt-line${t === 0 ? ' zero' : ''}" style="left:${x(t)}%"></span>`).join('')}</span></div>
+    ${rows.map(bar).join('')}
+    ${bar(total)}
+    <div class="mrt-row mrt-foot"><span></span><span class="mrt-track"><span class="mrt-dir cool" style="right:${100 - zero}%">Cooler ←</span><span class="mrt-dir warm" style="left:${zero}%">→ Warmer</span></span></div>
+    <div class="mrt-unit fine">°C, from the air temperature</div>
+  </div>`);
+}
+
+function showMrtHelp() {
+  Dialog.open({ title: 'Radiant temperature', html: true, width: 420, body: `<p>The <b>mean radiant temperature</b> is the temperature of the surroundings as the body feels them through radiation: sun, sky, ground and walls. With the air temperature, humidity and wind it makes up the UTCI in the Thermal comfort widget, at the same place, date and time.</p>
+    <p>It starts from the air temperature, and each bar shows how much one part adds (warmer, to the right) or takes away (cooler, to the left), in °C:</p>
+    <p><b>Sun on you</b>: the direct sun on the person, in sunlight only. <b>Skylight</b>: the diffuse light from the sky that can be seen. <b>Off the ground</b>: sun and skylight reflected up from the ground. These three are SolarCal (ASHRAE 55, Appendix C), for the posture set in the Thermal comfort widget. <b>Sunlit surroundings</b>: a rough allowance for sun-warmed ground and walls nearby, in sunlight only. <b>Cold sky</b>: heat lost to the sky, which is colder than the air, most of all when it is clear.</p>
+    <p><b>Altogether</b> is their sum: the mean radiant temperature less the air temperature. The skylight, the light off the ground and the cold sky count only the sky that can be seen, as worked out in the Sky view widget. See the Thermal comfort widget's ? for more on each part.</p>` });
+}
+
+function bindMrtPanel() {
+  $('mrtClose').addEventListener('click', () => state.mrtPanel && toggleMrtPanel());
+  $('mrtHelp').addEventListener('click', showMrtHelp);
+  $('mrtAdd').addEventListener('click', openAttachDialog);
+}
+
 // The Sky view widget ---------------------------------------------------------------------------
 // How much of the sky can be seen from the camera (skyview.js). It is worked out again when the
 // camera moves or what is shown changes, while this widget or the Thermal comfort widget is open:
@@ -4909,7 +4996,7 @@ function checkSkyView() {
   const now = performance.now();
   if (skyViewBusy || now - skyViewAt < 200) {
     // Look again shortly, so the last camera move is not missed.
-    if (!skyViewLater) skyViewLater = setTimeout(() => { skyViewLater = 0; if (state.comfort.panel || state.skyView.panel) checkSkyView(); }, 210);
+    if (!skyViewLater) skyViewLater = setTimeout(() => { skyViewLater = 0; if (comfortShown() || state.skyView.panel) checkSkyView(); }, 210);
     return;
   }
   skyViewAt = now;
@@ -5724,6 +5811,7 @@ function bindUi() {
   bindComfortPanel();
   bindExposurePanel();
   bindSkyViewPanel();
+  bindMrtPanel();
   window.addEventListener('keydown', onKey);
   const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });
