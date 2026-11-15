@@ -42,7 +42,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Face north, east, south or west | Compass: click the N or a tick | |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Tools → Lights | `G` · `B` · `Shift+B` |
-| Thermal comfort panel (UTCI where the person stands) | Toolbar: Tools → UTCI | `U` |
+| Thermal comfort panel (UTCI where the selected person stands) | Toolbar: Tools → UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
@@ -644,20 +644,18 @@ How it works (`src/lbm.js`, `src/wind.js`):
   speed is divided by the empty box's at the same place along the box and the same moment.
 - The wind crosses the box once to settle, then once more while the speed in each cell is averaged.
 
-## The person
+## People
 
-**Tools → Person** places a person in the model. Thermal comfort, Radiant temperature and Sky view
-are worked out where they stand, so their figures stay put as you move the view round; while you
-walk (or drive), they are worked out where you are instead. Without a person those widgets ask for
-one. Each of them has a person button in its title bar that places (or moves) the person.
+**Tools → People** places people in the model, as many as you like: click **Place a person**, then a
+spot in the model. Each stands on the surface there, or, on a wall, at its foot on the side clicked
+from (0.3 m out). They are drawn in the model in orange (`src/person.js`): a simple figure, standing,
+or sitting on a stool. They are not part of the model, so they do not shade the analysis. People
+are kept with the model's view, like the camera.
 
-Click **Place** (or a title-bar button), then a spot in the model: the person stands on the surface
-there, or, on a wall, at its foot on the side clicked from (0.3 m out). The person is drawn in the model
-in orange (`src/person.js`): a simple figure, standing, or sitting on a stool. It is not part of the
-model, so it does not shade the analysis. Drag the figure to move it: a drag shorter than 40 px
-only turns the person to face the way you drag; a longer one moves them, feet on the surface under
-the cursor, facing the way they travel. Clicking it opens the widget. The person is kept with the
-model's view, like the camera.
+Hovering over a person brightens them and shows the pointer cursor. **Click** one to select them:
+they glow, and their card opens beside them in the view (as the inspector does for objects; drag
+its title bar to put it somewhere else). Selecting objects lets the person go, and the other way
+round. The card holds:
 
 - **Posture**: standing or sitting. It sets how much of the body the direct sun falls on
   (SolarCal's tables) and the height the analysis is done at, the middle of the body: 1.1 m up
@@ -665,17 +663,28 @@ model's view, like the camera.
 - **Facing**: side-on to the sun and turned away from it (SolarCal's default, 135° between the
   sun and the person's front), or a compass direction, in which case that angle follows the sun
   through the day. Turning the figure by dragging sets it to the degree.
-- **Wind factor**: the share of the weather file's wind that reaches the person, a stand-in for
-  shelter (see [Thermal comfort](#thermal-comfort)).
-- **Walk from here** starts walking at the person. When you stop walking with one of those widgets
-  open, a notice offers to leave the person where you stopped.
+- Whether they are in sunlight, and their **thermal comfort** (UTCI), **radiant temperature** and
+  **sky view**, each opening to its details: the comfort inputs, the radiant temperature chart and
+  the fisheye picture.
+- **Walk from here** (title bar) starts walking at the person, looking the way they face;
+  **Remove** (or `Delete`) takes them away.
+
+Drag a figure to move it: a drag shorter than 40 px only turns the person to face the way you drag;
+a longer one moves them, feet on the surface under the cursor, facing the way they travel.
+
+The Thermal comfort, Radiant temperature and Sky view widgets show the same for the selected person,
+or, while you walk (or drive), for you; otherwise they ask you to select (or place) one. The People
+widget also sets the posture for new people, and the **wind factor** for everyone: the share of the
+weather file's wind that reaches people, a stand-in for shelter (see
+[Thermal comfort](#thermal-comfort)). When you stop walking with one of those widgets open, a notice
+offers to place a person where you stopped.
 
 ## Thermal comfort
 
 Click **Tools → UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
-Universal Thermal Climate Index (UTCI) where the [person](#the-person) stands (or where you are,
+Universal Thermal Climate Index (UTCI) where the [person](#people) stands (or where you are,
 walking), at the Date and Time widgets' date and time, and shows it with its thermal stress
-category (9-26 °C is no thermal stress). It needs a weather file, and a person placed in the model.
+category (9-26 °C is no thermal stress). It needs a weather file, and a person selected in the model (or you, walking).
 
 Under the UTCI a line says whether the person is in sunlight, checked a few times a second
 along a line from the eye to the sun (whether or not the sun lighting is on). Trees cast shade
@@ -689,13 +698,13 @@ here even though you can walk through them; glass counts as opaque. It reads:
 - **In shade**, naming the layer of whatever casts it and how far away it is; or **Night**.
 
 - **Air temperature** and **relative humidity** come from the weather file.
-- **Wind speed** is the weather file's (10 m, open ground) times the Person widget's **wind factor**,
+- **Wind speed** is the weather file's (10 m, open ground) times the People widget's **wind factor**,
   0-1, which stands in for shelter until the viewer can estimate it. It starts at 0.5, a
   typical allowance for streets and buildings; the UTCI itself expects 10 m wind speeds. Wind
   below 0.5 m/s (including calm) is counted as 0.5 m/s, the lowest speed the UTCI was fitted for.
 - **Mean radiant temperature** starts from the air temperature. SolarCal (Arens et al. 2015,
   ASHRAE 55 Appendix C) adds the short-wave light on the person, from the weather file's
-  radiation for the hour, for the person's **Posture** and **Facing** (Person widget):
+  radiation for the hour, for the person's **Posture** and **Facing** (their card):
   - skylight, from the diffuse horizontal radiation, in sun or shade;
   - the direct sun on the person, in sunlight only (the sunlight line above, including weak
     sunlight): typically 10-25 °C.
@@ -761,7 +770,7 @@ are the sun on you, skylight, reflected light, warm surfaces and the cold sky (s
 
 ## Sky view
 
-Click **Tools → Sky view** for how much of the sky the [person](#the-person) can see, from the
+Click **Tools → Sky view** for how much of the sky the [person](#people) can see, from the
 middle of their body (or from your eye while walking). It is worked out again when they move, and
 when layers are shown or hidden: everything shown cuts the sky down, trees and glass included.
 

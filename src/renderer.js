@@ -772,7 +772,12 @@ fn softEdge(pos: vec2f, wp: vec3f, dx: vec3f, dy: vec3f, n: vec3f, faceN: vec3f)
   // the scene's light like any other surface (so they darken at dusk and night).
   if (vc && F.sunDir.w < 0.5) { lit = toLinear(base) * (0.55 + 0.45 * max(dot(n, lt.L), 0.0) * lt.vis) * mix(1.0, ao, 0.5); }
   // The actor's lamps glow (the car's lights): the less its vertex colour's alpha, the brighter.
-  if (B.flags.y > 1.5) { lit += toLinear(in.c.rgb) * (1.0 - in.c.a) * 2.5; }
+  // An actor can glow all over too (B.color.rgb, see setActorGlow), brightest at its outline.
+  if (B.flags.y > 1.5) {
+    lit += toLinear(in.c.rgb) * (1.0 - in.c.a) * 2.5;
+    let rim = pow(1.0 - max(dot(n, V), 0.0), 2.0);
+    lit += B.color.rgb * (0.2 + 2.8 * rim);
+  }
   if (F.opts.x > 0.0) { alpha = F.opts.x; }
   if (F.eye.w < 0.5) { lit += lampGlow(-V, length(F.eye.xyz - in.wp)); }
   var col = highlight(finish(lit, in.wp), in.oid);
@@ -1415,14 +1420,16 @@ export class Renderer {
   }
 
   // Objects drawn with the model that are not part of it, in slots: the car in Drive mode ('actor'),
-  // and the person placed for thermal comfort ('figure'). They are never picked, probed, analysed or
-  // shadowed by lamps. geo, in its own metres: pos (xyz), nrm (unit xyz), col (sRGB rgba bytes),
+  // and the people placed for thermal comfort (one slot each, any other name). They are never picked,
+  // probed, analysed or shadowed by lamps. geo, in its own metres: pos (xyz), nrm (unit xyz), col (sRGB rgba bytes),
   // idx; gloss 0..1. null removes it.
   setActor(geo, slot = 'actor') {
     if (this[slot]) for (const k in this[slot].gpu) this[slot].gpu[k].destroy();
     this[slot] = null;
     this.dirty = true;
+    (this.actorSlots ||= new Set()).delete(slot);
     if (!geo) return;
+    this.actorSlots.add(slot);
     const dev = this.device, U = GPUBufferUsage, n = geo.pos.length / 3;
     const make = (arr, usage) => {
       const b = dev.createBuffer({ size: Math.ceil(arr.byteLength / 4) * 4, usage: usage | U.COPY_DST });
@@ -1433,13 +1440,23 @@ export class Renderer {
     const gpu = { pos: make(new Float32Array(n * 3), U.VERTEX), nrm: make(new Int16Array(n * 4), U.VERTEX), col: make(col, U.VERTEX),
       oid: make(new Uint32Array(n).fill(0xffffffff), U.VERTEX), idx: make(geo.idx, U.INDEX), uni: dev.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST }) };
     // Vertex colours, no surface priority, opaque, with the gloss a car's paint has.
-    dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 0, geo.gloss || 0]));
+    dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 0, geo.gloss || 0]));
     const bg = dev.createBindGroup({ layout: this.batchLayout, entries: [{ binding: 0, resource: { buffer: gpu.uni, size: 48 } }] });
-    this[slot] = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
+    this[slot] = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, glow: [0, 0, 0], posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
   }
 
   // The actors placed in the view (setActorPose), each slot's.
-  posedActors() { return [this.actor, this.figure].filter((A) => A?.pose); }
+  posedActors() { return [...(this.actorSlots || [])].map((k) => this[k]).filter((A) => A?.pose); }
+
+  // Makes an actor glow (linear rgb added to its light, more at its outline; 0, 0, 0 for none): the
+  // person under the cursor, or selected. It leaves the ambient occlusion and shadows as they are.
+  setActorGlow(rgb, slot) {
+    const A = this[slot];
+    if (!A || rgb.every((v, i) => v === A.glow[i])) return;
+    A.glow = [...rgb];
+    this.device.queue.writeBuffer(A.gpu.uni, 0, new Float32Array(rgb));
+    this.dirty = true;
+  }
 
   // New vertex colours for the actor (as many as it has): its lamps going on and off.
   setActorColours(col) {
