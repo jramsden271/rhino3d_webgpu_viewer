@@ -1352,8 +1352,7 @@ export class Renderer {
       pass.setIndexBuffer(b.gpu.idx, 'uint32');
       this.drawCells(pass, b);
     }
-    const A = this.actor?.pose ? this.actor : null;
-    if (A) {
+    for (const A of this.posedActors()) {
       pass.setBindGroup(1, A.bg, [0]);
       pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.nrm); pass.setVertexBuffer(2, A.gpu.oid);
       pass.setIndexBuffer(A.gpu.idx, 'uint32');
@@ -1408,12 +1407,13 @@ export class Renderer {
     if (n) { if (indexed) pass.drawIndexed(n, 1, first); else pass.draw(n, 1, first); }
   }
 
-  // A moving object drawn with the model: the car in Drive mode. It is not part of the model, so it
-  // is never picked, probed, analysed or shadowed by lamps. geo, in its own metres: pos (xyz),
-  // nrm (unit xyz), col (sRGB rgba bytes), idx; gloss 0..1. null removes it.
-  setActor(geo) {
-    if (this.actor) for (const k in this.actor.gpu) this.actor.gpu[k].destroy();
-    this.actor = null;
+  // Objects drawn with the model that are not part of it, in slots: the car in Drive mode ('actor'),
+  // and the person placed for thermal comfort ('figure'). They are never picked, probed, analysed or
+  // shadowed by lamps. geo, in its own metres: pos (xyz), nrm (unit xyz), col (sRGB rgba bytes),
+  // idx; gloss 0..1. null removes it.
+  setActor(geo, slot = 'actor') {
+    if (this[slot]) for (const k in this[slot].gpu) this[slot].gpu[k].destroy();
+    this[slot] = null;
     this.dirty = true;
     if (!geo) return;
     const dev = this.device, U = GPUBufferUsage, n = geo.pos.length / 3;
@@ -1428,8 +1428,11 @@ export class Renderer {
     // Vertex colours, no surface priority, opaque, with the gloss a car's paint has.
     dev.queue.writeBuffer(gpu.uni, 0, new Float32Array([1, 1, 1, 0, 1, 1, 1, 1, 1, 2, 0, geo.gloss || 0]));
     const bg = dev.createBindGroup({ layout: this.batchLayout, entries: [{ binding: 0, resource: { buffer: gpu.uni, size: 48 } }] });
-    this.actor = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
+    this[slot] = { geo, gpu, bg, count: geo.idx.length, pose: null, shadows: false, version: 0, posOut: new Float32Array(n * 3), nrmOut: new Int16Array(n * 4) };
   }
+
+  // The actors placed in the view (setActorPose), each slot's.
+  posedActors() { return [this.actor, this.figure].filter((A) => A?.pose); }
 
   // New vertex colours for the actor (as many as it has): its lamps going on and off.
   setActorColours(col) {
@@ -1442,8 +1445,8 @@ export class Renderer {
 
   // Places the actor: m (column-major 4 × 4, its metres to model units, rotation and uniform scale
   // only), or null to hide it. shadows: it casts the sun's shadows, which redraws them every frame.
-  setActorPose(m, shadows = false) {
-    const A = this.actor;
+  setActorPose(m, shadows = false, slot = 'actor') {
+    const A = this[slot];
     if (!A) return;
     this.dirty = true;
     A.shadows = shadows;
@@ -1621,8 +1624,8 @@ export class Renderer {
         pass.setIndexBuffer(b.gpu.idx, 'uint32');
         this.drawCells(pass, b);
       }
-      const A = this.actor;
-      if (A?.pose && A.shadows) {
+      for (const A of this.posedActors()) {
+        if (!A.shadows) continue;
         pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.oid);
         pass.setIndexBuffer(A.gpu.idx, 'uint32');
         pass.drawIndexed(A.count);
@@ -1684,9 +1687,10 @@ export class Renderer {
     // What is shown: the geometry version and which batches are visible.
     let geom = this.geomVersion;
     for (const b of this.batches) if (b.visible) geom = (geom * 31 + b.offset + 1) | 0;
-    // The actor moves every frame: the ambient occlusion sees it, and the sun's shadows too if asked.
-    const A = this.actor?.pose ? this.actor : null, withActor = A ? `${geom}|${A.version}` : geom;
-    if (s.shadows) this.renderShadows(enc, s.shadows, A?.shadows ? withActor : geom);
+    // The actors move: the ambient occlusion sees them, and the sun's shadows too if asked.
+    const actors = this.posedActors(), withActor = actors.length ? `${geom}|${actors.map((A) => A.version).join(',')}` : geom;
+    const shadowed = actors.filter((A) => A.shadows);
+    if (s.shadows) this.renderShadows(enc, s.shadows, shadowed.length ? `${geom}|${shadowed.map((A) => A.version).join(',')}` : geom);
     this.renderLampShadows(enc, s);
     if (s.aoActive) this.renderAO(enc, s, withActor);
     else this.aoKey = null;
@@ -1716,7 +1720,7 @@ export class Renderer {
       this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
-    if (A) {
+    for (const A of actors) {
       pass.setPipeline(s.xray ? P.meshVCT : P.meshVC);
       pass.setBindGroup(1, A.bg, [0]);
       pass.setVertexBuffer(0, A.gpu.pos); pass.setVertexBuffer(1, A.gpu.nrm); pass.setVertexBuffer(2, A.gpu.col); pass.setVertexBuffer(3, A.gpu.oid);

@@ -182,7 +182,7 @@
   <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort" data-min>
     <div class="panel-head">
       <span>Thermal comfort</span>
-      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
+      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
     </div>
     <div class="sun-body">
       <div id="comfortRead" class="utci-read"></div>
@@ -219,7 +219,7 @@
   <section id="mrtPanel" class="chrome panel sun-panel" hidden aria-label="Radiant temperature" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h14M4 18h6"/><path d="M4 3v18"/></svg>Radiant temperature</span>
-      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="mrtRead" class="sky-read"></div>
@@ -229,7 +229,7 @@
   <section id="skyViewPanel" class="chrome panel sun-panel" hidden aria-label="Sky view" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 15H7v-5h4v6h3v-4h3.5v3h3"/></svg>Sky view</span>
-      <span class="panel-actions"><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="skyViewRead" class="sky-read"></div>
@@ -351,7 +351,6 @@
     </div>
   </div>
 
-  <div id="personPin" class="person-pin" hidden title="The person: thermal comfort, the radiant temperature and sky view are worked out here"><span id="personPinArrow" class="person-arrow" hidden></span><span id="personPinIcon" class="person-icon"></span></div>
   <div id="inspectDot" class="inspect-dot" aria-hidden="true"></div>
   <div id="inspect" class="chrome inspect" hidden role="dialog" aria-labelledby="insTitle">
     <div class="inspect-head"><span class="swatch" id="insSwatch"></span><b id="insTitle"></b><span class="panel-actions"><button class="x" id="insClose" aria-label="Close" title="Close">×</button></span></div>

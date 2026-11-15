@@ -593,15 +593,19 @@ walk (or drive), they are worked out where you are instead. Without a person tho
 one. Each of them has a person button in its title bar that places (or moves) the person.
 
 Click **Place** (or a title-bar button), then a spot in the model: the person stands on the surface
-there, or, on a wall, at its foot on the side clicked from (0.3 m out). A pin over the view shows
-them; clicking it opens the widget. The person is kept with the model's view, like the camera.
+there, or, on a wall, at its foot on the side clicked from (0.3 m out). The person is drawn in the model
+in orange (`src/person.js`): a simple figure, standing, or sitting on a stool. It is not part of the
+model, so it does not shade the analysis. Drag the figure to move it: a drag shorter than 40 px
+only turns the person to face the way you drag; a longer one moves them, feet on the surface under
+the cursor, facing the way they travel. Clicking it opens the widget. The person is kept with the
+model's view, like the camera.
 
 - **Posture**: standing or sitting. It sets how much of the body the direct sun falls on
   (SolarCal's tables) and the height the analysis is done at, the middle of the body: 1.1 m up
   standing, 0.6 m sitting.
 - **Facing**: side-on to the sun and turned away from it (SolarCal's default, 135° between the
   sun and the person's front), or a compass direction, in which case that angle follows the sun
-  through the day. The pin's arrow shows it.
+  through the day. Turning the figure by dragging sets it to the degree.
 - **Wind factor**: the share of the weather file's wind that reaches the person, a stand-in for
   shelter (see [Thermal comfort](#thermal-comfort)).
 - **Walk from here** starts walking at the person. When you stop walking with one of those widgets
@@ -878,6 +882,7 @@ of your own, and the last three also need `vendor/`. Behaviour in the browser is
 | `node tools/test-magic.js` | Checks where a magic block is placed |
 | `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
+| `node tools/test-person.js` | Checks the person figures: facing outwards, size, standing on the ground |
 | `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, the surroundings on level ground, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
@@ -896,6 +901,7 @@ src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking,
 src/sun.js               solar position, sun direction and colour
 src/mesh.js              meshes made for analysis: join, weld, split long edges, normals
 src/exposure.js          sun exposure: the times in a period, and the surface to test from a layer
+src/person.js            the person drawn in the model, standing or sitting on a stool
 src/skyview.js           sky view: the hemicube layout, sky view factors, and the fisheye picture
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time
 src/clouds.js            cloud cover, sun and sky strength from the weather file; clear-sky models

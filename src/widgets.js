@@ -277,8 +277,9 @@ export const Widgets = (() => {
     menu = opts.showMenu;
     side = document.querySelector('.side');
     load();
-    // The ? and × in every title bar, widgets' and windows' alike, as drawn shapes.
-    for (const b of document.querySelectorAll(':is(.panel-head, .inspect-head) .panel-actions > .x')) b.innerHTML = b.classList.contains('q') ? HELP : CLOSE;
+    // The ? and × in every title bar, widgets' and windows' alike, as drawn shapes. Buttons that come
+    // with their own icon (the person button) keep it.
+    for (const b of document.querySelectorAll(':is(.panel-head, .inspect-head) .panel-actions > .x')) if (!b.querySelector('svg')) b.innerHTML = b.classList.contains('q') ? HELP : CLOSE;
     for (const p of panels()) {
       if (!p.id) continue;
       const head = p.querySelector('.panel-head');

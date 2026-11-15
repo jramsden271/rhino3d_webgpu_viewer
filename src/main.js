@@ -24,6 +24,7 @@ import { DRIVE_CAMS, Driver } from './drive.js';
 import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascades } from './renderer.js';
 import { DEMO_3DM } from './demo.js';
 import { Widgets } from './widgets.js';
+import { PERSON_HEIGHT, personGeometry } from './person.js';
 import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint, surroundingPoints, surroundingsView } from './skyview.js';
 
 const $ = (id) => document.getElementById(id);
@@ -408,6 +409,7 @@ function loop() {
   diag.ticks++;
   // The project's thumbnail is taken once the view has settled after a change (see redraw).
   if (thumb.due && now - lastInput > THUMB_SETTLE && canThumb()) { thumb.due = false; thumb.take = true; renderer.dirty = true; }
+  syncPersonFigure();
   if (renderer.dirty) {
     anim.drawn = now;
     renderer.dirty = false;
@@ -415,7 +417,7 @@ function loop() {
     renderer.draw(frameState());
     if (thumb.take) { thumb.take = false; captureThumb(); } // the frame can only be read before this task ends
     if (state.devMode) diagFrame(t);
-    positionInspector(); syncCompass(); positionPersonPin();
+    positionInspector(); syncCompass();
     if (comfortShown()) checkSunlight();
     if (comfortShown() || state.skyView.panel) checkSkyView();
     if (comfortShown()) checkSurroundings();
@@ -1571,7 +1573,7 @@ function restoreCameras(saved) {
 // The person as they were left with this model, or none.
 function restorePerson(saved) {
   const p = saved.person, ok = p && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite);
-  Object.assign(state.person, { at: ok ? p.at : null, facing: ok && PERSON_FACINGS.some(([v]) => v === p.facing) ? p.facing : 'side', placing: false });
+  Object.assign(state.person, { at: ok ? p.at : null, facing: ok && (p.facing === 'side' || (Number(p.facing) >= 0 && Number(p.facing) < 360)) ? String(p.facing) : 'side', placing: false });
   if (ok) model.restored.push('the person');
   syncPersonPanel();
 }
@@ -3865,6 +3867,8 @@ function bindPointer() {
       if (walker.active) walker.skipFall();
       else driver.dragging = true;
       canvas.classList.add('dragging');
+    } else if (pointers.size === 1 && e.button === 0 && !e.altKey && !pickingSpot() && personHit(e)) {
+      startPersonDrag(e);
     } else if (pointers.size === 1) {
       // Rhino-style mouse: right-drag orbits (Shift + right pans), left/middle-drag pans.
       // Alt + left orbits for trackpads; on touch screens one finger orbits. Top-down and level
@@ -3891,9 +3895,11 @@ function bindPointer() {
     if (stick && e.pointerId === stick.id) { moveStick(e); return; }
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
     if (pickingSpot() && !drag) showWalkMarker(hoverAt);
+    if (!drag) canvas.classList.toggle('over-person', !pickingSpot() && personHit(e));
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
+    if (drag.mode === 'person') { dragPerson(e); return; }
     if (drag.mode === 'pinch' && pointers.size === 2) {
       const p = pinchInfo(), r = canvas.getBoundingClientRect();
       camera.pan(p.cx - drag.cx, p.cy - drag.cy, r.height, drag.depth);
@@ -3926,7 +3932,8 @@ function bindPointer() {
     pointers.delete(e.pointerId);
     // A left click or tap without dragging selects the object under the pointer.
     // While choosing where to start walking, it starts there instead.
-    if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
+    if (pointers.size === 0 && drag?.mode === 'person') endPersonDrag(drag);
+    else if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
       if (choosingStart()) startWalkAt(e);
       else if (expo.picking) pickExposureLayer(e);
       else if (state.person.placing) placePersonAt(e);
@@ -4779,9 +4786,6 @@ const PERSON_CENTRE = { standing: 1.1, sitting: 0.6 }; // m above the ground: th
 const PERSON_STEP = 0.3; // m: a spot clicked on a wall puts the person this far out from it, on the ground below
 const COMPASS8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const PERSON_FACINGS = [['side', 'Side-on to the sun'], ...COMPASS8.map((c, i) => [String(i * 45), `Facing ${c}`])];
-const personIcon = (sitting) => (sitting
-  ? '<svg viewBox="0 0 24 24"><circle cx="9.5" cy="4.5" r="2"/><path d="M9.5 8v6h5.5l1.5 6.5M9.5 10.5H14M6 20.5h3"/></svg>'
-  : '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg>');
 
 // The point the analysis is done at: { eye (model space), who: 'you' | 'person' }, or null.
 function analysisPoint() {
@@ -4841,32 +4845,126 @@ function placePersonAt(e) {
   });
 }
 
-// The person drawn over the view: a pin at their feet, with an arrow the way they face. Hidden while
-// walking or driving (you are the person then), and behind the camera.
-function positionPersonPin() {
-  const pin = $('personPin'), at = model && state.person.at;
-  if (!at || moving()) { pin.hidden = true; return; }
+// The person drawn in the model: a figure (person.js), standing, or sitting on a stool, turned the way
+// they face. Hidden while walking or driving, when you are the person. Checked each frame; redrawn
+// when anything about it changes.
+let figureKey = '', figurePosture = '';
+function syncPersonFigure() {
+  if (!renderer) return;
+  const at = model && state.person.at, show = !!at && !moving(), posture = state.comfort.posture;
+  const bearing = show ? personBearing() : 0, mpu = model ? METRES_PER_UNIT[model.units] || 1 : 1;
+  const key = show ? [...at, bearing, posture, mpu, state.sun.north].join() : '';
+  if (key === figureKey) return;
+  figureKey = key;
+  if (!show) { renderer.setActorPose(null, false, 'figure'); return; }
+  if (figurePosture !== posture || !renderer.figure) { renderer.setActor(personGeometry(posture), 'figure'); figurePosture = posture; }
+  const u = 1 / mpu, fx = sunVector(bearing, 0, state.sun.north), left = [-fx[1], fx[0], 0];
+  renderer.setActorPose([fx[0] * u, fx[1] * u, 0, 0, left[0] * u, left[1] * u, 0, 0, 0, 0, u, 0, at[0], at[1], at[2], 1], true, 'figure');
+}
+
+// The compass bearing the person faces, degrees: their own, or side-on and turned away from the sun
+// (135° from it, as SolarCal assumes; north with the sun down or no location).
+function personBearing() {
+  const f = state.person.facing;
+  if (f !== 'side') return Number(f);
+  const pos = activeLocation() ? sunPosition() : null;
+  return pos && pos.altitude > 0 ? (pos.azimuth + 135) % 360 : 0;
+}
+
+// A point in the model on screen (client pixels), or null behind the camera.
+function toScreen(p) {
   const m = camera.viewProj();
-  const project = (p) => {
-    const cx = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], cy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], cw = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-    if (cw <= 0) return null;
-    const r = canvas.getBoundingClientRect();
-    return [r.left + ((cx / cw) * 0.5 + 0.5) * r.width, r.top + (0.5 - (cy / cw) * 0.5) * r.height];
-  };
-  const foot = project(at);
-  pin.hidden = !foot;
-  if (!foot) return;
-  pin.style.transform = `translate(${foot[0]}px, ${foot[1]}px)`;
-  const sitting = state.comfort.posture === 'sitting', f = state.person.facing;
-  if (pin.dataset.look !== `${sitting}`) { pin.dataset.look = `${sitting}`; $('personPinIcon').innerHTML = personIcon(sitting); }
-  const arrow = $('personPinArrow');
-  arrow.hidden = f === 'side';
-  if (f !== 'side') {
-    const u = 1 / (METRES_PER_UNIT[model.units] || 1), d = sunVector(Number(f), 0, state.sun.north);
-    const tip = project(V3.add(at, V3.scale(d, u)));
-    if (tip) arrow.style.transform = `rotate(${Math.atan2(tip[1] - foot[1], tip[0] - foot[0])}rad)`;
-    else arrow.hidden = true;
+  const cx = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], cy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], cw = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+  if (cw <= 0) return null;
+  const r = canvas.getBoundingClientRect();
+  return [r.left + ((cx / cw) * 0.5 + 0.5) * r.width, r.top + (0.5 - (cy / cw) * 0.5) * r.height];
+}
+
+// Where the line of sight through a screen point meets the level plane at height z, or null.
+function levelPoint(e, z) {
+  const r = canvas.getBoundingClientRect(), nx = ((e.clientX - r.left) / r.width) * 2 - 1, ny = 1 - ((e.clientY - r.top) / r.height) * 2;
+  const c = camera, aspect = r.width / r.height;
+  let o = c.eye, d;
+  if (c.ortho) {
+    o = V3.add(o, V3.add(V3.scale(c.right, nx * c.halfHeight * aspect), V3.scale(c.up, ny * c.halfHeight)));
+    d = c.forward;
+  } else {
+    const t = Math.tan(c.fov / 2);
+    d = V3.add(c.forward, V3.add(V3.scale(c.right, nx * t * aspect), V3.scale(c.up, ny * t)));
   }
+  if (Math.abs(d[2]) < 1e-9) return null;
+  const k = (z - o[2]) / d[2];
+  return k > 0 ? V3.add(o, V3.scale(d, k)) : null;
+}
+
+// Whether a screen point is on the person: near the line from their feet to the top of their head.
+function personHit(e) {
+  const at = model && state.person.at;
+  if (!at || moving() || !renderer?.figure?.pose) return false;
+  const u = 1 / (METRES_PER_UNIT[model.units] || 1), h = PERSON_HEIGHT[state.comfort.posture];
+  const a = toScreen(at), b = toScreen([at[0], at[1], at[2] + h * u]);
+  if (!a || !b) return false;
+  const vx = b[0] - a[0], vy = b[1] - a[1], len2 = vx * vx + vy * vy;
+  const t = len2 ? Math.max(0, Math.min(1, ((e.clientX - a[0]) * vx + (e.clientY - a[1]) * vy) / len2)) : 0;
+  const d = Math.hypot(e.clientX - a[0] - t * vx, e.clientY - a[1] - t * vy);
+  return d <= Math.max(8, (0.3 / h) * Math.sqrt(len2));
+}
+
+// Dragging the person (left button on the figure). A short drag only turns them, to face the way the
+// drag goes; past PERSON_MOVE_PX it moves them, their feet on the surface under the cursor, facing
+// the way they travel. A click without a drag opens the Person widget.
+const PERSON_MOVE_PX = 40;   // drag distance (px) at which turning becomes moving
+const PERSON_TRAVEL = 0.15;  // m moved before they turn to face their travel
+function startPersonDrag(e) {
+  drag = { mode: 'person', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, button: e.button, moving: false,
+    from: [...state.person.at], last: [...state.person.at], ground: levelPoint(e, state.person.at[2]), busy: false, next: null };
+  canvas.classList.add('dragging', 'person-drag');
+}
+function dragPerson(e) {
+  const d = drag, P = state.person, mpu = METRES_PER_UNIT[model.units] || 1, dist = Math.hypot(e.clientX - d.sx, e.clientY - d.sy);
+  if (dist > 4) d.moved = true;
+  if (!d.moved) return;
+  if (!d.moving && dist >= PERSON_MOVE_PX) d.moving = true;
+  if (!d.moving) {
+    // Turning: face the way the drag goes, on the level of their feet.
+    const g = levelPoint(e, P.at[2]);
+    if (g && d.ground && Math.hypot(g[0] - d.ground[0], g[1] - d.ground[1]) * mpu > 0.02) setFacingToward(g[0] - d.ground[0], g[1] - d.ground[1]);
+    return;
+  }
+  // Moving: the surface under the cursor, one pick at a time (the latest position next).
+  if (d.busy) { d.next = { clientX: e.clientX, clientY: e.clientY }; return; }
+  d.busy = true;
+  pickAt(e).then((h) => {
+    if (drag !== d || !h) return;
+    const step = [h.p[0] - d.last[0], h.p[1] - d.last[1]];
+    if (Math.hypot(...step) * mpu >= PERSON_TRAVEL) { setFacingToward(...step); d.last = [...h.p]; }
+    P.at = [...h.p];
+    syncPersonPanel();
+    checkSunlight();
+    checkSkyView();
+  }).finally(() => {
+    d.busy = false;
+    const next = d.next;
+    d.next = null;
+    if (next && drag === d) dragPerson(next);
+  });
+}
+async function endPersonDrag(d) {
+  canvas.classList.remove('person-drag');
+  if (!d.moved) { if (!state.person.panel) togglePersonPanel(); return; }
+  if (!d.moving) { saveViewState(); syncComfortPanel(); return; }
+  // On a wall or a roof edge, down to the ground, as when placing.
+  const at = state.person.at, u = 1 / (METRES_PER_UNIT[model.units] || 1), [mn] = visibleBounds();
+  const [g] = await renderer.groundBelow([{ x: at[0], y: at[1], top: at[2] + 0.5 * u }], mn[2] - u, 0.1 * u, () => false);
+  setPerson([at[0], at[1], g ?? at[2]]);
+}
+
+// Turns the person to face a direction on the ground (model x, y), to the nearest degree.
+function setFacingToward(dx, dy) {
+  const n = (state.sun.north * Math.PI) / 180, north = [Math.cos(n), Math.sin(n)], east = [Math.sin(n), -Math.cos(n)];
+  const b = (Math.atan2(dx * east[0] + dy * east[1], dx * north[0] + dy * north[1]) * 180) / Math.PI;
+  state.person.facing = String(Math.round((b + 360) % 360) % 360);
+  syncPersonPanel();
 }
 
 // Where the analysis is done, for the widgets that use it: a line of text.
@@ -4896,7 +4994,10 @@ function syncPersonPanel() {
   $('comfortWind').value = C.wind;
   $('comfortWindOut').value = C.wind.toFixed(2);
   $('comfortPosture').value = C.posture;
-  $('personFacing').value = P.facing;
+  const sel = $('personFacing');
+  sel.querySelector('[data-custom]')?.remove();
+  if (!PERSON_FACINGS.some(([v]) => v === P.facing)) sel.insertAdjacentHTML('beforeend', `<option value="${P.facing}" data-custom>Facing ${P.facing}° (${COMPASS8[Math.round(Number(P.facing) / 45) % 8]})</option>`);
+  sel.value = P.facing;
   if (!P.panel) return;
   const you = walker.active || driver.active;
   $('personPlace').textContent = P.placing ? 'Click in the model…' : P.at ? 'Move' : 'Place';
@@ -4916,9 +5017,9 @@ function syncPersonPanel() {
 
 function showPersonHelp() {
   Dialog.open({ title: 'Person', html: true, width: 420, body: `<p>The person stands in for someone using the place: <b>Thermal comfort</b>, <b>Radiant temperature</b> and <b>Sky view</b> are worked out where they stand, so the figures stay put as you move the view round them. While you walk (or drive), they are worked out where you are instead.</p>
-    <p><b>Place</b> (or the person button in those widgets' title bars), then click in the model: the person stands on the surface there, or, on a wall, at its foot on your side. <b>Move</b> places them again; <b>Remove</b> takes them away. The pin over the view shows where they are; it is kept with the model's view.</p>
+    <p><b>Place</b> (or the person button in those widgets' title bars), then click in the model: the person stands on the surface there, or, on a wall, at its foot on your side. <b>Move</b> places them again; <b>Remove</b> takes them away. The person is drawn in the model, in orange, standing or sitting on a stool. <b>Drag</b> them to move them: they face the way they go. A short drag only turns them to face the way you drag. Click them to open this widget. They are kept with the model's view.</p>
     <p><b>Posture</b>: standing or sitting. It sets how much of the body the sun falls on, and the height everything is measured at, the middle of the body: ${PERSON_CENTRE.standing} m up standing, ${PERSON_CENTRE.sitting} m sitting. Sitting low sees more of the ground and less of the sky.</p>
-    <p><b>Facing</b>: side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. The pin's arrow shows it.</p>
+    <p><b>Facing</b>: side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. Turning the person by dragging sets it too, to the degree.</p>
     <p><b>Wind factor</b>: the share of the weather file's wind (measured in the open, 10 m up) that reaches the person: a stand-in for shelter, which the viewer cannot work out yet. 1 is open ground; 0.5, the default, is a typical allowance for streets and buildings.</p>
     <p><b>Walk from here</b> starts walking where the person stands. When you stop walking with a comfort widget open, you can leave the person where you stopped.</p>` });
 }
@@ -4938,7 +5039,6 @@ function bindPersonPanel() {
   for (const b of document.querySelectorAll('.person-drop')) b.addEventListener('click', () => setPersonPlacing(!state.person.placing));
   // "Place a person" links in the widgets.
   for (const id of ['comfortPanel', 'mrtPanel', 'skyViewPanel']) $(id).addEventListener('click', (e) => { if (e.target.closest('[data-place]')) setPersonPlacing(true); });
-  $('personPin').addEventListener('click', () => { if (!state.person.panel) togglePersonPanel(); });
   syncPersonPanel();
 }
 
