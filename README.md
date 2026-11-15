@@ -50,8 +50,16 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
 | Weather widget · everything under Weather in the render mode menu on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
+| Settings (theme, developer mode) · About and privacy | Projects menu (**3DM Viewer**, top left): gear · ⓘ, at the bottom | |
 | Undo · Redo | Arrows next to the file name | `Ctrl+Z` · `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Select all visible objects | | `Ctrl+A` (with Layers or Blocks clicked: all its rows) |
+
+The foot of the projects menu (click **3DM Viewer**, top left) has **Settings** (the gear) and
+**About** (ⓘ): what the viewer is, the libraries and methods it builds on, and what happens to
+your data. In short, files are opened and processed in the browser and never uploaded;
+preferences are kept in the browser's local storage and projects in its IndexedDB; and the app
+makes no requests of its own (no analytics or tracking), except to download a model named in a
+`?model=` link.
 
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag

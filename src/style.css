@@ -509,6 +509,7 @@ body.walking .walk-frame { display: block; }
 .proj-row:hover .x, .proj-row .x:focus-visible { opacity: 1; }
 @media (hover: none) { .proj-row .x { opacity: 1; } }
 .proj-foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 6px; }
+.proj-foot-btns { display: inline-flex; gap: 2px; }
 .drop.hidden-under { background: rgba(37, 99, 235, 0.08); }
 .drop.hidden-under .drop-card { background: rgba(255, 255, 255, 0.92); }
 
@@ -542,6 +543,9 @@ body.walking .walk-frame { display: block; }
 .dlg-body:has(> *) { white-space: normal; }
 .dlg-body p { margin: 0 0 8px; line-height: 1.45; }
 .dlg-body p:last-child { margin-bottom: 0; }
+.dlg-body ul { margin: 0 0 8px; padding-left: 18px; line-height: 1.45; }
+.dlg-body li { margin-bottom: 4px; }
+.dlg-body ul:last-child { margin-bottom: 0; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 12px 12px; }
 .dlg-actions .btn { border: 1px solid var(--border); }
 .dlg-actions .btn.primary { border-color: transparent; }

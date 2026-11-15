@@ -5292,11 +5292,12 @@ function bindProjectsMenu() {
     <div class="proj-list" role="list"></div>
     <div class="proj-foot">
       <button class="link" data-act="demo">Open the demo model</button>
-      <button class="btn icon" data-act="settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+      <span class="proj-foot-btns"><button class="btn icon" data-act="about" title="About and privacy" aria-label="About and privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6h.01"/></svg></button>
+      <button class="btn icon" data-act="settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></span>
     </div>`;
   const filter = projectsMenu.body.querySelector('.proj-filter');
   filter.addEventListener('input', renderRecent);
-  const act = { new: newProject, open: pickFiles, openZip: pickZip, saveZip: saveProjectZip, demo: openDemo, settings: openSettings };
+  const act = { new: newProject, open: pickFiles, openZip: pickZip, saveZip: saveProjectZip, demo: openDemo, settings: openSettings, about: showAbout };
   projectsMenu.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -5366,6 +5367,27 @@ function openSettings() {
   dev.checked = !!state.devMode;
   dev.addEventListener('change', () => setDevMode(dev.checked));
   Dialog.open({ title: 'Settings', body, buttons: [{ label: 'Close', value: true, primary: true }], width: 380 });
+}
+
+// About and privacy: what the viewer is, whose work it builds on, and what happens to the user's data.
+// Keep the privacy part true to the code: the only requests the page makes are fetch(?model=…) at
+// startup (boot) and, running from src/ only, rhino3dm's 64-bit build from vendor/ (getRhino).
+function showAbout() {
+  Dialog.open({ title: 'About 3DM Viewer', html: true, width: 440, body: `<p>A single-page viewer for Rhino <b>.3dm</b> models, drawn with WebGPU, with the sun and shadows, weather files, thermal comfort (UTCI) and sun exposure and results analysis tools. It runs entirely in this browser tab: the whole app, including the Rhino file reader, is in the page itself.</p>
+    <p><b>Built with</b></p>
+    <ul>
+      <li><b>rhino3dm</b> by Robert McNeel &amp; Associates (MIT licence): reads .3dm files, compiled to WebAssembly and embedded in the page.</li>
+      <li><b>esbuild</b> (MIT licence): bundles the app into one file when it is built.</li>
+      <li><b>UTCI</b>: the UTCI_approx polynomial (Bröde et al. 2009), with its coefficients from the BHoM LadybugTools Toolkit; checked against ladybug-comfort.</li>
+      <li><b>SolarCal</b> (Arens et al. 2015, ASHRAE 55 Appendix C) for sun and sky on a person, with the cold sky after ladybug-comfort; checked against jsthermalcomfort.</li>
+    </ul>
+    <p><b>Privacy</b></p>
+    <ul>
+      <li><b>Your files stay on your computer.</b> Rhino, weather (EPW) and results files are opened and processed here, in the browser. They are not uploaded anywhere.</li>
+      <li><b>Nothing is sent to a server.</b> The app has no analytics, tracking, cookies or accounts, and makes no requests of its own once the page has loaded. The page itself is downloaded from where it is hosted like any web page; saved to your computer, it works offline.</li>
+      <li>The one exception is a link with <code>?model=</code> and a web address in it: the viewer then downloads that model from that address, as asked.</li>
+      <li><b>Kept in this browser.</b> Preferences (theme, render options, comfort settings and the like), widget layout and saved dates and times are kept in this browser's local storage. Projects (their names, links to their files, thumbnails, weather and results files and saved views) are kept in its IndexedDB. Neither leaves this computer; clearing the site's data in the browser removes them.</li>
+    </ul>` });
 }
 
 // The demo model built into the page (src/demo.js, from tools/make-demo.js): a small site in
