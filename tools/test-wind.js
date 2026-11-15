@@ -2,7 +2,7 @@
 // (the solver itself runs on the GPU and is checked in the browser):
 //   node tools/test-wind.js
 
-const { windGrid, windInlet, windSolids, windMapTops, windMapMesh, compass16, WIND_OPEN, WIND_PEDESTRIAN } = require('../src/wind.js');
+const { windGrid, windInlet, windVoxels, windVoxelShell, windMapTops, windMapMesh, compass16, WIND_OPEN, WIND_PEDESTRIAN } = require('../src/wind.js');
 
 let failures = 0;
 const check = (ok, msg) => { if (!ok) { failures++; console.log(`  FAIL ${msg}`); } };
@@ -50,17 +50,43 @@ for (const from of [0, 90, 225, 270]) {
   check(near(uRef / u10, WIND_OPEN, 1e-9), 'the reference is the open wind at pedestrian height');
 }
 
-// Solids: a column with a 6 m roof on 1.5 m cells has four solid cells; the results are read 1.5 m
-// above the roof; a column with nothing has none and is read 1.5 m above the floor.
-{
-  const G = { nx: 2, ny: 1, nz: 10, dx: 1.5, floor: 0 };
-  const { solid, level } = windSolids(G, Float32Array.from([6, NaN]), 1);
-  const solidAt = (c) => (solid[c >>> 5] >>> (c & 31)) & 1;
-  const col0 = [...Array(10)].map((_, k) => solidAt(0 + 2 * k)), col1 = [...Array(10)].map((_, k) => solidAt(1 + 2 * k));
-  check(col0.join('') === '1111000000', `the roofed column: ${col0.join('')}`);
-  check(col1.every((v) => !v), 'the open column is empty');
-  check(near(level[0], (6 + WIND_PEDESTRIAN) / 1.5, 1e-6) && near(level[1], WIND_PEDESTRIAN / 1.5, 1e-6), `read heights ${[...level]}`);
-}
+// Solids, on 1 m cells: a ground plane, a closed box standing on it, and a canopy (a single
+// surface) over open ground, either way up. The box is filled; under the canopy stays open.
+(async () => {
+  const G = { nx: 20, ny: 20, nz: 20, dx: 1, cell: 1, dir: [1, 0], left: [0, 1], s0: 0, t0: 0, floor: 0 };
+  const quad = (a, b, c, d) => ({ pos: Float32Array.from([...a, ...b, ...c, ...d]), idx: Uint32Array.from([0, 1, 2, 0, 2, 3]), xf: null });
+  // A box with its faces turned out.
+  const box = (x0, y0, z0, x1, y1, z1) => {
+    const p = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+    const f = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+    return { pos: Float32Array.from(p.flat()), idx: Uint32Array.from(f.flatMap(([a, b, c, d]) => [a, b, c, a, c, d])), xf: null };
+  };
+  const ground = quad([0, 0, 0.2], [20, 0, 0.2], [20, 20, 0.2], [0, 20, 0.2]);
+  for (const flip of [false, true]) {
+    const canopy = flip ? quad([10, 10, 3.5], [10, 16, 3.5], [16, 16, 3.5], [16, 10, 3.5]) : quad([10, 10, 3.5], [16, 10, 3.5], [16, 16, 3.5], [10, 16, 3.5]);
+    const V = await windVoxels(G, [ground, box(2, 2, 0.2, 6, 6, 8.2), canopy], 1);
+    const column = (i, j) => [...Array(G.nz)].map((_, k) => { const c = i + 20 * j + 400 * k; return (V.solid[c >>> 5] >>> (c & 31)) & 1; }).join('');
+    const way = flip ? 'canopy facing down' : 'canopy facing up';
+    check(column(4, 4) === '11111111100000000000', `${way}: the box is filled to its roof: ${column(4, 4)}`);
+    check(column(13, 13) === '10010000000000000000', `${way}: open under the canopy: ${column(13, 13)}`);
+    check(column(18, 2) === '10000000000000000000', `${way}: open ground: ${column(18, 2)}`);
+    check(near(V.stand[4 + 20 * 4], 8.2, 1e-4) && near(V.level[4 + 20 * 4], 8.2 + WIND_PEDESTRIAN, 1e-4), `${way}: read above the roof`);
+    check(near(V.stand[13 + 20 * 13], 0.2, 1e-4) && near(V.level[13 + 20 * 13], 0.2 + WIND_PEDESTRIAN, 1e-4), `${way}: read above the ground under the canopy`);
+  }
+  // Nothing at all: read above the floor, nowhere to stand.
+  const E = await windVoxels(G, [], 1);
+  check(E.count === 0 && Number.isNaN(E.stand[0]) && near(E.level[0], WIND_PEDESTRIAN, 1e-9), 'an empty grid');
+  // One solid cell in the middle of the grid has six faces.
+  const one = new Uint32Array(Math.ceil(8000 / 32)), c = 5 + 20 * 5 + 400 * 5;
+  one[c >>> 5] |= 1 << (c & 31);
+  const S = windVoxelShell(G, one);
+  check(S.faces === 6 && S.idx.length === 36 && S.pos.length === 72, `one cell's shell: ${S.faces} faces`);
+  check(windVoxelShell(G, one, 3) === null, 'too many faces to show');
+})().then(() => {
+  check(compass16(0) === 'N' && compass16(225) === 'SW' && compass16(350) === 'N' && compass16(-90) === 'W', 'compass points');
+  console.log(failures ? `${failures} failed` : 'All wind checks passed');
+  process.exitCode = failures ? 1 : 0;
+});
 
 // The map: no triangles across a step, and none where nothing is drawn.
 {
@@ -74,7 +100,3 @@ for (const from of [0, 90, 225, 270]) {
   check(none.filter(Number.isFinite).length === 6 && none.every((z, c) => Number.isFinite(z) === (c % 4 < 2)), 'nothing beyond the model, the floor within it');
 }
 
-check(compass16(0) === 'N' && compass16(225) === 'SW' && compass16(350) === 'N' && compass16(-90) === 'W', 'compass points');
-
-console.log(failures ? `${failures} failed` : 'All wind checks passed');
-process.exitCode = failures ? 1 : 0;

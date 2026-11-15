@@ -816,6 +816,11 @@ struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
 }
 @fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
 
+// What the wind sees (wind.js): the solid cells' faces, translucent, each its own colour and alpha.
+struct ShellOut { @builtin(position) pos: vec4f, @location(0) col: vec4f };
+@vertex fn vsShell(@location(0) p: vec3f, @location(2) col: vec4f) -> ShellOut { return ShellOut(F.viewProj * vec4f(p, 1.0), col); }
+@fragment fn fsShell(in: ShellOut) -> @location(0) vec4f { return in.col; }
+
 // The sun path diagram, on the sky: directions, so it stays with the sky however the camera moves.
 // Drawn straight after the background, so everything in the model is in front of it.
 struct SkyLineOut { @builtin(position) pos: vec4f, @location(0) col: vec4f, @location(1) e: f32, @location(2) w: vec2f };
@@ -1257,6 +1262,8 @@ export class Renderer {
       lineX: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'always', blend, write: false }),
       resultLine: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'greater-equal', layout: frameOnly }),
       resultLineX: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'always', write: false, layout: frameOnly }),
+      shell: mk('vsShell', 'fsShell', [POS, COL], { compare: 'greater-equal', write: false, blend, layout: frameOnly }),
+      shellX: mk('vsShell', 'fsShell', [POS, COL], { compare: 'always', write: false, blend, layout: frameOnly }),
       point: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'greater-equal' }),
       pointX: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'always', write: false }),
       pick: mk('vsPick', 'fsPick', [POS, OID], { format: 'rgba32float', samples: 1, layout: frameOnly }),
@@ -1763,6 +1770,13 @@ export class Renderer {
       for (const r of s.resultRanges) pass.draw(r.count, 1, r.first);
     }
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
+    if (s.windShell && this.windShell) {
+      const W = this.windShell;
+      pass.setPipeline(s.xray ? P.shellX : P.shell);
+      pass.setVertexBuffer(0, W.pos); pass.setVertexBuffer(1, W.col);
+      pass.setIndexBuffer(W.idx, 'uint32');
+      pass.drawIndexed(W.count);
+    }
     pass.end();
     this.device.queue.submit([enc.finish()]);
   }
@@ -2271,64 +2285,20 @@ export class Renderer {
     this.dirty = true;
   }
 
-  // The top of what is shown (leaving out vegetation), seen straight down over a rectangle: nx × ny
-  // cells of size cell (model units) centred on centre ([x, y]), its x along dir (a unit [x, y]) and
-  // its y to the left of that, looking down from top to bottom. Each cell takes the highest of four
-  // samples in it. Resolves to Float32Array(nx * ny) of heights (x fastest), NaN where there is
-  // nothing; or null if the GPU rejected the work or the rectangle is too big.
-  async heightMap({ centre, dir, nx, ny, cell, top, bottom }) {
-    if (!this.batches.length) return new Float32Array(nx * ny).fill(NaN);
-    const dev = this.device, U = GPUBufferUsage, RA = GPUTextureUsage.RENDER_ATTACHMENT;
-    const W = 2 * nx, H = 2 * ny, Wp = Math.ceil(W / 16) * 16;
-    if (Wp > dev.limits.maxTextureDimension2D || H > dev.limits.maxTextureDimension2D) return null;
-    const tex = dev.createTexture({ size: [Wp, H], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
-    const depth = dev.createTexture({ size: [Wp, H], format: DEPTH, usage: RA });
-    const read = dev.createBuffer({ size: Wp * H * 16, usage: U.MAP_READ | U.COPY_DST });
-    const uni = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
-    try {
-      const left = [-dir[1], dir[0], 0];
-      const vp = M4.mul(M4.ortho((ny * cell) / 2, nx / ny, 0, top - bottom), M4.lookAt([centre[0], centre[1], top], [centre[0], centre[1], top - 1], left));
-      dev.queue.writeBuffer(uni, 0, Float32Array.from(vp));
-      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION);
-      dev.pushErrorScope('validation');
-      const enc = dev.createCommandEncoder();
-      const pass = enc.beginRenderPass({
-        colorAttachments: [{ view: tex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
-        depthStencilAttachment: { view: depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
-      });
-      pass.setPipeline(this.pipes.pick);
-      pass.setViewport(0, 0, W, H, 0, 1);
-      pass.setScissorRect(0, 0, W, H);
-      pass.setBindGroup(0, this.probeBindGroup(uni));
-      this.cull(vp, true);
-      for (const b of solid) {
-        if (!this.seen(b)) continue;
-        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
-        pass.setIndexBuffer(b.gpu.idx, 'uint32');
-        this.drawCells(pass, b);
-      }
-      pass.end();
-      enc.copyTextureToBuffer({ texture: tex }, { buffer: read, bytesPerRow: Wp * 16 }, [Wp, H]);
-      dev.queue.submit([enc.finish()]);
-      const failed = await dev.popErrorScope();
-      await read.mapAsync(GPUMapMode.READ);
-      const v = new Float32Array(read.getMappedRange()), out = new Float32Array(nx * ny).fill(NaN);
-      if (!failed) {
-        // Texture row 0 is the far left of the rectangle (its largest y).
-        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-          let h = NaN;
-          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
-            const t = ((H - 1 - (2 * j + dy)) * Wp + 2 * i + dx) * 4;
-            if (v[t + 3] > 0 && !(v[t + 2] <= h)) h = v[t + 2];
-          }
-          out[i + nx * j] = h;
-        }
-      }
-      read.unmap();
-      return failed ? null : out;
-    } finally {
-      tex.destroy(); depth.destroy(); read.destroy(); uni.destroy();
-    }
+  // What the wind sees (wind.js's windVoxelShell): { pos, col, idx }, or null for none. Drawn while
+  // each frame's s.windShell is set.
+  setWindShell(shell) {
+    const old = this.windShell;
+    if (old) for (const k of ['pos', 'col', 'idx']) old[k].destroy();
+    this.windShell = null;
+    this.dirty = true;
+    if (!shell || !shell.idx.length) return;
+    const make = (arr, usage) => {
+      const buf = this.device.createBuffer({ size: Math.ceil(arr.byteLength / 4) * 4, usage: usage | GPUBufferUsage.COPY_DST });
+      this.device.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.windShell = { pos: make(shell.pos, GPUBufferUsage.VERTEX), col: make(shell.col, GPUBufferUsage.VERTEX), idx: make(shell.idx, GPUBufferUsage.INDEX), count: shell.idx.length };
   }
 
   // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys

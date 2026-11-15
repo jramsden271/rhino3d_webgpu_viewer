@@ -3,7 +3,7 @@
 import { M4, V3 } from './math.js';
 import { MATERIAL_RULES, MAT_VEGETATION, MAT_WATER, SPECIAL, matchLayer } from './materials.js';
 import { MAGIC_BLOCKS, MAGIC_BY_ID, MAGIC_PARENT_LAYER, magicMeshes } from './magicblocks.js';
-import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes } from './extract.js';
+import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes, mulRM } from './extract.js';
 import { Dialog } from './dialog.js';
 import { CITIES } from './cities.js';
 import { Recent } from './recent.js';
@@ -243,6 +243,7 @@ function frameState() {
   s.resultMapZ = state.maps.z / model.metresPerUnit;
   s.exposureMap = expo.on && expo.shown;
   s.windMap = !!windTool?.shown();
+  s.windShell = !!windTool?.shellShown();
   checkExposure();
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
@@ -3793,11 +3794,35 @@ function syncExposurePanel() {
   setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
 }
 
+// The meshes the wind meets: those of every object shown, blocks included, leaving out vegetation
+// (porous, which the solver does not model yet). [{ pos, idx, xf }] as for exposureLayerMeshes.
+function windMeshes() {
+  const out = [], veg = (l) => layerSpecialId(l) === MAT_VEGETATION, shown = (l) => layerEffective(l) && !veg(l);
+  const walk = (defId, xf, depth, active) => {
+    const def = model.defs.get(defId);
+    if (!def || depth > 24 || active.has(defId)) return;
+    active.add(defId);
+    for (const e of def.entries) {
+      if (!shown(e.ai.layer)) continue;
+      if (e.k === 'inst') walk(e.idef, mulRM(xf, e.xf), depth + 1, active);
+      else if (e.k === 'mesh') for (const p of e.parts) out.push({ pos: p.pos, idx: p.idx, xf });
+    }
+    active.delete(defId);
+  };
+  model.objects.forEach((o, i) => {
+    if (objectOff(i) || !shown(o.ai.layer)) return;
+    if (o.k === 'mesh') for (const p of o.parts) out.push({ pos: p.pos, idx: p.idx, xf: o.xf });
+    else if (o.k === 'inst') walk(o.idef, o.xf, 0, new Set());
+  });
+  return out;
+}
+
 // The Wind (CFD-lite) widget (wind.js), and what it needs from the viewer.
 var windTool = createWindTool({ // var: the hooks below may run before this line
   $, get renderer() { return renderer; }, get model() { return model; }, visibleBounds, Dialog,
   mpu: () => METRES_PER_UNIT[model.units] || 1, north: () => state.sun.north,
   modelKey: () => modelKey('objects', 'visibility'),
+  windMeshes,
   hasEpw: () => !!site.epw,
   weatherNow: () => { if (!site.epw) return null; const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy); return site.epw.at(month, day, state.sun.hour); },
   whenText: () => `${dayName(state.sun.doy)} ${fmtHour(state.sun.hour)}`,

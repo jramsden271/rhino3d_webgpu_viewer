@@ -2,10 +2,12 @@
 //
 // D3Q19 lattice, BGK collision with a Smagorinsky subgrid model (the eddies smaller than a cell),
 // on a box of cubic cells lined up with the wind: it blows along +x, from the inlet at x = 0 to the
-// outlet at x = nx - 1. Solid cells (the model, from above: see wind.js) and the floor send back
-// what reaches them: walls straight back (no slip, halfway bounce-back), the floor, the ground and
-// roofs as a mirror would (free slip; see wall()). The inlet, the sides and the top hold the
-// undisturbed wind, whose speed rises with height (the inlet profile, in lattice units: cells per step).
+// outlet at x = nx - 1. Solid cells (the model: see wind.js) and the floor send back what reaches
+// them: walls straight back (no slip, halfway bounce-back), the floor, the ground and roofs as a
+// mirror would (free slip; see wall()). The sides are mirrors too (or joined round, for the empty
+// reference). The inlet and the top hold the undisturbed wind, whose speed rises with height (the
+// inlet profile, in lattice units: cells per step); the outlet lets the air out at the open air's
+// pressure, after a damping zone.
 //
 // The 19 distributions of a cell are kept as half floats, two to a u32, less their value at rest
 // (w_i), which keeps their precision: 10 half floats in one buffer, 9 in another, each laid out
@@ -20,7 +22,7 @@ const WG = 64;
 
 // Directions: rest, the 6 faces, the 12 edges. Each odd direction's opposite is the next one.
 const STEP_WGSL = /* wgsl */ `
-struct Params { nx: u32, ny: u32, nz: u32, n: u32, tau0: f32, smag: f32, acc: u32, init: u32 };
+struct Params { nx: u32, ny: u32, nz: u32, n: u32, tau0: f32, smag: f32, acc: u32, init: u32, periodic: u32, pad0: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<uniform> P: Params;
 @group(0) @binding(1) var<storage, read> src0: array<u32>;
 @group(0) @binding(2) var<storage, read> src1: array<u32>;
@@ -37,6 +39,8 @@ var<private> W: array<f32, 19> = array<f32, 19>(1.0 / 3.0, 1.0 / 18.0, 1.0 / 18.
   1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0);
 // Each direction mirrored top to bottom.
 var<private> MZ: array<u32, 19> = array<u32, 19>(0u, 1u, 2u, 3u, 4u, 6u, 5u, 7u, 8u, 15u, 16u, 17u, 18u, 13u, 14u, 9u, 10u, 11u, 12u);
+// Each direction mirrored side to side.
+var<private> MY: array<u32, 19> = array<u32, 19>(0u, 1u, 2u, 4u, 3u, 5u, 6u, 13u, 14u, 9u, 10u, 18u, 17u, 7u, 8u, 15u, 16u, 12u, 11u);
 
 fn opp(i: u32) -> u32 { if (i == 0u) { return 0u; } return select(i - 1u, i + 1u, (i & 1u) == 1u); }
 fn isSolid(c: u32) -> bool { return (solid[c >> 5u] & (1u << (c & 31u))) != 0u; }
@@ -68,6 +72,16 @@ fn wall(i: u32, x: u32, y: u32, z: u32, c: u32, sx: i32, sy: i32) -> f32 {
   return readF(opp(i), c);
 }
 
+// What comes in through the sides: the wind slides along them (reflected as off a mirror, from the
+// cell beside this one it left). Holding the open wind there instead boxed the air in: what the
+// buildings pushed aside could not spread out, and the whole site sped up.
+fn side(i: u32, c: u32, sx: i32, y: u32, sz: i32, far: vec3f) -> f32 {
+  if (sz < 0) { return readF(opp(i), c); }
+  let h = u32(sx) + P.nx * (y + P.ny * u32(sz));
+  if (isSolid(h)) { return readF(opp(i), c); }
+  return readF(MY[i], h);
+}
+
 @compute @workgroup_size(${WG})
 fn step(@builtin(global_invocation_id) id: vec3u) {
   let x = id.x; let y = id.y; let z = id.z;
@@ -79,12 +93,26 @@ fn step(@builtin(global_invocation_id) id: vec3u) {
   if (P.init == 1u) {
     for (var i = 0u; i < 19u; i++) { g[i] = geq(i, 1.0, far); }
   } else {
+    // The outlet lets the air out at the open air's pressure, at the speed it reaches it (never
+    // drawing any back in): copying what was there instead let eddies leaving the grid bounce back
+    // in and grow, until the whole flow ran away.
+    var out = far;
+    if (x == P.nx - 1u) {
+      var r0 = 1.0;
+      var m0 = vec3f(0.0);
+      for (var i = 0u; i < 19u; i++) { let f = readF(i, c); r0 += f; m0 += vec3f(f32(EX[i]), f32(EY[i]), f32(EZ[i])) * f; }
+      out = m0 / r0;
+      out.x = max(out.x, 0.25 * inlet[z]);
+    }
     // Streaming: each direction from the neighbour it comes from.
     for (var i = 0u; i < 19u; i++) {
-      let sx = i32(x) - EX[i]; let sy = i32(y) - EY[i]; let sz = i32(z) - EZ[i];
+      let sx = i32(x) - EX[i]; let sz = i32(z) - EZ[i];
+      var sy = i32(y) - EY[i];
+      if (P.periodic == 1u) { sy = (sy + i32(P.ny)) % i32(P.ny); }                      // the sides joined round
       if (sx < 0) { g[i] = geq(i, 1.0, vec3f(inlet[z], 0.0, 0.0)); }                       // the inlet
-      else if (sx >= i32(P.nx)) { g[i] = readF(i, c); }                                     // the outlet: as it was
-      else if (sy < 0 || sy >= i32(P.ny) || sz >= i32(P.nz)) { g[i] = geq(i, 1.0, far); }   // the sides and top: the open wind
+      else if (sx >= i32(P.nx)) { g[i] = geq(i, 1.0, out); }                                // the outlet
+      else if (sz >= i32(P.nz)) { g[i] = geq(i, 1.0, far); }                               // the top: the open wind
+      else if (sy < 0 || sy >= i32(P.ny)) { g[i] = side(i, c, sx, y, sz, far); }           // the sides
       else if (sz < 0 || isSolid(u32(sx) + P.nx * (u32(sy) + P.ny * u32(sz)))) { g[i] = wall(i, x, y, z, c, sx, sy); }
       else {
         let s = u32(sx) + P.nx * (u32(sy) + P.ny * u32(sz));
@@ -108,7 +136,12 @@ fn step(@builtin(global_invocation_id) id: vec3u) {
     pxx += ex * ex * d; pyy += ey * ey * d; pzz += ez * ez * d; pxy += ex * ey * d; pxz += ex * ez * d; pyz += ey * ez * d;
   }
   let q = sqrt(pxx * pxx + pyy * pyy + pzz * pzz + 2.0 * (pxy * pxy + pxz * pxz + pyz * pyz));
-  let tau = 0.5 * (P.tau0 + sqrt(P.tau0 * P.tau0 + P.smag * q / rho));
+  var tau = 0.5 * (P.tau0 + sqrt(P.tau0 * P.tau0 + P.smag * q / rho));
+  // A damping zone before the outlet (the last eighth of the grid, at least 8 cells): the air
+  // thickens towards it, so eddies die away before they reach it.
+  let sponge = max(8.0, f32(P.nx) / 8.0);
+  let sp = clamp((f32(x) - (f32(P.nx) - sponge)) / sponge, 0.0, 1.0);
+  tau += sp * sp;
   let k = 1.0 / tau;
   for (var p = 0u; p < 10u; p++) {
     let a = g[2u * p] - (g[2u * p] - eq[2u * p]) * k;
@@ -187,11 +220,12 @@ export class WindSolver {
 
   // A new grid: nx × ny × nz cells; solid: Uint32Array of bits, one per cell (x fastest, then y,
   // then z); inlet: Float32Array(nz), the wind's speed at each height (cells per step); nu: the
-  // lattice viscosity; cs: the Smagorinsky constant. Starts the flow as the open wind everywhere.
-  setup({ nx, ny, nz, solid, inlet, nu = 0.0005, cs = 0.17 }) {
+  // lattice viscosity; cs: the Smagorinsky constant; periodicY: the sides are joined round (what leaves
+  // one comes in at the other) rather than holding the open wind. Starts the flow as the open wind everywhere.
+  setup({ nx, ny, nz, solid, inlet, nu = 0.0005, cs = 0.17, periodicY = false }) {
     this.destroy();
     const dev = this.device, U = GPUBufferUsage, n = nx * ny * nz;
-    Object.assign(this, { nx, ny, nz, n, tau0: 0.5 + 3 * nu, smag: 18 * Math.SQRT2 * cs * cs, steps: 0, count: 0 });
+    Object.assign(this, { nx, ny, nz, n, tau0: 0.5 + 3 * nu, smag: 18 * Math.SQRT2 * cs * cs, steps: 0, count: 0, periodicY });
     const buf = (size, usage) => { const b = dev.createBuffer({ size: Math.max(16, Math.ceil(size / 16) * 16), usage }); this.bufs.push(b); return b; };
     const f = () => buf(5 * n * 4, U.STORAGE);
     this.f = [[f(), f()], [f(), f()]];
@@ -200,7 +234,7 @@ export class WindSolver {
     this.inlet = buf(nz * 4, U.STORAGE | U.COPY_DST);
     dev.queue.writeBuffer(this.inlet, 0, inlet);
     this.sum = buf(n * 4, U.STORAGE | U.COPY_DST);
-    this.params = [0, 1, 2, 3].map(() => buf(32, U.UNIFORM | U.COPY_DST));
+    this.params = [0, 1, 2, 3].map(() => buf(48, U.UNIFORM | U.COPY_DST));
     // Params for: a step from copy 0 and from copy 1, each plain or adding to the sum; the first
     // step (from nothing) uses the same as 'from copy 1, plain', with init set.
     const layout = this.stepPipe.getBindGroupLayout(0);
@@ -233,8 +267,8 @@ export class WindSolver {
   writeParams(init) {
     const { nx, ny, nz, n } = this;
     for (let k = 0; k < 4; k++) {
-      const p = new ArrayBuffer(32), u = new Uint32Array(p), fl = new Float32Array(p);
-      u[0] = nx; u[1] = ny; u[2] = nz; u[3] = n; fl[4] = this.tau0; fl[5] = this.smag; u[6] = k & 1; u[7] = init && k === 2 ? 1 : 0;
+      const p = new ArrayBuffer(48), u = new Uint32Array(p), fl = new Float32Array(p);
+      u[0] = nx; u[1] = ny; u[2] = nz; u[3] = n; fl[4] = this.tau0; fl[5] = this.smag; u[6] = k & 1; u[7] = init && k === 2 ? 1 : 0; u[8] = this.periodicY ? 1 : 0;
       this.device.queue.writeBuffer(this.params[k], 0, p);
     }
   }

@@ -2,13 +2,15 @@
 // map of the wind near the ground (PEDESTRIAN m above whatever is below: the ground, or a roof).
 //
 // The grid is a box lined up with the wind, round what is shown, with room upwind, downwind, to the
-// sides and above in proportion to the tallest thing in the model. The model goes in as seen from
-// above: every cell under the top surface is solid, so overhangs, arcades and bridges are filled in,
-// and vegetation is left out (it is porous, which the solver does not model yet).
+// sides and above in proportion to the tallest thing in the model. The model goes in as cells
+// (windVoxels): those its surfaces pass through, and those inside its closed objects, so canopies
+// and arcades stay open underneath. Vegetation is left out (it is porous, which the solver does not
+// model yet). "Show what the wind sees" draws the solid cells.
 //
 // The wind blowing in rises with height as over a suburb or town (a power law). The solver works in
-// its own units, so the results are the speed as a share of the wind at the same height over the
-// open ground upwind (the speed ratio: below 1 sheltered, above 1 where buildings speed it up), and
+// its own units, so the results are the speed as a share of the wind at the same height and place
+// along the grid over the empty grid, worked out alongside (the speed ratio: below 1 sheltered,
+// above 1 where buildings speed it up), and
 // the speed in m/s comes from the wind's speed at 10 m: from the weather file at the Date and Time
 // widgets' date and time, or set by hand. Changing the speed needs no new run; changing the direction
 // or the model does.
@@ -68,17 +70,133 @@ export function windInlet(nz, dx) {
 // The wind in the open at WIND_PEDESTRIAN, as a share of the wind at 10 m (the weather file's height).
 export const WIND_OPEN = Math.pow(WIND_PEDESTRIAN / 10, WIND_ALPHA);
 
-// From the top surface heights (heightMap, model units, NaN for none): the solid cells (bits, one per
-// cell) and the height each column's results are read at (cells above the floor).
-export function windSolids(G, tops, mpu) {
-  const { nx, ny, nz, dx, floor } = G, n = nx * ny * nz, solid = new Uint32Array(Math.ceil(n / 32)), level = new Float32Array(nx * ny);
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const col = i + nx * j, h = Number.isFinite(tops[col]) ? Math.max(0, (tops[col] - floor) * mpu) : 0;
-    const k1 = Math.min(nz, Math.round(h / dx)); // cells whose middle is below the top
-    for (let k = 0; k < k1; k++) { const c = col + nx * ny * k; solid[c >>> 5] |= 1 << (c & 31); }
-    level[col] = (h + WIND_PEDESTRIAN) / dx;
+// The model in the grid: which cells are solid, from its meshes ([{ pos, idx, xf (row-major 4 × 4,
+// or null) }], model units). Two passes:
+//  - every cell a triangle passes through is solid (sampled at most half a cell apart), so a thin
+//    roof or a canopy is a slab a cell thick, open underneath;
+//  - closed volumes are filled: up each column (through its middle), from where it enters an object
+//    (a face turned down) to where it leaves (a face turned up). Faces that do not pair up (an open
+//    surface, a ground plane) add nothing more.
+// Each column's results are read WIND_PEDESTRIAN above where one would stand: the top of the lowest
+// stack of solid cells (the ground, or a roof), at the height of the surface found there.
+// Gives { solid (bits, one per cell, x fastest, then y, then z), level (Float32Array per column:
+// cells above the floor to read at), stand (model z of that surface per column, NaN where nothing is
+// solid), count (solid cells) }. tick: called now and then (await it to let the page breathe).
+export async function windVoxels(G, meshes, mpu, tick = null) {
+  const { nx, ny, nz, cell, dir, left, s0, t0, floor } = G, nxy = nx * ny, n = nxy * nz;
+  const solid = new Uint32Array(Math.ceil(n / 32)), cols = new Array(nxy);
+  const set = (i, j, k) => { if (i >= 0 && j >= 0 && k >= 0 && i < nx && j < ny && k < nz) { const c = i + nx * j + nxy * k; solid[c >>> 5] |= 1 << (c & 31); } };
+  // Column middles, nudged off the exact half so that a ray seldom runs along a shared edge.
+  const E1 = 0.5 + 1.7e-5, E2 = 0.5 + 3.1e-5;
+  let done = 0;
+  for (const m of meshes) {
+    const P = m.pos, X = m.xf, nv = P.length / 3, gx = new Float32Array(nv), gy = new Float32Array(nv), gz = new Float32Array(nv);
+    for (let v = 0; v < nv; v++) {
+      let x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2];
+      if (X) {
+        const w = X[12] * x + X[13] * y + X[14] * z + X[15] || 1;
+        [x, y, z] = [(X[0] * x + X[1] * y + X[2] * z + X[3]) / w, (X[4] * x + X[5] * y + X[6] * z + X[7]) / w, (X[8] * x + X[9] * y + X[10] * z + X[11]) / w];
+      }
+      gx[v] = (x * dir[0] + y * dir[1] - s0) / cell; gy[v] = (x * left[0] + y * left[1] - t0) / cell; gz[v] = (z - floor) / cell;
+    }
+    const I = m.idx;
+    for (let t = 0; t < I.length; t += 3) {
+      const a = I[t], b = I[t + 1], c = I[t + 2];
+      const ax = gx[a], ay = gy[a], az = gz[a], bx = gx[b], by = gy[b], bz = gz[b], cx = gx[c], cy = gy[c], cz = gz[c];
+      // Surface cells.
+      const len = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - ax, cy - ay, cz - az), Math.hypot(cx - bx, cy - by, cz - bz));
+      const k = Math.min(4096, Math.max(1, Math.ceil(len * 2)));
+      for (let u = 0; u <= k; u++) for (let v = 0; v <= k - u; v++) {
+        const p = u / k, q = v / k;
+        set(Math.floor(ax + (bx - ax) * p + (cx - ax) * q), Math.floor(ay + (by - ay) * p + (cy - ay) * q), Math.floor(az + (bz - az) * p + (cz - az) * q));
+      }
+      // Where columns cross it: its height there, and whether it faces up.
+      const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      if (Math.abs(area) > 1e-12) {
+        const i0 = Math.max(0, Math.ceil(Math.min(ax, bx, cx) - E1)), i1 = Math.min(nx - 1, Math.floor(Math.max(ax, bx, cx) - E1));
+        const j0 = Math.max(0, Math.ceil(Math.min(ay, by, cy) - E2)), j1 = Math.min(ny - 1, Math.floor(Math.max(ay, by, cy) - E2));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const px = i + E1, py = j + E2;
+          const w0 = ((bx - px) * (cy - py) - (by - py) * (cx - px)) / area, w1 = ((cx - px) * (ay - py) - (cy - py) * (ax - px)) / area, w2 = 1 - w0 - w1;
+          if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+          (cols[i + nx * j] ||= []).push(w0 * az + w1 * bz + w2 * cz, area > 0 ? 1 : -1);
+        }
+      }
+      if (tick && ++done % 20000 === 0) await tick();
+    }
   }
-  return { solid, level };
+  // Closed volumes, then where each column's results are read.
+  const level = new Float32Array(nxy), stand = new Float32Array(nxy).fill(NaN);
+  const isSolid = (c) => (solid[c >>> 5] >>> (c & 31)) & 1;
+  for (let col = 0; col < nxy; col++) {
+    const L = cols[col], i = col % nx, j = (col - i) / nx;
+    let hits = [];
+    if (L) {
+      for (let h = 0; h < L.length; h += 2) hits.push([L[h], L[h + 1]]);
+      // Upwards; where two meet (an object standing on another), leaving before entering.
+      hits.sort((p, q) => (Math.abs(p[0] - q[0]) > 1e-4 ? p[0] - q[0] : q[1] - p[1]));
+      let enter = null;
+      for (const [z, up] of hits) {
+        if (up < 0 && enter === null) enter = z;
+        else if (up > 0 && enter !== null) {
+          for (let kk = Math.max(0, Math.ceil(enter - 0.5)); kk < nz && kk + 0.5 < z; kk++) set(i, j, kk);
+          enter = null;
+        }
+      }
+    }
+    // The lowest stack of solid cells, and the surface at its top.
+    let k0 = 0;
+    while (k0 < nz && !isSolid(col + nxy * k0)) k0++;
+    if (k0 === nz) { level[col] = WIND_PEDESTRIAN / G.dx; continue; }
+    let k1 = k0;
+    while (k1 < nz && isSolid(col + nxy * k1)) k1++;
+    let top = k1;
+    for (let h = hits.length - 1; h >= 0; h--) if (hits[h][0] >= k0 - 0.01 && hits[h][0] <= k1 + 0.01) { top = hits[h][0]; break; }
+    stand[col] = floor + top * cell;
+    level[col] = top + WIND_PEDESTRIAN / G.dx;
+  }
+  let count = 0;
+  for (let w = 0; w < solid.length; w++) { let x = solid[w]; while (x) { x &= x - 1; count++; } }
+  return { solid, level, stand, count };
+}
+
+// The outside of the solid cells, for showing what the solver sees: a square for each face between a
+// solid cell and air (inside the grid), in model space, translucent, the tops paler than the sides.
+// Gives { pos (Float32Array), col (Uint8Array rgba), idx (Uint32Array), faces }, or null for more
+// than maxFaces faces.
+export function windVoxelShell(G, solid, maxFaces = 3e6) {
+  const { nx, ny, nz, cell, dir, left, s0, t0, floor } = G, nxy = nx * ny;
+  const at = (i, j, k) => i >= 0 && j >= 0 && k >= 0 && i < nx && j < ny && k < nz && ((solid[(i + nx * j + nxy * k) >>> 5] >>> ((i + nx * j + nxy * k) & 31)) & 1);
+  const faces = [];
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    if (!at(i, j, k)) continue;
+    // Kinds of face: 0 top, 1 bottom, 2 and 3 the ends (+x, -x), 4 and 5 the sides (+y, -y).
+    if (k + 1 < nz && !at(i, j, k + 1)) faces.push(i, j, k, 0);
+    if (k > 0 && !at(i, j, k - 1)) faces.push(i, j, k, 1);
+    if (i + 1 < nx && !at(i + 1, j, k)) faces.push(i, j, k, 2);
+    if (i > 0 && !at(i - 1, j, k)) faces.push(i, j, k, 3);
+    if (j + 1 < ny && !at(i, j + 1, k)) faces.push(i, j, k, 4);
+    if (j > 0 && !at(i, j - 1, k)) faces.push(i, j, k, 5);
+    if (faces.length / 4 > maxFaces) return null;
+  }
+  const nf = faces.length / 4, pos = new Float32Array(nf * 12), col = new Uint8Array(nf * 16), idx = new Uint32Array(nf * 6);
+  // The corners of each kind of face, in cell offsets.
+  const CORNERS = [
+    [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+    [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]], [[0, 0, 0], [0, 1, 0], [0, 1, 1], [0, 0, 1]],
+    [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],
+  ];
+  const SHADE = [[214, 220, 230, 45], [120, 128, 140, 110], [160, 170, 186, 120], [150, 160, 176, 120], [170, 180, 196, 120], [140, 150, 166, 120]];
+  for (let f = 0; f < nf; f++) {
+    const i = faces[f * 4], j = faces[f * 4 + 1], k = faces[f * 4 + 2], kind = faces[f * 4 + 3];
+    CORNERS[kind].forEach(([a, b, c], v) => {
+      const s = s0 + (i + a) * cell, t = t0 + (j + b) * cell;
+      pos.set([dir[0] * s + left[0] * t, dir[1] * s + left[1] * t, floor + (k + c) * cell], (f * 4 + v) * 3);
+      col.set(SHADE[kind], (f * 4 + v) * 4);
+    });
+    idx.set([f * 4, f * 4 + 1, f * 4 + 2, f * 4, f * 4 + 2, f * 4 + 3], f * 6);
+  }
+  return { pos, col, idx, faces: nf };
 }
 
 // Where the map is drawn in each column (model z): on the top surface, or, where there is none, on
@@ -117,9 +235,10 @@ export function windMapMesh(G, tops, lift) {
 export function createWindTool(app) {
   const $ = app.$;
   const W = {
-    panel: false, on: true, source: 'epw', dir: 225, speed: 5, res: 'coarse', show: 'ratio',
-    // The latest run: { key, from, grid, tops, ratio (Float32Array per column, or null), status, progress, error }
-    run: null, token: 0, solver: null,
+    panel: false, on: true, source: 'epw', dir: 225, speed: 5, res: 'coarse', show: 'ratio', solids: false,
+    // The latest run: { key, from, grid, voxels (windVoxels), shell (windVoxelShell, false if too big,
+    // null not made yet), mapTops, ratio (Float32Array per column, or null), status, progress, done }
+    run: null, token: 0, solver: null, ref: null,
   };
 
   // The wind blowing: { from (deg), speed (m/s), epw: true if from the weather file }, or null.
@@ -148,16 +267,26 @@ export function createWindTool(app) {
     const res = WIND_RESOLUTIONS.find((r) => r.id === W.res) || WIND_RESOLUTIONS[0];
     W.solver ??= new WindSolver(renderer.device);
     const G = windGrid({ mn, mx, from: w.from, north: app.north(), mpu, cells: res.cells, maxCells: WindSolver.maxCells(renderer.device) });
-    W.run = { key: runKey(w.from), from: w.from, grid: G, tops: null, ratio: null, status: 'Reading the model…', progress: 0, done: false };
+    W.ref ??= new WindSolver(renderer.device);
+    W.run = { key: runKey(w.from), from: w.from, grid: G, voxels: null, shell: null, ratio: null, status: 'Reading the model…', progress: 0, done: false };
+    renderer.setWindShell(null);
     sync();
-    const centre = [G.dir[0] * (G.s0 + (G.nx * G.cell) / 2) + G.left[0] * (G.t0 + (G.ny * G.cell) / 2), G.dir[1] * (G.s0 + (G.nx * G.cell) / 2) + G.left[1] * (G.t0 + (G.ny * G.cell) / 2)];
-    const tops = await renderer.heightMap({ centre, dir: G.dir, nx: G.nx, ny: G.ny, cell: G.cell, top: mx[2] + 1 / mpu, bottom: G.floor - 1 / mpu });
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    await tick();
+    const vox = await windVoxels(G, app.windMeshes(), mpu, tick);
     if (token !== W.token) return;
-    if (!tops) { Object.assign(W.run, { status: 'The model could not be read for the wind: try a coarser resolution.', progress: null, done: true, error: true }); sync(); return; }
-    W.run.tops = tops;
-    const { solid, level } = windSolids(G, tops, mpu), { inlet, u10, uRef } = windInlet(G.nz, G.dx);
-    W.solver.setup({ nx: G.nx, ny: G.ny, nz: G.nz, solid, inlet });
-    W.run.mapTops = windMapTops(G, tops, mn, mx);
+    W.run.voxels = vox;
+    syncShell();
+    const { inlet, u10 } = windInlet(G.nz, G.dx);
+    W.solver.setup({ nx: G.nx, ny: G.ny, nz: G.nz, solid: vox.solid, inlet });
+    // The reference: the same wind over the empty grid (a slice of it a few cells wide, its sides
+    // joined round). The wind near the ground drifts as it crosses the grid and as the run goes on
+    // (the faster wind above mixes down), so each point is compared with the open wind at the same
+    // place along the grid and the same moment, which the drift cancels out of.
+    const RY = 4;
+    W.ref.setup({ nx: G.nx, ny: RY, nz: G.nz, solid: new Uint32Array(Math.ceil((G.nx * RY * G.nz) / 32)), inlet, periodicY: true });
+    const refLevel = new Float32Array(G.nx * RY).fill(WIND_PEDESTRIAN / G.dx);
+    W.run.mapTops = windMapTops(G, vox.stand, mn, mx);
     const mesh = windMapMesh(G, W.run.mapTops, 0.05 / mpu);
     renderer.setWindMap(mesh.pos, mesh.idx, null);
     // Steps: the wind crosses the grid once to settle (at the speed at 10 m), then once more while
@@ -165,9 +294,9 @@ export function createWindTool(app) {
     const cross = Math.ceil(G.nx / u10), warm = Math.min(Math.max(cross, 1500), 30000), total = warm + Math.min(Math.max(cross, 1500), 30000);
     let done = 0, batch = 4, lastShown = 0;
     const show = async (average) => {
-      const v = await W.solver.level(level, average);
+      const v = await W.solver.level(vox.level, average), ref = await W.ref.level(refLevel, average);
       if (token !== W.token) return;
-      for (let i = 0; i < v.length; i++) v[i] /= uRef;
+      for (let i = 0; i < v.length; i++) v[i] /= Math.max(ref[G.nx + (i % G.nx)], 1e-6);
       W.run.ratio = v;
       W.run.average = average;
       recolour();
@@ -175,6 +304,7 @@ export function createWindTool(app) {
     W.run.status = 'Calculating…';
     while (done < total) {
       const tb = performance.now(), n = Math.min(batch, total - done), average = done >= warm;
+      W.ref.run(n, { average, every: 5 });
       await W.solver.run(n, { average, every: 5 });
       if (token !== W.token) return;
       done += n;
@@ -205,8 +335,20 @@ export function createWindTool(app) {
     W.token++;
     W.run = null;
     W.solver?.destroy();
+    W.ref?.destroy();
     app.renderer?.setWindMap(null);
+    app.renderer?.setWindShell(null);
     sync();
+  }
+
+  // What the solver sees: the solid cells' outside, while asked for.
+  function syncShell() {
+    const r = W.run, renderer = app.renderer;
+    if (!renderer) return;
+    const want = W.solids && r?.voxels;
+    if (want && r.shell === null) r.shell = windVoxelShell(r.grid, r.voxels.solid) || false;
+    renderer.setWindShell(want && r.shell ? r.shell : null);
+    app.redraw();
   }
 
   // The values shown: the speed ratio, or m/s; hidden where there is no surface.
@@ -240,6 +382,8 @@ export function createWindTool(app) {
     if (!W.panel) return;
     const w = wind(), r = W.run, model = app.model;
     $('windOn').checked = W.on;
+    $('windSolids').checked = W.solids;
+    app.setHtml($('windSolidsNote'), W.solids && W.run?.shell === false ? 'Too many cells to show: try a coarser resolution.' : W.solids && !W.run?.voxels ? 'Shown once the wind has been run.' : '');
     $('windSource').value = W.source;
     $('windCustom').hidden = fromEpw();
     $('windSource').querySelector('[value="epw"]').disabled = !app.hasEpw();
@@ -268,11 +412,12 @@ export function createWindTool(app) {
   function help() {
     app.Dialog.open({ title: 'Wind (CFD-lite)', html: true, width: 460, body: `<p>Where the wind is sheltered and where it is exposed round what is shown, and roughly how strong it is, 1.5 m above the ground (and roofs). It is worked out on the graphics card by computational fluid dynamics (a lattice Boltzmann solver), kept light so that it takes seconds rather than hours: a guide to the pattern of the wind for early design, not a substitute for a wind study by a specialist.</p>
       <p><b>Wind</b>: from the weather file at the Date and Time widgets' date and time (its direction and speed, measured 10 m up in the open), or set by hand. The wind blowing in rises with height as it does over a suburb or town.</p>
-      <p><b>Speed ratio</b>: the wind's speed as a share of the wind at the same height (1.5 m) over the open ground upwind. Below 1 is sheltered; above 1, buildings speed it up, as round corners and through gaps. It does not depend on the wind's speed, so a change of speed needs no new run. <b>Wind speed</b> is the speed in m/s: the weather file's speed is taken as the wind blowing in at 10 m, and 1.5 m up in the open it is ${Math.round(WIND_OPEN * 100)}% of that.</p>
+      <p><b>Speed ratio</b>: the wind's speed as a share of what it would be at the same place 1.5 m up with nothing there (worked out alongside, over the same grid left empty). Below 1 is sheltered; above 1, buildings speed it up, as round corners and through gaps. It does not depend on the wind's speed, so a change of speed needs no new run. <b>Wind speed</b> is the speed in m/s: the weather file's speed is taken as the wind blowing in at 10 m, and 1.5 m up in the open it is ${Math.round(WIND_OPEN * 100)}% of that.</p>
       <p><b>Resolution</b>: the size of the cells the air is divided into, chosen to fit the model and the room round it in about that many cells; the status line says what it came to. Finer takes longer and needs more of the graphics card's memory.</p>
+      <p><b>Show what the wind sees</b>: the model as the solver has it, in cells. Every cell a surface passes through is solid, and so is the inside of every closed object, so a canopy is a slab a cell thick with the air free to pass under it. Thin walls come out a cell thick, and gaps narrower than about two cells close up: check that the gaps that matter are open, or try a finer resolution.</p>
       <p>What it leaves out, so read the colours as a pattern rather than exact figures:</p>
-      <ul><li>The model is taken as seen from above: everything under a roof is solid, so arcades, overhangs and the space under bridges are filled in. Trees are left out.</li>
-      <li>Cells are a metre or more across, which smooths the detail close to walls and the ground.</li>
+      <ul><li>Trees and other vegetation are left out: they let some wind through, which the solver does not model yet.</li>
+      <li>Cells are a metre or more across, which smooths the detail close to walls and the ground, and the ground and roofs let the wind slide over them, as a rough ground of this size roughly does.</li>
       <li>One wind direction at a time, averaged over a short run. Wind comfort criteria (such as Lawson's) need how often each speed is exceeded over a year, from many directions.</li>
       <li>The results do not feed the thermal comfort figures yet.</li></ul>
       <p>The results are not kept: they go when the model is closed. Run again after changing the wind direction or the model.</p>` });
@@ -282,6 +427,7 @@ export function createWindTool(app) {
     $('windClose').addEventListener('click', () => W.panel && toggle());
     $('windHelp').addEventListener('click', help);
     $('windOn').addEventListener('change', (e) => { W.on = e.target.checked; sync(); app.redraw(); });
+    $('windSolids').addEventListener('change', (e) => { W.solids = e.target.checked; syncShell(); sync(); });
     $('windSource').addEventListener('change', (e) => { W.source = e.target.value; recolour(); sync(); });
     $('windDir').addEventListener('input', (e) => { W.dir = +e.target.value; sync(); });
     $('windSpeed').addEventListener('input', (e) => { W.speed = +e.target.value; recolour(); sync(); });
@@ -301,5 +447,6 @@ export function createWindTool(app) {
     state: W, bind, toggle, sync, reset, recolour,
     // For each frame: whether the results are drawn.
     shown: () => !!(W.run?.ratio && W.on),
+    shellShown: () => !!(W.solids && W.run?.shell),
   };
 }
