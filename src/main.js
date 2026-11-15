@@ -25,6 +25,7 @@ import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascade
 import { DEMO_3DM } from './demo.js';
 import { Widgets } from './widgets.js';
 import { PERSON_HEIGHT, personGeometry } from './person.js';
+import { createWindTool } from './wind.js';
 import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint, surroundingPoints, surroundingsView } from './skyview.js';
 
 const $ = (id) => document.getElementById(id);
@@ -241,6 +242,7 @@ function frameState() {
   s.resultMaps = state.maps.on ? state.maps.list.flatMap((m, i) => (state.maps.off.has(m.key) ? [] : [i])) : [];
   s.resultMapZ = state.maps.z / model.metresPerUnit;
   s.exposureMap = expo.on && expo.shown;
+  s.windMap = !!windTool?.shown();
   checkExposure();
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
@@ -2121,6 +2123,7 @@ function resetObjectState() {
   closeLayerMenu();
   syncHiddenButton();
   resetExposure();
+  windTool?.reset();
 }
 
 let flagsHidden = '';
@@ -2770,6 +2773,7 @@ function weatherCells() {
 function setSun(changes) {
   Object.assign(state.sun, changes);
   syncDateWeather();
+  windTool?.sync();
   redraw();
 }
 
@@ -3363,6 +3367,7 @@ function setColourScale(metric, id) {
   state.maps.list.forEach((m, i) => { if (pickedResult(m).metric === metric) showMapResult(i); });
   syncMaps();
   if (metric === 'windSpeed') fillStreamlines();
+  windTool?.recolour();
   syncComfortPanel();
   redraw();
 }
@@ -3788,9 +3793,21 @@ function syncExposurePanel() {
   setHtml($('exposureLegend'), expo.shown && expo.on ? `${colourLegendHtml(scale, 'Time in sun', '%')}<div class="exposure-ends"><span>Always shaded</span><span>Always in sun</span></div>` : '');
 }
 
+// The Wind (CFD-lite) widget (wind.js), and what it needs from the viewer.
+var windTool = createWindTool({ // var: the hooks below may run before this line
+  $, get renderer() { return renderer; }, get model() { return model; }, visibleBounds, Dialog,
+  mpu: () => METRES_PER_UNIT[model.units] || 1, north: () => state.sun.north,
+  modelKey: () => modelKey('objects', 'visibility'),
+  hasEpw: () => !!site.epw,
+  weatherNow: () => { if (!site.epw) return null; const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy); return site.epw.at(month, day, state.sun.hour); },
+  whenText: () => `${dayName(state.sun.doy)} ${fmtHour(state.sun.hour)}`,
+  redraw, setHtml, colourLegendHtml, setColourScale, openAttachDialog,
+  syncToolsButton: () => syncToolsButton(), setToolOpen: (open) => toolsList?.setOpen('wind', open),
+});
+
 // The Tools button is pressed while any widget it opens is open.
 function syncToolsButton() {
-  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.mrtPanel || state.person.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || windTool?.state.panel || state.skyView.panel || state.mrtPanel || state.person.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
 }
 
 function showExposureHelp() {
@@ -3805,9 +3822,10 @@ function showExposureHelp() {
 }
 
 function bindExposurePanel() {
-  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); else if (id === 'mrt') toggleMrtPanel(); else if (id === 'person') togglePersonPanel(); } });
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); else if (id === 'mrt') toggleMrtPanel(); else if (id === 'person') togglePersonPanel(); else if (id === 'wind') windTool.toggle(); } });
   toolsList.setGroups([{ items: [{ id: 'person', label: 'Person', title: 'Place a person in the model: thermal comfort, the radiant temperature and sky view are worked out where they stand' },
     { id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' },
+    { id: 'wind', label: 'Wind (CFD-lite)', title: 'Where the wind is sheltered and exposed round the model, from a quick wind simulation' },
     { id: 'skyView', label: 'Sky view', title: 'How much of the sky the person can see, as a number and a fisheye picture' },
     { id: 'mrt', label: 'Radiant temperature', title: 'The mean radiant temperature where the person stands, and how sun, sky and ground make it up' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
@@ -6171,6 +6189,7 @@ function bindUi() {
   bindLightsPanel();
   bindComfortPanel();
   bindExposurePanel();
+  windTool.bind();
   bindSkyViewPanel();
   bindMrtPanel();
   bindPersonPanel();

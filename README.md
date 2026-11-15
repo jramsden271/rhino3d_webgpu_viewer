@@ -585,6 +585,46 @@ Each sun position draws the shown model's depth as seen from the sun into a 4096
 less, until 4 × 4 maps cannot cover the area at that), and a compute
 pass tests every point against it, blending the four texels round it.
 
+## Wind (CFD-lite)
+
+**Tools → Wind (CFD-lite)** shows where the wind is sheltered and where it is exposed round what is
+shown, and roughly how strong it is, 1.5 m above the ground and roofs. It is a quick wind simulation
+(computational fluid dynamics) on the graphics card: a guide to the pattern of the wind for early
+design, taking seconds rather than hours, not a substitute for a specialist's wind study. The results
+do not feed the thermal comfort figures yet.
+
+- **Wind**: from the weather file at the Date and Time widgets' date and time (its direction, and its
+  speed measured 10 m up in the open), or set by hand (always, without a weather file).
+- **Resolution**: Coarse (about half a million cells, the default), Medium (1.5 million) or Fine
+  (4 million). The cell size is chosen to fit the model and the room round it in about that many
+  cells; the status line says what it came to. On a recent graphics card, Coarse takes about 10 s for a
+  small site and Medium under a minute.
+- **Show**: the **speed ratio**, the wind's speed as a share of the wind at the same height over the
+  open ground upwind (below 1 sheltered, above 1 where buildings speed it up: round corners and
+  through gaps), or the **wind speed** in m/s, taking the weather file's speed as the wind blowing in
+  at 10 m. The speed ratio does not depend on the wind's speed, so a change of speed needs no new run.
+- **Run** works it out; the map fills in as it goes, settling, then averaging. A change to the wind's
+  direction, the resolution or the model (hidden objects and layers too) marks the results out of
+  date: run again. They are not kept: they go when the model closes.
+
+How it works (`src/lbm.js`, `src/wind.js`):
+
+- The air is a box of cubic cells lined up with the wind, round what is shown, with room 3 times the
+  tallest object's height upwind, 6 downwind, 2 to each side and 2 above (at least 20, 40, 20 and 30 m).
+- The model goes in as seen from straight above (a height map drawn with the pick pipeline), so
+  every cell under a top surface is solid: arcades, overhangs and the space under bridges are filled
+  in. Vegetation is left out, since it is porous and the solver does not model that yet.
+- A lattice Boltzmann solver (D3Q19, BGK collision with a Smagorinsky subgrid model for the eddies
+  smaller than a cell) runs in compute shaders, keeping each cell's 19 values as half floats (less
+  their value at rest, which keeps their precision): about 80 bytes of graphics memory a cell.
+- The wind blows in with a power-law profile (exponent 0.25, suburban to urban). The inlet, sides and
+  top hold it; the outlet lets the air out as it comes. Walls stop the air (no slip). The ground and
+  roofs let it slide (free slip), because at a metre or more a cell, holding the lowest cells still
+  slows them far more than real ground does: an empty grid then keeps about the speed it is given at
+  1.5 m, all the way across.
+- The wind crosses the grid once to settle, then once more while the speed in each cell is averaged.
+  The map shows the average, read 1.5 m above the top surface in each column.
+
 ## The person
 
 **Tools → Person** places a person in the model. Thermal comfort, Radiant temperature and Sky view
@@ -883,6 +923,7 @@ of your own, and the last three also need `vendor/`. Behaviour in the browser is
 | `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
 | `node tools/test-person.js` | Checks the person figures: facing outwards, size, standing on the ground |
+| `node tools/test-wind.js` | Checks the wind grid round a model, the inlet profile, the solid cells and the results map |
 | `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, the surroundings on level ground, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |
 | `node tools/test-extract.js <file.3dm>` | Runs the model extraction under Node and prints a summary |
@@ -901,6 +942,8 @@ src/renderer.js          WebGPU renderer (reverse-Z depth, 4x MSAA, GPU picking,
 src/sun.js               solar position, sun direction and colour
 src/mesh.js              meshes made for analysis: join, weld, split long edges, normals
 src/exposure.js          sun exposure: the times in a period, and the surface to test from a layer
+src/wind.js              Wind (CFD-lite): the grid round the model, solids from a height map, the widget and its map
+src/lbm.js               the lattice Boltzmann wind solver (WebGPU compute)
 src/person.js            the person drawn in the model, standing or sitting on a stool
 src/skyview.js           sky view: the hemicube layout, sky view factors, and the fisheye picture
 src/epw.js               EnergyPlus weather files: location and hourly weather by date and time

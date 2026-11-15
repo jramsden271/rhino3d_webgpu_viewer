@@ -1753,6 +1753,10 @@ export class Renderer {
       pass.setPipeline(s.xray ? P.mapX : P.map);
       this.drawMap(pass, this.exposureMap, 0);
     }
+    if (s.windMap && this.windMap) {
+      pass.setPipeline(s.xray ? P.mapX : P.map);
+      this.drawMap(pass, this.windMap, 0);
+    }
     if (this.resultLines && s.resultRanges?.length) {
       pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
       pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
@@ -2252,6 +2256,79 @@ export class Renderer {
     };
     this.skyQueue = (this.skyQueue || Promise.resolve()).then(run, run);
     return this.skyQueue;
+  }
+
+  // The wind results (wind.js) drawn while each frame's s.windMap is set: a grid of points (pos,
+  // model space) joined by triangles (idx), with a value at each point. pos null removes it; pos
+  // undefined gives the same grid new values.
+  setWindMap(pos, idx, values, ramp) {
+    if (pos !== undefined) {
+      const old = this.windMap;
+      if (old) { for (const k of ['pos', 'idx', 'val', 'uni']) old[k].destroy(); old.ramp?.destroy(); }
+      this.windMap = pos ? this.makeMap(pos, idx, -2) : null;
+    }
+    if (this.windMap && values) this.fillMap(this.windMap, values, ramp);
+    this.dirty = true;
+  }
+
+  // The top of what is shown (leaving out vegetation), seen straight down over a rectangle: nx × ny
+  // cells of size cell (model units) centred on centre ([x, y]), its x along dir (a unit [x, y]) and
+  // its y to the left of that, looking down from top to bottom. Each cell takes the highest of four
+  // samples in it. Resolves to Float32Array(nx * ny) of heights (x fastest), NaN where there is
+  // nothing; or null if the GPU rejected the work or the rectangle is too big.
+  async heightMap({ centre, dir, nx, ny, cell, top, bottom }) {
+    if (!this.batches.length) return new Float32Array(nx * ny).fill(NaN);
+    const dev = this.device, U = GPUBufferUsage, RA = GPUTextureUsage.RENDER_ATTACHMENT;
+    const W = 2 * nx, H = 2 * ny, Wp = Math.ceil(W / 16) * 16;
+    if (Wp > dev.limits.maxTextureDimension2D || H > dev.limits.maxTextureDimension2D) return null;
+    const tex = dev.createTexture({ size: [Wp, H], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+    const depth = dev.createTexture({ size: [Wp, H], format: DEPTH, usage: RA });
+    const read = dev.createBuffer({ size: Wp * H * 16, usage: U.MAP_READ | U.COPY_DST });
+    const uni = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
+    try {
+      const left = [-dir[1], dir[0], 0];
+      const vp = M4.mul(M4.ortho((ny * cell) / 2, nx / ny, 0, top - bottom), M4.lookAt([centre[0], centre[1], top], [centre[0], centre[1], top - 1], left));
+      dev.queue.writeBuffer(uni, 0, Float32Array.from(vp));
+      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION);
+      dev.pushErrorScope('validation');
+      const enc = dev.createCommandEncoder();
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: tex.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+        depthStencilAttachment: { view: depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+      });
+      pass.setPipeline(this.pipes.pick);
+      pass.setViewport(0, 0, W, H, 0, 1);
+      pass.setScissorRect(0, 0, W, H);
+      pass.setBindGroup(0, this.probeBindGroup(uni));
+      this.cull(vp, true);
+      for (const b of solid) {
+        if (!this.seen(b)) continue;
+        pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+        pass.setIndexBuffer(b.gpu.idx, 'uint32');
+        this.drawCells(pass, b);
+      }
+      pass.end();
+      enc.copyTextureToBuffer({ texture: tex }, { buffer: read, bytesPerRow: Wp * 16 }, [Wp, H]);
+      dev.queue.submit([enc.finish()]);
+      const failed = await dev.popErrorScope();
+      await read.mapAsync(GPUMapMode.READ);
+      const v = new Float32Array(read.getMappedRange()), out = new Float32Array(nx * ny).fill(NaN);
+      if (!failed) {
+        // Texture row 0 is the far left of the rectangle (its largest y).
+        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+          let h = NaN;
+          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+            const t = ((H - 1 - (2 * j + dy)) * Wp + 2 * i + dx) * 4;
+            if (v[t + 3] > 0 && !(v[t + 2] <= h)) h = v[t + 2];
+          }
+          out[i + nx * j] = h;
+        }
+      }
+      read.unmap();
+      return failed ? null : out;
+    } finally {
+      tex.destroy(); depth.destroy(); read.destroy(); uni.destroy();
+    }
   }
 
   // The screen-sized textures are not bound (the pick pipeline reads neither): a resize destroys

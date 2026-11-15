@@ -35,6 +35,18 @@ const LAWSON_BANDS = [
   { below: Infinity, color: '#FD2E03', label: 'Uncomfortable' },
 ];
 
+// The wind's speed as a share of the wind at the same height over open ground upwind (wind.js):
+// calm blues, an off-white about where it is as strong as in the open, reds where buildings speed it up.
+const WIND_RATIO_STOPS = [[0, '#1B2F7A'], [0.3, '#2F6DB5'], [0.6, '#6FB7D6'], [0.95, '#F4F1E8'], [1.2, '#F6B24A'], [1.45, '#E0592A'], [1.7, '#A31D24']];
+const WIND_RATIO_BANDS = [
+  { below: 0.25, color: '#1B2F7A', label: 'Very sheltered' },
+  { below: 0.5, color: '#2F6DB5', label: 'Sheltered' },
+  { below: 0.8, color: '#6FB7D6', label: 'Partly sheltered' },
+  { below: 1.1, color: '#F4F1E8', label: 'As in the open' },
+  { below: 1.3, color: '#F6B24A', label: 'Exposed' },
+  { below: Infinity, color: '#E0592A', label: 'Speeded up' },
+];
+
 // matplotlib's magma (3.11.1), at 17 evenly spaced points from 0 to 100.
 const MAGMA = ['#000004', '#0A0822', '#1D1147', '#36106B', '#51127C', '#6A1C81', '#832681', '#9C2E7F', '#B73779', '#D0416F',
   '#E75263', '#F56B5C', '#FC8961', '#FEA772', '#FEC488', '#FDE2A3', '#FCFDBF'];
@@ -46,6 +58,7 @@ export const ColourScales = {
     relativeHumidity: { name: 'Relative humidity', unit: '%' },
     temperature: { name: 'Temperature', unit: '°C' },
     sunExposure: { name: 'Time in sun', unit: '%' },
+    windRatio: { name: 'Speed ratio', unit: '× open ground' },
   },
 
   scales: [
@@ -57,6 +70,8 @@ export const ColourScales = {
     { id: 'lawsonSmooth', metric: 'windSpeed', name: 'Lawson, continuous', stops: LAWSON_STOPS, labels: LAWSON_BANDS },
     { id: 'humidity', metric: 'relativeHumidity', name: 'Off-white to blue', stops: [[0, OFF_WHITE], [100, '#3E8FC9']] },
     { id: 'temperature', metric: 'temperature', name: 'Blue, grey, red', stops: [[-20, '#2A63C8'], [10, '#D4D4D4'], [40, '#D0211C']] },
+    { id: 'windRatio', metric: 'windRatio', name: 'Sheltered to exposed', stops: WIND_RATIO_STOPS, labels: WIND_RATIO_BANDS },
+    { id: 'windRatioBands', metric: 'windRatio', name: 'Sheltered to exposed, banded', start: 0, bands: WIND_RATIO_BANDS },
     { id: 'magma', metric: 'sunExposure', name: 'Magma', stops: MAGMA.map((c, i) => [(i * 100) / 16, c]), ticks: [0, 25, 50, 75, 100] },
   ],
 

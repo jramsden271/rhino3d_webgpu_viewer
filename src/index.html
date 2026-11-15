@@ -274,6 +274,33 @@
       <div id="exposureLegend"></div>
     </div>
   </section>
+  <section id="windPanel" class="chrome panel sun-panel" hidden aria-label="Wind (CFD-lite)" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></svg>Wind (CFD-lite)</span>
+      <span class="panel-actions"><label class="switch" id="windSwitch" title="Show the results on the model"><input type="checkbox" id="windOn"><span></span></label><button class="x q" id="windHelp" aria-label="About the wind" title="About the wind">?</button><button class="x" id="windClose" aria-label="Close wind panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <label class="field-label exposure-inline" data-full><span>Wind</span><select class="exposure-span" id="windSource" title="Where the wind's direction and speed come from"><option value="epw">Weather file, this hour</option><option value="custom">Set by hand</option></select></label>
+      <div id="windCustom" data-full hidden>
+        <div class="field">
+          <div class="field-label"><span>From</span><output id="windDirOut"></output></div>
+          <input type="range" id="windDir" min="0" max="355" step="5" title="The compass direction the wind blows from">
+        </div>
+        <div class="field">
+          <div class="field-label"><span>Speed at 10 m</span><output id="windSpeedOut"></output></div>
+          <input type="range" id="windSpeed" min="0.5" max="20" step="0.5" title="The wind's speed 10 m up in the open, as a weather file gives it">
+        </div>
+      </div>
+      <div id="windRead" class="sun-read" data-full></div>
+      <label class="field-label exposure-inline" data-full><span>Resolution</span><select class="exposure-span" id="windRes" title="How finely the air is divided: finer is slower and needs more graphics memory"></select></label>
+      <label class="field-label exposure-inline" data-full><span>Show</span><select class="exposure-span" id="windShow" title="What the colours show"><option value="ratio">Speed ratio</option><option value="speed">Wind speed (m/s)</option></select></label>
+      <div class="field">
+        <div class="exposure-run"><button class="btn small" id="windRun">Run</button><span class="exposure-bar" id="windBarBox" hidden><span id="windBar"></span></span><button class="link" id="windStop" hidden>Stop</button></div>
+        <div id="windStatus" class="sun-read" data-full></div>
+      </div>
+      <div id="windLegend"></div>
+    </div>
+  </section>
   <section id="lightsPanel" class="chrome panel sun-panel" hidden aria-label="Lights" data-min>
     <div class="panel-head">
       <span>Lights</span>
