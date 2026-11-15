@@ -4486,8 +4486,9 @@ function leaveWalk(then = null) {
     f.classList.remove('dark');
   }, 250);
 }
-// Fades to black, starts walking (at start, or where the camera is) and fades back in.
-function fadeIntoWalk(start = null) {
+// Fades to black, starts walking (at start, or where the camera is) and fades back in. yaw: the
+// camera's yaw to start with (see Camera.dir), after the camera to go back to has been kept.
+function fadeIntoWalk(start = null, yaw = null) {
   const f = $('walkFade');
   placing.checking = true;
   f.classList.add('dark');
@@ -4496,6 +4497,7 @@ function fadeIntoWalk(start = null) {
     placing.checking = false;
     $('walkHint').hidden = false;
     walkFrom = camera.snapshot();
+    if (yaw != null) camera.yaw = yaw;
     walker.enter(start).then((ok) => { if (ok) $('walkPanel').hidden = false; f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); syncPersonPanel(); redraw(); });
     syncToolbar();
   }, 250);
@@ -5032,7 +5034,9 @@ function bindPersonPanel() {
   $('personWalk').addEventListener('click', () => {
     const at = state.person.at;
     if (!at || moving()) return;
-    fadeIntoWalk(at);
+    // Looking the way the person faces (the camera's yaw points from where it looks back to the eye).
+    const f = sunVector(personBearing(), 0, state.sun.north);
+    fadeIntoWalk(at, Math.atan2(-f[1], -f[0]));
   });
   $('personFacing').innerHTML = PERSON_FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
   $('personFacing').addEventListener('change', (e) => { state.person.facing = e.target.value; saveViewState(); syncComfortPanel(); redraw(); });

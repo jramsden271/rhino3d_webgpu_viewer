@@ -1452,7 +1452,9 @@ export class Renderer {
     A.shadows = shadows;
     if (!m) { A.pose = null; return; }
     A.pose = m;
-    A.version++;
+    // Unique across actors and rebuilds, so a new figure in the same place is never taken for the
+    // old one by the cached ambient occlusion and shadows (keyed on these).
+    A.version = this.actorStamp = (this.actorStamp || 0) + 1;
     const p = A.geo.pos, q = A.geo.nrm, po = A.posOut, no = A.nrmOut, s = Math.hypot(m[0], m[1], m[2]) || 1;
     for (let i = 0, n = p.length / 3; i < n; i++) {
       const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2];
