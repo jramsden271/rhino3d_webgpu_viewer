@@ -44,7 +44,7 @@
     <button class="btn toggle" data-act="date" title="Date: the date for the sun and the weather (S)"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span id="dateLabel">Date</span></button>
     <button class="btn toggle" data-act="time" title="Time: the time of day for the sun and the weather"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="clock-h" d="M12 12V7.6"/><path class="clock-m" d="M12 12V5.6"/></svg><span id="timeLabel">Time</span></button>
     <span class="btn-combo" id="weatherCombo"><button class="combo-icon" id="weatherQuick" aria-pressed="true" title="Weather on/off: everything ticked under Weather in the render mode menu"><svg viewBox="0 0 24 24" aria-hidden="true" class="wx-icon"><g class="sun"><circle cx="15" cy="9" r="3.6"/><path d="M15 2.6v1.2M20.4 4.6l-.85.85M21.4 9h-1.2M9.6 4.6l.85.85"/></g><path class="cloud" d="M6.8 20h8.7a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4A2.9 2.9 0 0 0 6.8 20Z"/></svg></button><button class="btn toggle" data-act="weather" title="Weather: the sun, sky, clouds and weather at the Date widget's date and time">Weather</button></span>
-    <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI at the camera (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
+    <button class="btn toggle" data-act="comfort" title="Thermal comfort panel: UTCI where the person stands (U)"><svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>UTCI</button>
     <span class="btn-combo" id="lightsCombo"><button class="combo-icon" id="lightsQuick" aria-pressed="true" title="Lights on/off"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg></button><button class="btn toggle" data-act="lights" title="Lights panel (G)">Lights</button></span>
     <button class="btn toggle" data-toggle="layers" title="Layers (L)"><svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 12.5 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>Layers</button>
     <button class="btn toggle" data-toggle="blocks" title="Blocks (K)" hidden><svg viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>Blocks</button>
@@ -182,7 +182,7 @@
   <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort" data-min>
     <div class="panel-head">
       <span>Thermal comfort</span>
-      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
+      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
     </div>
     <div class="sun-body">
       <div id="comfortRead" class="utci-read"></div>
@@ -190,21 +190,36 @@
       <div class="field" data-full>
         <div class="field-label"><button class="field-toggle" id="comfortToggle" aria-controls="comfortDetails"><span class="caret collapsed"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>Details</button><output id="comfortWhen" title="Date and time from the Date and Time widgets"></output></div>
         <div id="comfortDetails" class="field-details" hidden>
-          <div class="field">
-            <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
-            <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
-          </div>
-          <label class="field-row" title="How the person stands to the sun: it changes how much of the body the sun falls on">Posture <select id="comfortPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
-          <label class="check" title="Count the sky's simulated cloud over the camera: full sun in a gap, little under a cloud. Off: the weather file's average sun for the hour. See ? for the difference."><input type="checkbox" id="comfortClouds"> Include simulated clouds</label>
+          <label class="check" title="Count the sky's simulated cloud over the person: full sun in a gap, little under a cloud. Off: the weather file's average sun for the hour. See ? for the difference."><input type="checkbox" id="comfortClouds"> Include simulated clouds</label>
           <div id="comfortInputs" class="sun-weather"></div>
         </div>
+      </div>
+    </div>
+  </section>
+  <section id="personPanel" class="chrome panel sun-panel" hidden aria-label="Person" data-min>
+    <div class="panel-head">
+      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg>Person</span>
+      <span class="panel-actions"><button class="x q" id="personHelp" aria-label="About the person" title="About the person">?</button><button class="x" id="personClose" aria-label="Close person panel" title="Close">×</button></span>
+    </div>
+    <div class="sun-body">
+      <div id="personRead" class="sun-read"></div>
+      <div class="person-buttons" data-full>
+        <button class="btn small" id="personPlace" aria-pressed="false" title="Click this, then where the person stands in the model (Esc to cancel)">Place</button>
+        <button class="btn small" id="personWalk" title="Start walking where the person stands">Walk from here</button>
+        <button class="btn small" id="personRemove" title="Take the person away">Remove</button>
+      </div>
+      <label class="field-row" data-full title="Standing or sitting: how much of the body the sun falls on, and the height everything is measured at">Posture <select id="comfortPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
+      <label class="field-row" data-full title="Which way the person faces: it changes how much of the body the direct sun falls on">Facing <select id="personFacing"></select></label>
+      <div class="field" data-full>
+        <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
+        <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
       </div>
     </div>
   </section>
   <section id="mrtPanel" class="chrome panel sun-panel" hidden aria-label="Radiant temperature" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h14M4 18h6"/><path d="M4 3v18"/></svg>Radiant temperature</span>
-      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="mrtRead" class="sky-read"></div>
@@ -214,7 +229,7 @@
   <section id="skyViewPanel" class="chrome panel sun-panel" hidden aria-label="Sky view" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 15H7v-5h4v6h3v-4h3.5v3h3"/></svg>Sky view</span>
-      <span class="panel-actions"><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="btn icon person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></button><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="skyViewRead" class="sky-read"></div>
@@ -336,6 +351,7 @@
     </div>
   </div>
 
+  <div id="personPin" class="person-pin" hidden title="The person: thermal comfort, the radiant temperature and sky view are worked out here"><span id="personPinArrow" class="person-arrow" hidden></span><span id="personPinIcon" class="person-icon"></span></div>
   <div id="inspectDot" class="inspect-dot" aria-hidden="true"></div>
   <div id="inspect" class="chrome inspect" hidden role="dialog" aria-labelledby="insTitle">
     <div class="inspect-head"><span class="swatch" id="insSwatch"></span><b id="insTitle"></b><span class="panel-actions"><button class="x" id="insClose" aria-label="Close" title="Close">×</button></span></div>
@@ -404,7 +420,7 @@
         <dt>Camera</dt><dd>The camera button on the toolbar lists the views, and any views saved by name in the file. Each remembers where you left it: pick the current one again to reset it</dd>
         <dt>Walk</dt><dd><b>Walk</b> in the camera list (<kbd>4</kbd>), then click where to start: you stand there at eye height · <b>?</b> in the Walk panel lists the controls · pick another camera or press <kbd>Esc</kbd> to stop</dd>
         <dt>Tools</dt><dd><b>Sun exposure</b> shows how often a layer’s surfaces see the sun over a period · <b>?</b> in its panel explains how</dd>
-        <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort at the camera · <b>?</b> in its panel explains how</dd>
+        <dt>Comfort</dt><dd><b>UTCI</b> on the toolbar estimates the thermal comfort where the person stands · <b>?</b> in its panel explains how</dd>
         <dt>Inspect</dt><dd>Click an object to select it and see its details · Shift-click to add or remove · <kbd>H</kbd> hide selected · <kbd>Esc</kbd> to clear</dd>
         <dt>File</dt><dd>Click the file name (top left) for properties, the north angle, saving a copy and reverting changes</dd>
         <dt>Location</dt><dd>The pin (top left) sets the site location from its list: a weather file, the Rhino file, a city or a custom location · the sun-and-cloud button next to it picks the weather data source, shown in the <b>Weather</b> panel · <b>?</b> in Set location explains the choices</dd>

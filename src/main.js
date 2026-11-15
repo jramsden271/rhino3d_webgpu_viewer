@@ -53,6 +53,9 @@ const state = {
   torch: false,  // the walker's torch (T in pedestrian mode)
   lightsPanel: false,
   mrtPanel: false, // the Radiant temperature widget
+  // The person placed in the model (the Person widget): where they stand (model space, on the ground; null
+  // for none) and which way they face ('side', or a compass bearing in degrees as a string).
+  person: { at: null, facing: 'side', panel: false, placing: false },
   datePanel: false, timePanel: false,
   // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
   dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
@@ -104,7 +107,13 @@ let shiftDown = false;
 const walker = new Walker({
   camera, get renderer() { return renderer; }, bounds: () => visibleBounds(), shift: () => shiftDown,
   mpu: () => METRES_PER_UNIT[model.units] || 1,
-  onExit: () => { if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (driver.parked) driver.exit(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); },
+  onExit: () => {
+    // Where walking stopped, to offer to leave the person there (with a widget open that uses them).
+    const spot = walkFrom && walker.pos && Number.isFinite(walker.foot) ? [walker.pos[0], walker.pos[1], walker.foot] : null;
+    if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (driver.parked) driver.exit(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw();
+    if (spot && model && (comfortShown() || state.skyView.panel || state.person.panel)) notice('Stopped walking.', false, 8000, { label: 'Leave the person here', run: () => setPerson(spot) });
+    syncPersonPanel(); syncComfortPanel(); syncSkyViewPanel();
+  },
   notice: (text, ms = 0) => notice(text, false, ms),
   fade: () => { const f = $('walkFade'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); },
 });
@@ -142,6 +151,8 @@ if (prefs.drive) {
 // Walking or driving: the frame round the window, the thumb stick, drag to look.
 const moving = () => walker.active || driver.active;
 const choosingStart = () => walker.placing || driver.placing;
+// Whether a click in the model picks a spot (the marker follows the cursor).
+const pickingSpot = () => choosingStart() || expo.picking || state.person.placing;
 if (prefs.walk) {
   walker.settings.collide = prefs.walk.collide !== false;
   walker.settings.fly = prefs.walk.fly === true;
@@ -404,7 +415,7 @@ function loop() {
     renderer.draw(frameState());
     if (thumb.take) { thumb.take = false; captureThumb(); } // the frame can only be read before this task ends
     if (state.devMode) diagFrame(t);
-    positionInspector(); syncCompass();
+    positionInspector(); syncCompass(); positionPersonPin();
     if (comfortShown()) checkSunlight();
     if (comfortShown() || state.skyView.panel) checkSkyView();
     if (comfortShown()) checkSurroundings();
@@ -618,6 +629,7 @@ async function openScene(sources, opts = {}) {
     applyFileLocation(m.location);
     if (model.savedNorth != null) setSun({ north: model.savedNorth });
     restoreSun(savedView);
+    restorePerson(savedView);
     if (back.length) notice(`Restored with this model: ${back.join(' and ')}.`, false, 4000);
     viewNow = 'perspective'; viewCams = {};
     fillCameraMenu();
@@ -1519,7 +1531,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view } });
+    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view }, person: state.person.at ? { at: state.person.at, facing: state.person.facing } : null });
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1554,6 +1566,14 @@ function restoreCameras(saved) {
   else if (viewCams.perspective) camera.restore(viewCams.perspective);
   syncToolbar();
   redraw();
+}
+
+// The person as they were left with this model, or none.
+function restorePerson(saved) {
+  const p = saved.person, ok = p && Array.isArray(p.at) && p.at.length === 3 && p.at.every(Number.isFinite);
+  Object.assign(state.person, { at: ok ? p.at : null, facing: ok && PERSON_FACINGS.some(([v]) => v === p.facing) ? p.facing : 'side', placing: false });
+  if (ok) model.restored.push('the person');
+  syncPersonPanel();
 }
 
 // The sun as it was left with this model. Without a location now (a weather file or custom location
@@ -3694,7 +3714,7 @@ function setExposurePicking(on) {
   canvas.classList.toggle('picking', expo.picking);
   $('exposurePick').setAttribute('aria-pressed', String(expo.picking));
   if (expo.picking && hoverAt) showWalkMarker(hoverAt);
-  if (!expo.picking && !choosingStart() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
+  if (!pickingSpot() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
 }
 
 // The picker's click on the model: the layer of the object under it.
@@ -3768,7 +3788,7 @@ function syncExposurePanel() {
 
 // The Tools button is pressed while any widget it opens is open.
 function syncToolsButton() {
-  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.mrtPanel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
+  $('btnTools').setAttribute('aria-pressed', String(!!(expo.panel || state.skyView.panel || state.mrtPanel || state.person.panel || state.weatherPanel || state.comfort.panel || state.lightsPanel)));
 }
 
 function showExposureHelp() {
@@ -3783,10 +3803,11 @@ function showExposureHelp() {
 }
 
 function bindExposurePanel() {
-  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); else if (id === 'mrt') toggleMrtPanel(); } });
-  toolsList.setGroups([{ items: [{ id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' },
-    { id: 'skyView', label: 'Sky view', title: 'How much of the sky can be seen from the camera, as a number and a fisheye picture' },
-    { id: 'mrt', label: 'Radiant temperature', title: 'The mean radiant temperature at the camera, and how sun, sky and ground make it up' }] }]);
+  toolsList = new ChoiceList({ label: 'Tools', onPick: (id) => { if (id === 'exposure') toggleExposurePanel(); else if (id === 'skyView') toggleSkyViewPanel(); else if (id === 'mrt') toggleMrtPanel(); else if (id === 'person') togglePersonPanel(); } });
+  toolsList.setGroups([{ items: [{ id: 'person', label: 'Person', title: 'Place a person in the model: thermal comfort, the radiant temperature and sky view are worked out where they stand' },
+    { id: 'exposure', label: 'Sun exposure', title: 'How often surfaces see the sun over a period' },
+    { id: 'skyView', label: 'Sky view', title: 'How much of the sky the person can see, as a number and a fisheye picture' },
+    { id: 'mrt', label: 'Radiant temperature', title: 'The mean radiant temperature where the person stands, and how sun, sky and ground make it up' }] }]);
   toolsMenu = new ToolbarMenu($('btnTools'), { label: 'Tools' });
   // Weather, thermal comfort and lights: the toolbar's controls for them, their on/off icons
   // included, live in this menu, above the analysis tools.
@@ -3869,7 +3890,7 @@ function bindPointer() {
   canvas.addEventListener('pointermove', (e) => {
     if (stick && e.pointerId === stick.id) { moveStick(e); return; }
     hoverAt = { clientX: e.clientX, clientY: e.clientY };
-    if ((choosingStart() || expo.picking) && !drag) showWalkMarker(hoverAt);
+    if (pickingSpot() && !drag) showWalkMarker(hoverAt);
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!drag) return;
@@ -3908,6 +3929,7 @@ function bindPointer() {
     if (pointers.size === 0 && drag && !drag.moved && drag.mode !== 'pinch' && (drag.button === 0 || e.pointerType === 'touch') && e.type === 'pointerup') {
       if (choosingStart()) startWalkAt(e);
       else if (expo.picking) pickExposureLayer(e);
+      else if (state.person.placing) placePersonAt(e);
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
     if (pointers.size === 0) { drag = null; driver.dragging = false; canvas.classList.remove('dragging'); }
@@ -3919,7 +3941,7 @@ function bindPointer() {
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
-  canvas.addEventListener('pointerleave', () => { if ((choosingStart() || expo.picking) && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
+  canvas.addEventListener('pointerleave', () => { if (pickingSpot() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); } });
 
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -4339,6 +4361,7 @@ function onKey(e) {
     if (k === 'escape') { e.preventDefault(); leaveWalk(); return; }
   }
   if (walker.placing && k === 'escape') { e.preventDefault(); walker.exit(); return; }
+  if (state.person.placing && k === 'escape') { e.preventDefault(); setPersonPlacing(false); return; }
   if (driver.placing && k === 'escape') { e.preventDefault(); driver.exit(); return; }
   const actions = {
     f: zoomExtents,
@@ -4466,7 +4489,7 @@ function fadeIntoWalk(start = null) {
     placing.checking = false;
     $('walkHint').hidden = false;
     walkFrom = camera.snapshot();
-    walker.enter(start).then((ok) => { if (ok) $('walkPanel').hidden = false; f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw(); });
+    walker.enter(start).then((ok) => { if (ok) $('walkPanel').hidden = false; f.classList.remove('dark'); syncToolbar(); syncWalkPanel(); syncLightsPanel(); syncPersonPanel(); redraw(); });
     syncToolbar();
   }, 250);
 }
@@ -4504,7 +4527,7 @@ function showWalkMarker(at) {
   if (placing.busy) { placing.next = at; return; }
   placing.busy = true;
   pickAt(at).then((h) => {
-    if (choosingStart() || expo.picking) {
+    if (pickingSpot()) {
       // At least about 12 pixels across, so it shows from far off too. The car's is its length across.
       const px = h && (2 * V3.len(V3.sub(h.p, camera.eye)) * Math.tan(camera.fov / 2)) / canvas.clientHeight;
       state.walkMarker = h ? { p: h.p, r: Math.max((driver.placing ? DRIVE_MARKER : WALK_MARKER) / (METRES_PER_UNIT[model.units] || 1), 6 * px) } : null;
@@ -4514,7 +4537,7 @@ function showWalkMarker(at) {
     placing.busy = false;
     const next = placing.next;
     placing.next = null;
-    if (next && (choosingStart() || expo.picking)) showWalkMarker(next);
+    if (next && pickingSpot()) showWalkMarker(next);
   });
 }
 // A click while choosing: start walking (or driving) there.
@@ -4562,6 +4585,7 @@ function fadeIntoDrive(start, heading) {
     placing.checking = false;
     walkFrom = camera.snapshot();
     driver.enter(start, heading).then((ok) => {
+      syncPersonPanel();
       if (ok) { $('drivePanel').hidden = false; $('driveHint').hidden = false; }
       f.classList.remove('dark'); syncToolbar(); syncDrivePanel(); redraw();
     });
@@ -4703,9 +4727,10 @@ function checkSunlight() {
     return;
   }
   sunlightAt = now;
-  const pos = model && activeLocation() ? sunPosition() : null;
+  const pos = model && activeLocation() ? sunPosition() : null, a = analysisPoint();
   if (!pos || pos.altitude <= 0) { setSunlight(pos && { night: true }); return; }
-  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = camera.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  if (!a) { setSunlight(null); return; }
+  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = a.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
   const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
   // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
   const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
@@ -4733,6 +4758,7 @@ const WEAK_SUN = 100;
 function sunState(r) {
   const s = sunlight, pos = activeLocation() ? sunPosition() : null;
   if (!pos) return ['', 'No location, so no sun · <button class="link" data-location>Set location…</button>'];
+  if (model && !analysisPoint()) return ['', 'No person placed · <button class="link" data-place>Place a person</button>'];
   if (pos.altitude <= 0 || s?.night) return ['shade', '<b>Night</b> · the sun is below the horizon'];
   if (!s) return ['', 'Checking for sunlight…'];
   if (!s.lit) return ['shade', `<b>In shade</b> · ${shadeText(s)}`];
@@ -4743,8 +4769,181 @@ function sunState(r) {
   return ['lit', `<b>In sunlight</b> · ${w}${r.sim?.shade != null ? ' between simulated clouds' : ''}`];
 }
 
+// The person ------------------------------------------------------------------------------------
+// Where the analysis that depends on a place is done (Thermal comfort, Radiant temperature, Sky
+// view): a person placed in the model, standing or sitting and facing a chosen way, or, while
+// walking or driving, you. Without either, those widgets ask for a person to be placed. The person is
+// kept with the model's view (saveViewState); posture and wind factor are preferences.
+
+const PERSON_CENTRE = { standing: 1.1, sitting: 0.6 }; // m above the ground: the middle of the body, where it is measured
+const PERSON_STEP = 0.3; // m: a spot clicked on a wall puts the person this far out from it, on the ground below
+const COMPASS8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const PERSON_FACINGS = [['side', 'Side-on to the sun'], ...COMPASS8.map((c, i) => [String(i * 45), `Facing ${c}`])];
+const personIcon = (sitting) => (sitting
+  ? '<svg viewBox="0 0 24 24"><circle cx="9.5" cy="4.5" r="2"/><path d="M9.5 8v6h5.5l1.5 6.5M9.5 10.5H14M6 20.5h3"/></svg>'
+  : '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg>');
+
+// The point the analysis is done at: { eye (model space), who: 'you' | 'person' }, or null.
+function analysisPoint() {
+  if (!model) return null;
+  if (walker.active || driver.active) return { eye: [...camera.eye], who: 'you' };
+  const at = state.person.at;
+  if (!at) return null;
+  const u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  return { eye: [at[0], at[1], at[2] + PERSON_CENTRE[state.comfort.posture] * u], who: 'person' };
+}
+
+// The sun's angle from the person's front (SHARP, degrees, 0-180) for SolarCal: side-on and turned
+// away from the glare (135, SolarCal's own) unless the person faces a compass direction.
+function personSharp(pos) {
+  const f = state.person.facing;
+  if (f === 'side' || !pos || walker.active || driver.active) return 135;
+  const d = Math.abs((((pos.azimuth - Number(f)) % 360) + 540) % 360 - 180);
+  return d;
+}
+
+function setPerson(at) {
+  state.person.at = at;
+  saveViewState();
+  syncPersonPanel();
+  syncComfortPanel();
+  syncSkyViewPanel();
+  checkSunlight();
+  checkSkyView();
+  redraw();
+}
+
+// Placing: the cursor shows the spot under it (as when choosing where to walk); a click puts the
+// person there. On a wall, the person stands at its foot, on the side it was clicked from.
+function setPersonPlacing(on) {
+  const P = state.person;
+  P.placing = on && !!model && !moving();
+  canvas.classList.toggle('placing', P.placing || choosingStart());
+  $('walkPlaceHint').innerHTML = 'Click where the person stands · drag to move the view · <kbd>Esc</kbd> to cancel';
+  $('walkPlaceHint').hidden = !P.placing && !choosingStart();
+  for (const b of document.querySelectorAll('.person-drop, #personPlace')) b.setAttribute('aria-pressed', String(P.placing));
+  if (P.placing) {
+    if (!P.panel) togglePersonPanel();
+    if (hoverAt) showWalkMarker(hoverAt);
+    canvas.focus();
+  } else if (!pickingSpot() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
+}
+
+function placePersonAt(e) {
+  pickAt(e).then(async (h) => {
+    if (!h || !state.person.placing) return;
+    setPersonPlacing(false);
+    const mpu = METRES_PER_UNIT[model.units] || 1, u = 1 / mpu;
+    const back = camera.ortho ? [0, 0, 0] : V3.norm([camera.eye[0] - h.p[0], camera.eye[1] - h.p[1], 0]);
+    const p = V3.add(h.p, V3.scale(back, PERSON_STEP * u)), [mn] = visibleBounds();
+    const [g] = await renderer.groundBelow([{ x: p[0], y: p[1], top: h.p[2] + 0.5 * u }], mn[2] - u, 0.1 * u, () => false);
+    setPerson([p[0], p[1], g ?? h.p[2]]);
+  });
+}
+
+// The person drawn over the view: a pin at their feet, with an arrow the way they face. Hidden while
+// walking or driving (you are the person then), and behind the camera.
+function positionPersonPin() {
+  const pin = $('personPin'), at = model && state.person.at;
+  if (!at || moving()) { pin.hidden = true; return; }
+  const m = camera.viewProj();
+  const project = (p) => {
+    const cx = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], cy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], cw = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (cw <= 0) return null;
+    const r = canvas.getBoundingClientRect();
+    return [r.left + ((cx / cw) * 0.5 + 0.5) * r.width, r.top + (0.5 - (cy / cw) * 0.5) * r.height];
+  };
+  const foot = project(at);
+  pin.hidden = !foot;
+  if (!foot) return;
+  pin.style.transform = `translate(${foot[0]}px, ${foot[1]}px)`;
+  const sitting = state.comfort.posture === 'sitting', f = state.person.facing;
+  if (pin.dataset.look !== `${sitting}`) { pin.dataset.look = `${sitting}`; $('personPinIcon').innerHTML = personIcon(sitting); }
+  const arrow = $('personPinArrow');
+  arrow.hidden = f === 'side';
+  if (f !== 'side') {
+    const u = 1 / (METRES_PER_UNIT[model.units] || 1), d = sunVector(Number(f), 0, state.sun.north);
+    const tip = project(V3.add(at, V3.scale(d, u)));
+    if (tip) arrow.style.transform = `rotate(${Math.atan2(tip[1] - foot[1], tip[0] - foot[0])}rad)`;
+    else arrow.hidden = true;
+  }
+}
+
+// Where the analysis is done, for the widgets that use it: a line of text.
+function analysisWhere() {
+  const a = analysisPoint();
+  if (!model) return 'No model: in the open';
+  if (!a) return 'No person placed';
+  if (a.who === 'you') return walker.active ? 'At you, walking' : 'At you, driving';
+  return `At the person, ${state.comfort.posture} (${PERSON_CENTRE[state.comfort.posture]} m up)`;
+}
+
+// What a widget shows in place of its figures when there is a model but no person placed.
+const PLACE_PERSON_HTML = '<span class="fine">Place a person in the model to see this where they stand (or walk). <button class="link" data-place>Place a person</button></span>';
+
+function togglePersonPanel() {
+  const P = state.person;
+  P.panel = !P.panel;
+  $('personPanel').hidden = !P.panel;
+  toolsList?.setOpen('person', P.panel);
+  if (!P.panel) setPersonPlacing(false);
+  syncToolsButton();
+  syncPersonPanel();
+}
+
+function syncPersonPanel() {
+  const P = state.person, C = state.comfort;
+  $('comfortWind').value = C.wind;
+  $('comfortWindOut').value = C.wind.toFixed(2);
+  $('comfortPosture').value = C.posture;
+  $('personFacing').value = P.facing;
+  if (!P.panel) return;
+  const you = walker.active || driver.active;
+  $('personPlace').textContent = P.placing ? 'Click in the model…' : P.at ? 'Move' : 'Place';
+  $('personPlace').disabled = !model || you;
+  $('personRemove').hidden = !P.at;
+  $('personWalk').hidden = !P.at || you;
+  let read;
+  if (!model) read = 'Open a model to place a person in it.';
+  else if (you) read = `<b>${walker.active ? 'Walking' : 'Driving'}</b>: the analysis follows you, not the person.`;
+  else if (!P.at) read = 'No person placed. <b>Place</b>, then click where they stand.';
+  else {
+    const mpu = METRES_PER_UNIT[model.units] || 1, dist = V3.len(V3.sub(P.at, camera.eye)) * mpu;
+    read = `<b>Placed</b>, ${dist < 1 ? 'less than 1' : Math.round(dist).toLocaleString()} m from the camera. Thermal comfort, Radiant temperature and Sky view are worked out where they stand.`;
+  }
+  setHtml($('personRead'), read);
+}
+
+function showPersonHelp() {
+  Dialog.open({ title: 'Person', html: true, width: 420, body: `<p>The person stands in for someone using the place: <b>Thermal comfort</b>, <b>Radiant temperature</b> and <b>Sky view</b> are worked out where they stand, so the figures stay put as you move the view round them. While you walk (or drive), they are worked out where you are instead.</p>
+    <p><b>Place</b> (or the person button in those widgets' title bars), then click in the model: the person stands on the surface there, or, on a wall, at its foot on your side. <b>Move</b> places them again; <b>Remove</b> takes them away. The pin over the view shows where they are; it is kept with the model's view.</p>
+    <p><b>Posture</b>: standing or sitting. It sets how much of the body the sun falls on, and the height everything is measured at, the middle of the body: ${PERSON_CENTRE.standing} m up standing, ${PERSON_CENTRE.sitting} m sitting. Sitting low sees more of the ground and less of the sky.</p>
+    <p><b>Facing</b>: side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. The pin's arrow shows it.</p>
+    <p><b>Wind factor</b>: the share of the weather file's wind (measured in the open, 10 m up) that reaches the person: a stand-in for shelter, which the viewer cannot work out yet. 1 is open ground; 0.5, the default, is a typical allowance for streets and buildings.</p>
+    <p><b>Walk from here</b> starts walking where the person stands. When you stop walking with a comfort widget open, you can leave the person where you stopped.</p>` });
+}
+
+function bindPersonPanel() {
+  $('personClose').addEventListener('click', () => state.person.panel && togglePersonPanel());
+  $('personHelp').addEventListener('click', showPersonHelp);
+  $('personPlace').addEventListener('click', () => setPersonPlacing(!state.person.placing));
+  $('personRemove').addEventListener('click', () => setPerson(null));
+  $('personWalk').addEventListener('click', () => {
+    const at = state.person.at;
+    if (!at || moving()) return;
+    fadeIntoWalk(at);
+  });
+  $('personFacing').innerHTML = PERSON_FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+  $('personFacing').addEventListener('change', (e) => { state.person.facing = e.target.value; saveViewState(); syncComfortPanel(); redraw(); });
+  for (const b of document.querySelectorAll('.person-drop')) b.addEventListener('click', () => setPersonPlacing(!state.person.placing));
+  // "Place a person" links in the widgets.
+  for (const id of ['comfortPanel', 'mrtPanel', 'skyViewPanel']) $(id).addEventListener('click', (e) => { if (e.target.closest('[data-place]')) setPersonPlacing(true); });
+  $('personPin').addEventListener('click', () => { if (!state.person.panel) togglePersonPanel(); });
+  syncPersonPanel();
+}
+
 // The Thermal comfort panel ---------------------------------------------------------------------
-// UTCI at the camera from the weather file at the Date and Time widgets' date and time: air temperature and
+// UTCI where the person stands (or you, walking: analysisPoint) from the weather file at the Date and Time widgets' date and time: air temperature and
 // humidity as they are, wind speed times the panel's wind factor (a stand-in for shelter), and a
 // mean radiant temperature equal to the air temperature, raised by the sun and sky on the person
 // (SolarCal: skylight always, the direct sun when the camera is in sunlight), by the light the
@@ -4769,6 +4968,7 @@ function comfortNow() {
   const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy);
   const w = e.at(month, day, state.sun.hour);
   if (w.dryBulb === null || w.relativeHumidity === null || w.windSpeed === null) return { missing: 'data', w };
+  if (model && !analysisPoint()) return { missing: 'person', w };
   const pos = activeLocation() ? sunPosition() : null;
   const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
   const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
@@ -4783,7 +4983,7 @@ function comfortNow() {
   // on them, are warmer than the air (surroundingsGains). Without a model, open ground in the sun.
   const seen = skySeen(), view = surroundingsNow(pos);
   const g = surroundingsGains(view, w.directNormal, w.diffuseHorizontal ?? 0);
-  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, posture: state.comfort.posture, skyView: seen, reflectedFlux: g.reflectedFlux });
+  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, posture: state.comfort.posture, sharp: personSharp(pos), skyView: seen, reflectedFlux: g.reflectedFlux });
   const dSurr = g.warmth;
   const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta, seen); // the cold sky, day and night
   const tr = ta + sc.total + dSurr + dSky;
@@ -4791,7 +4991,7 @@ function comfortNow() {
   return { w, pos, sun, sim, beam, ta, rh, va, tr, sc, dSurr, dSky, seen, view, value: utci(ta, tr, va, rh), inRange: utciInRange(ta, tr, Math.max(va, UTCI_WIND_MIN), rh) };
 }
 
-// The simulated cloud at the camera: null with the option off; { off: reason } when there are no
+// The simulated cloud over the person: null with the option off; { off: reason } when there are no
 // clouds to count; else { shade (1 open .. 0.1 under a cloud), gap (the beam between clouds, W/m²) }.
 function comfortClouds(pos) {
   if (!state.comfort.clouds) return null;
@@ -4799,15 +4999,13 @@ function comfortClouds(pos) {
   const sky = currentSky(pos.altitude);
   if (!sky || sky.cover < 0.01) return { off: 'No cloud in the weather file at this hour' };
   const mpu = (model && METRES_PER_UNIT[model.units]) || 1;
-  return { shade: cloudShadeAt(camera.eye, sunVector(pos.azimuth, pos.altitude, state.sun.north), sky.cover, clouds.drift, mpu), gap: sky.gapBeam };
+  return { shade: cloudShadeAt(analysisPoint()?.eye || camera.eye, sunVector(pos.azimuth, pos.altitude, state.sun.north), sky.cover, clouds.drift, mpu), gap: sky.gapBeam };
 }
 
 function syncComfortPanel() {
   syncMrtPanel();
   if (!state.comfort.panel) return;
   const C = state.comfort, f = (x, d = 1) => x.toFixed(d);
-  $('comfortWind').value = C.wind;
-  $('comfortWindOut').value = f(C.wind, 2);
   $('comfortWhen').value = `${dayName(state.sun.doy)} · ${fmtHour(state.sun.hour)}`;
   $('comfortToggle').setAttribute('aria-expanded', String(C.details));
   $('comfortToggle').querySelector('.caret').classList.toggle('collapsed', !C.details);
@@ -4820,10 +5018,11 @@ function syncComfortPanel() {
   $('comfortRead').hidden = r.missing === 'epw';
   const [sunCls, sunHtml] = sunState(r);
   $('comfortSun').className = 'sun-state ' + sunCls;
+  $('comfortSun').hidden = r.missing === 'person'; // the reading asks for a person already
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    setHtml($('comfortRead'), r.missing === 'epw' ? '' : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortRead'), r.missing === 'epw' ? '' : r.missing === 'person' ? PLACE_PERSON_HTML : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
     setHtml($('comfortInputs'), '');
     return;
   }
@@ -4857,7 +5056,7 @@ function syncComfortPanel() {
     <dt>Sky seen</dt><dd>${!model ? 'All of it (no model)' : skyView ? `<b>${f(r.seen * 100, 0)}</b>% · from the model` : 'Working it out…'}</dd>
     <dt>Surfaces in sun</dt><dd>${!r.pos || r.pos.altitude <= 0 ? 'None (no sun)' : `<b>${f(r.view.sunlit * 100, 0)}</b>% of those seen${!model ? ' (open ground, no model)' : surroundings ? '' : ' · working it out…'}`}</dd>
     <dt>Radiant temp.</dt><dd><b>${f(r.tr)}</b> °C ${radiantParts(r, f)}</dd></dl>
-    ${walker.active ? '' : '<div class="fine">Measured at the camera. Walk to stand in the model at head height.</div>'}`);
+    <div class="fine">${analysisWhere()}</div>`);
 }
 
 // What the radiant temperature adds to the air temperature, part by part (those that add anything).
@@ -4878,13 +5077,13 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
-    <p>It is estimated at the camera, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b>. The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
+    <p>It is estimated where the <b>person</b> stands (Tools → Person, or the person button in this widget's title bar), or where you are while walking, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b> (set in the Person widget). The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
     <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person is turned side-on to the sun, and <b>Posture</b> sets whether they stand or sit, which changes how much of the body the direct sun falls on.</p>
     <p>The ground and walls the person sees add two more parts. Every surface seen, all round and above and below the horizon, is tested for sun, as the sun exposure tool does, and counts by its share of the view (<b>Surfaces in sun</b> in the details). <b>Reflected light</b>: the surfaces reflect a quarter of the sun and skylight on them onto the person. <b>Sun-warmed surfaces</b>: those in sun are warmer than the air by the sun they absorb (about 25 °C for sunlit paving at midday in summer), which warms the person too; those in shade are taken to be at the air temperature. So in a building's shadow the ground round about is mostly shaded and adds little, and a sunlit street adds most. Where nothing is drawn below the horizon, open ground in the sun is assumed, and without a model, open ground all round.</p>
     <p>The <b>cold sky</b> takes some off, day and night: the sky is colder than the air, much colder when it is clear, and the half of the body facing it loses heat to it. Its temperature comes from the weather file's horizontal infrared radiation, as ladybug-comfort works it out; ground and walls are taken to be at the air temperature.</p>
-    <p>Only the sky the person can see counts for the skylight and the cold sky: the share of the sky seen from the camera, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Not counted yet: surfaces heating up and cooling down over the day (a surface is as warm as the sun on it now), their materials, and light reflected more than once.</p>
+    <p>Only the sky the person can see counts for the skylight and the cold sky: the share of the sky the person sees, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Not counted yet: surfaces heating up and cooling down over the day (a surface is as warm as the sun on it now), their materials, and light reflected more than once.</p>
     <p><b>Clouds.</b> By default the sun on the person is the weather file's direct radiation for the hour: an average, which already allows for the cloud that hour by dimming the sun evenly. This is how comfort is normally assessed (hour by hour, as Ladybug does), and it does not change as the drawn clouds pass.</p>
-    <p><b>Include simulated clouds</b> counts the cloud over the camera instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
+    <p><b>Include simulated clouds</b> counts the cloud over the person instead, so the UTCI follows the clouds you see: in a gap the sun is as strong as between the clouds that hour, under a cloud it drops to a tenth, which typically moves the UTCI by a few degrees in summer. The clouds themselves are invented: the weather file gives only how much of the sky is cloudy, so where each cloud is, and when one crosses the sun, is a random pattern, not a record. Averaged over time the two ways agree, so use the hourly figure for assessments and the simulated one to show what a passing cloud does. The warmth of sunlit surroundings keeps the hour's average either way, since ground and walls do not cool as a cloud passes. The option needs the sun and the weather switched on, and an hour with some cloud.</p>` });
 }
 
 function bindComfortPanel() {
@@ -4892,11 +5091,11 @@ function bindComfortPanel() {
   $('comfortClose').addEventListener('click', () => state.comfort.panel && toggleComfortPanel());
   $('comfortHelp').addEventListener('click', showComfortHelp);
   $('comfortToggle').addEventListener('click', () => { state.comfort.details = !state.comfort.details; syncComfortPanel(); });
-  $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncComfortPanel(); savePrefs(); });
+  $('comfortWind').addEventListener('input', () => { state.comfort.wind = +$('comfortWind').value; syncPersonPanel(); syncComfortPanel(); savePrefs(); });
   $('comfortClouds').checked = state.comfort.clouds;
   $('comfortClouds').addEventListener('change', (e) => { state.comfort.clouds = e.target.checked; syncComfortPanel(); savePrefs(); });
   $('comfortPosture').value = state.comfort.posture;
-  $('comfortPosture').addEventListener('change', (e) => { state.comfort.posture = e.target.value; syncComfortPanel(); savePrefs(); });
+  $('comfortPosture').addEventListener('change', (e) => { state.comfort.posture = e.target.value; syncComfortPanel(); syncSkyViewPanel(); checkSunlight(); checkSkyView(); savePrefs(); redraw(); });
   $('comfortAdd').addEventListener('click', openAttachDialog);
   $('comfortSun').addEventListener('click', (e) => { if (e.target.closest('[data-location]')) openLocationDialog(); });
 }
@@ -4929,13 +5128,13 @@ function syncMrtPanel() {
   const r = comfortNow(), f = (x) => x.toFixed(1);
   $('mrtAdd').hidden = r.missing !== 'epw';
   if (r.missing) {
-    setHtml($('mrtRead'), `<span class="fine">${r.missing === 'epw' ? 'Add a weather file (EPW): the radiant temperature needs its weather.' : 'The weather file has no temperature, humidity or wind at this time.'}</span>`);
+    setHtml($('mrtRead'), r.missing === 'person' ? PLACE_PERSON_HTML : `<span class="fine">${r.missing === 'epw' ? 'Add a weather file (EPW): the radiant temperature needs its weather.' : 'The weather file has no temperature, humidity or wind at this time.'}</span>`);
     setHtml($('mrtChart'), '');
     return;
   }
   const rise = r.tr - r.ta;
   setHtml($('mrtRead'), `<div class="sky-top"><span class="sky-val">${f(r.tr)}<small> °C</small></span><span class="sky-what">mean radiant temperature</span></div>
-    <div class="fine" data-full>Air ${f(r.ta)} °C, ${rise < 0 ? 'less' : 'plus'} ${f(Math.abs(rise))} °C from sun and sky · ${dayName(state.sun.doy)} ${fmtHour(state.sun.hour)}</div>`);
+    <div class="fine" data-full>Air ${f(r.ta)} °C, ${rise < 0 ? 'less' : 'plus'} ${f(Math.abs(rise))} °C from sun and sky · ${dayName(state.sun.doy)} ${fmtHour(state.sun.hour)}<br>${analysisWhere()}</div>`);
   const rows = MRT_PARTS.map((p) => ({ ...p, v: p.of(r) }));
   const total = { id: 'total', label: 'Altogether', title: 'The mean radiant temperature less the air temperature', v: rise };
   // The axis: from the most negative to the most positive value (and 0), with room beyond each end
@@ -4983,7 +5182,7 @@ function bindMrtPanel() {
 }
 
 // The Sky view widget ---------------------------------------------------------------------------
-// How much of the sky can be seen from the camera (skyview.js). It is worked out again when the
+// How much of the sky the person can see (skyview.js; or you, walking). It is worked out again when the
 // camera moves or what is shown changes, while this widget or the Thermal comfort widget is open:
 // the radiant temperature counts only the sky that is seen.
 
@@ -4991,11 +5190,12 @@ const SKY_N = 256; // texels across each face of the cube drawn round the camera
 const SKY_FACES = skyFaces(SKY_N);
 // skyView: null (no model, or not worked out yet) or { key, eye, data (what each texel sees), svf, sky }.
 let skyView = null, skyViewBusy = false, skyViewAt = 0, skyViewLater = 0;
-const skyViewKey = () => [...camera.eye].map((v) => v.toFixed(4)).concat(modelKey('objects', 'visibility')).join('|');
+const skyViewKey = (eye) => eye.map((v) => v.toFixed(4)).concat(modelKey('objects', 'visibility')).join('|');
 
 function checkSkyView() {
-  if (!model || !renderer) { if (skyView) { skyView = null; syncSkyViewPanel(); } return; }
-  const key = skyViewKey();
+  const a = analysisPoint();
+  if (!model || !renderer || !a) { if (skyView) { skyView = null; surroundings = null; syncSkyViewPanel(); syncComfortPanel(); } return; }
+  const key = skyViewKey(a.eye);
   if (key === skyView?.key) return;
   const now = performance.now();
   if (skyViewBusy || now - skyViewAt < 200) {
@@ -5005,7 +5205,7 @@ function checkSkyView() {
   }
   skyViewAt = now;
   skyViewBusy = true;
-  const eye = [...camera.eye], m = model;
+  const eye = a.eye, m = model;
   renderer.skyView(eye, 0.05 / (METRES_PER_UNIT[m.units] || 1), SKY_N, SKY_FACES).then((data) => {
     if (model !== m || !data) return;
     skyView = { key, eye, data, ...skyViewFactors(data, SKY_N) };
@@ -5060,13 +5260,13 @@ function toggleSkyViewPanel() {
 function syncSkyViewPanel() {
   const V = state.skyView;
   if (!V.panel) return;
-  const r = model && skyView;
+  const r = model && analysisPoint() && skyView;
   $('skyViewMode').value = V.mode;
   $('skyViewSunPath').checked = V.sunPath;
   $('skyViewPic').hidden = !r;
-  setHtml($('skyViewRead'), !model ? '<span class="fine">Open a model to see its sky from the camera.</span>' : !r ? '<span class="fine">Working it out…</span>'
+  setHtml($('skyViewRead'), !model ? '<span class="fine">Open a model to see its sky.</span>' : !analysisPoint() ? PLACE_PERSON_HTML : !r ? '<span class="fine">Working it out…</span>'
     : `<div class="sky-top"><span class="sky-val">${r.svf.toFixed(2)}</span><span class="sky-what">sky view factor</span></div>
-      <div class="fine" data-full>${Math.round(r.sky * 100)}% of the sky seen${walker.active ? '' : ' · at the camera'}</div>`);
+      <div class="fine" data-full>${Math.round(r.sky * 100)}% of the sky seen · ${analysisWhere().replace(/^At/, 'at')}</div>`);
   if (r) drawSkyViewPicture(r);
 }
 
@@ -5137,7 +5337,7 @@ function drawSkyViewPicture(r) {
 }
 
 function showSkyViewHelp() {
-  Dialog.open({ title: 'Sky view', html: true, width: 420, body: `<p>How much of the sky can be seen from the camera, or from where you stand while walking. Buildings, trees and anything else shown cut it down; hide a layer and it no longer counts.</p>
+  Dialog.open({ title: 'Sky view', html: true, width: 420, body: `<p>How much of the sky the person can see (Tools → Person, or the person button in the title bar), or you while walking, from the middle of the body. Buildings, trees and anything else shown cut it down; hide a layer and it no longer counts.</p>
     <p>The <b>sky view factor</b> is the usual measure in urban climate studies: the share of the sky seen by a level surface facing up, where the sky overhead counts for most and the sky near the horizon for little. 1 is an open sky; in the middle of a long street as wide as its buildings are high it is about 0.45.</p>
     <p>The <b>share of the sky seen</b> counts all of the sky the same, near the horizon as much as overhead, which is closer to what an upright person sees. The Thermal comfort widget uses it for the skylight and the cold sky in the radiant temperature.</p>
     <p>The <b>picture</b> is the sky as a fisheye lens looking straight up would see it, laid out like a plan: north at the top and east on the right, the horizon round the edge and straight up in the middle, with rings at 30° and 60° up. <b>Sky mask</b> shows the sky white and everything else black; <b>Fisheye</b> shows the model in its colours. <b>Sun path</b> adds the sun's path on the Date widget's date, with a dot each hour, and the sun at the Time widget's time: where the path crosses something, the sun is hidden.</p>` });
@@ -5869,6 +6069,7 @@ function bindUi() {
   bindExposurePanel();
   bindSkyViewPanel();
   bindMrtPanel();
+  bindPersonPanel();
   window.addEventListener('keydown', onKey);
   const setShift = (on) => { if (shiftDown !== on) { shiftDown = on; syncWalkPanel(); } };
   window.addEventListener('keydown', (e) => { if (e.key === 'Shift') setShift(true); });

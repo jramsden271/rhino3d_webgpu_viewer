@@ -42,7 +42,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Face north, east, south or west | Compass: click the N or a tick | |
 | Pedestrian mode | Camera button: Walk · drag to look · wheel zooms (field of view) · touch: drag on the left half to walk, on the right to look | `4` · `W` `A` `S` `D` or arrows to walk · `Shift` to run · `Space` jump · hold `E` / `Q` to rise / sink · `T` torch · `Esc` to stop |
 | Lights panel · add a lamp at the cursor · remove added lamps | Toolbar: Tools → Lights | `G` · `B` · `Shift+B` |
-| Thermal comfort panel (UTCI at the camera) | Toolbar: Tools → UTCI | `U` |
+| Thermal comfort panel (UTCI where the person stands) | Toolbar: Tools → UTCI | `U` |
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
@@ -585,14 +585,36 @@ Each sun position draws the shown model's depth as seen from the sun into a 4096
 less, until 4 × 4 maps cannot cover the area at that), and a compute
 pass tests every point against it, blending the four texels round it.
 
+## The person
+
+**Tools → Person** places a person in the model. Thermal comfort, Radiant temperature and Sky view
+are worked out where they stand, so their figures stay put as you move the view round; while you
+walk (or drive), they are worked out where you are instead. Without a person those widgets ask for
+one. Each of them has a person button in its title bar that places (or moves) the person.
+
+Click **Place** (or a title-bar button), then a spot in the model: the person stands on the surface
+there, or, on a wall, at its foot on the side clicked from (0.3 m out). A pin over the view shows
+them; clicking it opens the widget. The person is kept with the model's view, like the camera.
+
+- **Posture**: standing or sitting. It sets how much of the body the direct sun falls on
+  (SolarCal's tables) and the height the analysis is done at, the middle of the body: 1.1 m up
+  standing, 0.6 m sitting.
+- **Facing**: side-on to the sun and turned away from it (SolarCal's default, 135° between the
+  sun and the person's front), or a compass direction, in which case that angle follows the sun
+  through the day. The pin's arrow shows it.
+- **Wind factor**: the share of the weather file's wind that reaches the person, a stand-in for
+  shelter (see [Thermal comfort](#thermal-comfort)).
+- **Walk from here** starts walking at the person. When you stop walking with one of those widgets
+  open, a notice offers to leave the person where you stopped.
+
 ## Thermal comfort
 
 Click **Tools → UTCI** on the toolbar (or press `U`) for the Thermal comfort panel. It estimates the
-Universal Thermal Climate Index (UTCI) at the camera, at the Date and Time widgets' date and time, and
-shows it with its thermal stress category (9-26 °C is no thermal stress). It needs a weather
-file. Walk to measure at head height; in orbit views it is measured wherever the camera is.
+Universal Thermal Climate Index (UTCI) where the [person](#the-person) stands (or where you are,
+walking), at the Date and Time widgets' date and time, and shows it with its thermal stress
+category (9-26 °C is no thermal stress). It needs a weather file, and a person placed in the model.
 
-Under the UTCI a line says whether the camera is in sunlight, checked a few times a second
+Under the UTCI a line says whether the person is in sunlight, checked a few times a second
 along a line from the eye to the sun (whether or not the sun lighting is on). Trees cast shade
 here even though you can walk through them; glass counts as opaque. It reads:
 
@@ -604,14 +626,13 @@ here even though you can walk through them; glass counts as opaque. It reads:
 - **In shade**, naming the layer of whatever casts it and how far away it is; or **Night**.
 
 - **Air temperature** and **relative humidity** come from the weather file.
-- **Wind speed** is the weather file's (10 m, open ground) times the panel's **wind factor**,
+- **Wind speed** is the weather file's (10 m, open ground) times the Person widget's **wind factor**,
   0-1, which stands in for shelter until the viewer can estimate it. It starts at 0.5, a
   typical allowance for streets and buildings; the UTCI itself expects 10 m wind speeds. Wind
   below 0.5 m/s (including calm) is counted as 0.5 m/s, the lowest speed the UTCI was fitted for.
 - **Mean radiant temperature** starts from the air temperature. SolarCal (Arens et al. 2015,
   ASHRAE 55 Appendix C) adds the short-wave light on the person, from the weather file's
-  radiation for the hour, for someone turned side-on to the sun, standing or sitting (the
-  panel's **Posture**):
+  radiation for the hour, for the person's **Posture** and **Facing** (Person widget):
   - skylight, from the diffuse horizontal radiation, in sun or shade;
   - the direct sun on the person, in sunlight only (the sunlight line above, including weak
     sunlight): typically 10-25 °C.
@@ -647,10 +668,10 @@ here even though you can walk through them; glass counts as opaque. It reads:
   - By default, the direct sun is the weather file's hourly direct normal radiation: an
     average that already allows for that hour's cloud by dimming the sun evenly. This is how
     comfort is normally assessed (hour by hour), and it does not change as the drawn clouds pass.
-  - With **Include simulated clouds** ticked, it is the sun at the camera under the drawn
+  - With **Include simulated clouds** ticked, it is the sun on the person under the drawn
     clouds: the beam between the clouds (the hour's direct radiation with the clouds' share
     of the dimming taken out, see [Clouds and daylight](#clouds-and-daylight)), cut to a tenth
-    when a cloud's shadow is over the camera. The UTCI then follows the clouds as they pass,
+    when a cloud's shadow is over the person. The UTCI then follows the clouds as they pass,
     typically by a few degrees in summer, and the panel says whether the camera is in a gap or
     under a cloud. The clouds are invented: the weather file gives how much of the sky is
     cloudy, not where the clouds are, so this shows what a passing cloud does rather than what
@@ -660,9 +681,9 @@ here even though you can walk through them; glass counts as opaque. It reads:
     otherwise the panel says so and uses the hourly figure. `clouds.js` repeats the shader's cloud field on the CPU (with an integer hash that
     gives the same values on both) so the panel and the picture agree.
 
-The value and its category show first; **Details** opens to show the wind factor, the simulated
-clouds option, and the air temperature, humidity, wind, sun and radiant temperature that went
-into it.
+The value and its category show first; **Details** opens to show the simulated clouds option, and
+the air temperature, humidity, wind, sun, sky seen, surfaces in sun and radiant temperature that
+went into it.
 
 This is an estimate for comparing places and times, not a substitute for a full outdoor
 comfort study.
@@ -677,9 +698,9 @@ are the sun on you, skylight, reflected light, warm surfaces and the cold sky (s
 
 ## Sky view
 
-Click **Tools → Sky view** for how much of the sky can be seen from the camera, or from where you
-stand while walking. It is worked out again as the camera moves, and when layers are shown or
-hidden: everything shown cuts the sky down, trees and glass included.
+Click **Tools → Sky view** for how much of the sky the [person](#the-person) can see, from the
+middle of their body (or from your eye while walking). It is worked out again when they move, and
+when layers are shown or hidden: everything shown cuts the sky down, trees and glass included.
 
 - The **sky view factor** is the usual measure in urban climate studies: the share of the sky
   seen by a level surface facing up, so the sky overhead counts most and the sky near the horizon
