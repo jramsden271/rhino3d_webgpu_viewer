@@ -666,11 +666,18 @@ round. The card holds:
 - Whether they are in sunlight, and their **thermal comfort** (UTCI), **radiant temperature** and
   **sky view**, each opening to its details: the comfort inputs, the radiant temperature chart and
   the fisheye picture.
-- **Walk from here** (title bar) starts walking at the person, looking the way they face;
-  **Remove** (or `Delete`) takes them away.
+- **Walk from here** (title bar) starts walking as the person, from where they stand and looking
+  the way they face. When you stop, they are left where you stopped, facing the way you looked.
+  While walking, the other people are shown: click one to hop to them (the one you were walking as
+  stays where you were), and walk on as them. **Remove** (or `Delete`) takes a person away.
 
 Drag a figure to move it: a drag shorter than 120 px only turns the person to face the way you drag;
 a longer one moves them, feet on the surface under the cursor, facing the way they travel.
+
+Each person's sunlight, sky view and surroundings are kept once worked out, and used again while
+they still hold (they have not moved, nor the sun, nor anything shown), so switching between people
+never shows one person's figures for another: until a person's own are in, the figures say they are
+being worked out.
 
 The Thermal comfort, Radiant temperature and Sky view widgets show the same for the selected person,
 or, while you walk (or drive), for you; otherwise they ask you to select (or place) one. The People

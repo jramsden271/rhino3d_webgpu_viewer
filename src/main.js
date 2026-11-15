@@ -59,6 +59,7 @@ const state = {
   // bearing in degrees as a string), posture }; the one selected and the one under the cursor (ids or
   // null). person: the Person widget, which places them.
   people: [], nextPersonId: 1, personSel: null, personHover: null,
+  walkPerson: null, // the person you are walking as (Walk from here, or hopped to): left where you stop
   person: { panel: false, placing: false },
   datePanel: false, timePanel: false,
   // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
@@ -114,8 +115,11 @@ const walker = new Walker({
   onExit: () => {
     // Where walking stopped, to offer to place a person there (with a widget open that uses them).
     const spot = walkFrom && walker.pos && Number.isFinite(walker.foot) ? [walker.pos[0], walker.pos[1], walker.foot] : null;
+    const walked = spot && model ? leaveWalkPerson(spot) : null;
+    state.walkPerson = null;
     if (stick) endStick(); $('walkHint').hidden = true; $('walkPanel').hidden = true; endPlacing(); if (driver.parked) driver.exit(); if (walkFrom) { camera.restore(walkFrom); walkFrom = null; } syncToolbar(); syncWalkPanel(); syncLightsPanel(); redraw();
-    if (spot && model && (comfortShown() || state.skyView.panel || state.person.panel)) notice('Stopped walking.', false, 8000, { label: 'Place a person here', run: () => addPerson(spot) });
+    if (walked) { selectPerson(walked.id); peopleChanged(); }
+    else if (spot && model && (comfortShown() || state.skyView.panel || state.person.panel)) notice('Stopped walking.', false, 8000, { label: 'Place a person here', run: () => addPerson(spot) });
     syncPersonPanel(); syncComfortPanel(); syncSkyViewPanel(); syncPersonCard();
   },
   notice: (text, ms = 0) => notice(text, false, ms),
@@ -3980,6 +3984,7 @@ function bindPointer() {
       if (choosingStart()) startWalkAt(e);
       else if (expo.picking) pickExposureLayer(e);
       else if (state.person.placing) placePersonAt(e);
+      else if (walker.active && !walker.pending && personAt(e) != null) hopTo(personAt(e));
       else pickAt(e).then((h) => selectObject(h ? h.id : null, h ? h.p : null, e.shiftKey));
     }
     if (pointers.size === 0) { drag = null; driver.dragging = false; canvas.classList.remove('dragging'); }
@@ -4771,9 +4776,13 @@ function bindWalkPanel() {
 // Is the camera in sunlight? A ray from the eye towards the sun, drawn with the pick pass (so
 // trees and every visible object cast shade), a few times a second while the Walk or Thermal
 // comfort panel shows. It works with the sun's lighting off too, as long as there is a location.
-// sunlight: null (no model or location), { night: true }, or { lit, by (layer name), dist (m) }.
+// sunlight: null (no model or location), { night: true }, or { lit, by (layer name), dist (m) }, with
+// its key (sunlightKey). Like the sky view and surroundings, it is for the current subject only
+// (see syncSubject).
 let sunlight = null, sunlightAt = 0, sunlightBusy = false, sunlightLater = 0;
+const sunlightKey = (eye) => [eye.map((v) => v.toFixed(4)), sunKey().join(), modelKey('objects', 'visibility')].join('|');
 function checkSunlight() {
+  syncSubject();
   const now = performance.now();
   if (sunlightBusy || now - sunlightAt < 250) {
     // Check again shortly, so the last camera move or time change is not missed.
@@ -4790,10 +4799,14 @@ function checkSunlight() {
   const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
   const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
   sunlightBusy = true;
+  const who = subject.id, key = sunlightKey(eye);
   renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
     if (!model) return;
     const layer = h && model.layers[model.objects[h.id]?.layer];
-    setSunlight(h ? { lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { lit: true });
+    const r = h ? { key, lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { key, lit: true };
+    // Someone else's now (the selection changed meanwhile): kept for when they are selected again.
+    if (who !== subject.id) { resultsOf(who).sunlight = r; return; }
+    setSunlight(r);
   }).finally(() => { sunlightBusy = false; });
 }
 
@@ -4810,6 +4823,7 @@ const WEAK_SUN = 100;
 // The Thermal comfort panel's sunlight line, for comfortNow()'s result: [class, html]. Shade from
 // the model comes first, then a simulated cloud over the sun, then how strong the sun is.
 function sunState(r) {
+  syncSubject();
   const s = sunlight, pos = activeLocation() ? sunPosition() : null;
   if (!pos) return ['', 'No location, so no sun · <button class="link" data-location>Set location…</button>'];
   if (model && !analysisPoint()) return ['', state.people.length ? 'No person selected' : 'No person placed · <button class="link" data-place>Place a person</button>'];
@@ -4842,10 +4856,39 @@ const personById = (id) => state.people.find((p) => p.id === id) || null;
 const selectedPerson = () => (!model || state.personSel == null ? null : personById(state.personSel));
 const personName = (p) => `Person ${p.id}`;
 
+// Whom the analysis is for: 'you' (walking or driving), a person's id, or null.
+const subjectId = () => (!model ? null : walker.active || driver.active ? 'you' : selectedPerson()?.id ?? null);
+
+// The sunlight, sky view and surroundings worked out are for one subject at a time (subject.id).
+// When the subject changes, those are put away with the one they were for, and the new subject's
+// own are taken out, if they still hold (their keys match: they have not moved, the sun has not,
+// nothing shown has changed); else they are worked out again, and the widgets say so meanwhile.
+// So switching between people never shows one person's figures for another.
+const subject = { id: null, kept: new Map() };
+const resultsOf = (id) => { if (!subject.kept.has(id)) subject.kept.set(id, {}); return subject.kept.get(id); };
+function syncSubject() {
+  const id = subjectId();
+  if (id === subject.id) return;
+  if (subject.id != null) Object.assign(resultsOf(subject.id), { sunlight, skyView, surroundings });
+  subject.id = id;
+  const k = id != null ? subject.kept.get(id) : null, a = id != null ? analysisPoint() : null;
+  sunlight = skyView = surroundings = null;
+  if (!k || !a) return;
+  if (k.sunlight && (k.sunlight.night || k.sunlight.key === sunlightKey(a.eye))) sunlight = k.sunlight;
+  if (k.skyView?.key === skyViewKey(a.eye)) skyView = k.skyView;
+  if (skyView && k.surroundings?.key === surroundingsKey(skyView)) surroundings = k.surroundings;
+}
+// The sun's direction ([0, 0, -1] when it is down or there is no location).
+function sunKey() {
+  const pos = activeLocation() ? sunPosition() : null;
+  return pos && pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, state.sun.north).map((v) => +v.toFixed(4)) : [0, 0, -1];
+}
+
 // The point the analysis is done at: { eye (model space), who: 'you' | 'person', person, posture,
 // facing }, or null: you, while walking or driving, else the selected person.
 function analysisPoint() {
   if (!model) return null;
+  syncSubject();
   if (walker.active || driver.active) return { eye: [...camera.eye], who: 'you', posture: driver.active ? 'sitting' : 'standing', facing: 'side' };
   const p = selectedPerson();
   if (!p) return null;
@@ -4883,12 +4926,14 @@ function addPerson(at) {
 }
 function removePerson(id) {
   state.people = state.people.filter((p) => p.id !== id);
+  subject.kept.delete(id);
   if (state.personSel === id) selectPerson(null);
   if (state.personHover === id) state.personHover = null;
   peopleChanged();
 }
 function removeAllPeople() {
   state.people = [];
+  subject.kept.clear();
   selectPerson(null);
   state.personHover = null;
   peopleChanged();
@@ -4943,17 +4988,17 @@ function placePersonAt(e) {
 }
 
 // The people drawn in the model: a figure each (person.js), standing, or sitting on a stool, turned
-// the way they face, glowing under the cursor and when selected. Hidden while walking or driving,
-// when you are the person. Checked each frame; each is redrawn only when something about it changes.
+// the way they face, glowing under the cursor and when selected. While walking, the person you
+// walk as is hidden: you are them. Checked each frame; each is redrawn only when something about it changes.
 const figures = new Map(); // slot -> { key, posture }
 let figuresShown = false;
 function syncPersonFigures() {
   if (!renderer) return;
-  const mpu = model ? METRES_PER_UNIT[model.units] || 1 : 1, show = !!model && !moving(), u = 1 / mpu;
+  const mpu = model ? METRES_PER_UNIT[model.units] || 1 : 1, show = !!model, still = !moving(), u = 1 / mpu;
   // The card goes while walking or driving, and comes back after.
-  if (show !== figuresShown) { figuresShown = show; syncPersonCard(); }
+  if (still !== figuresShown) { figuresShown = still; syncPersonCard(); }
   const live = new Set();
-  for (const p of show ? state.people : []) {
+  for (const p of show ? state.people.filter((q) => still || q.id !== state.walkPerson) : []) {
     const slot = `person${p.id}`, bearing = personBearing(p);
     live.add(slot);
     let F = figures.get(slot);
@@ -5011,10 +5056,11 @@ function levelPoint(e, z) {
 // The person under a screen point, or null: the nearest of those whose line from their feet to
 // the top of their head passes close enough (in front, as the camera sees them).
 function personAt(e) {
-  if (!model || moving() || !state.people.length) return null;
+  if (!model || driver.active || !state.people.length) return null;
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   let best = null, bestD = Infinity;
   for (const p of state.people) {
+    if (walker.active && p.id === state.walkPerson) continue;
     const h = PERSON_HEIGHT[p.posture], a = toScreen(p.at), b = toScreen([p.at[0], p.at[1], p.at[2] + h * u]);
     if (!a || !b) continue;
     const vx = b[0] - a[0], vy = b[1] - a[1], len2 = vx * vx + vy * vy;
@@ -5079,6 +5125,36 @@ async function endPersonDrag(d) {
   peopleChanged();
 }
 
+// Walking: the person you walk as is left where you are (spot: your feet), facing the way you look.
+// Returns them, or null when you walk as no one.
+function leaveWalkPerson(spot) {
+  const p = state.walkPerson != null ? personById(state.walkPerson) : null;
+  if (!p) return null;
+  p.at = [...spot];
+  const fw = camera.forward;
+  if (Math.hypot(fw[0], fw[1]) > 1e-6) setFacingToward(p, fw[0], fw[1]);
+  return p;
+}
+
+// Walking: clicking another person hops to them. The person you were walking as stays where you
+// were; you go on walking as the new one, from where they stand, looking the way they face.
+function hopTo(id) {
+  const p = personById(id);
+  if (!p || !walker.active) return;
+  if (walker.pos && Number.isFinite(walker.foot)) leaveWalkPerson([walker.pos[0], walker.pos[1], walker.foot]);
+  state.walkPerson = id;
+  selectPerson(id);
+  const fade = $('walkFade'), fov = walker.fov0, fw = sunVector(personBearing(p), 0, state.sun.north);
+  fade.classList.add('dark');
+  setTimeout(async () => {
+    camera.yaw = Math.atan2(-fw[1], -fw[0]);
+    await walker.enter(p.at);
+    walker.fov0 = fov; // the field of view to go back to when walking stops
+    fade.classList.remove('dark');
+    peopleChanged();
+  }, 250);
+}
+
 // Turns a person to face a direction on the ground (model x, y), to the nearest degree.
 function setFacingToward(p, dx, dy) {
   const n = (state.sun.north * Math.PI) / 180, north = [Math.cos(n), Math.sin(n)], east = [Math.sin(n), -Math.cos(n)];
@@ -5136,7 +5212,7 @@ function showPersonHelp() {
     <p><b>Posture</b> (in each card; this widget's sets it for new people): standing or sitting. It sets how much of the body the sun falls on, and the height everything is measured at, the middle of the body: ${PERSON_CENTRE.standing} m up standing, ${PERSON_CENTRE.sitting} m sitting. Sitting low sees more of the ground and less of the sky.</p>
     <p><b>Facing</b> (in each card): side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. Turning a person by dragging sets it too, to the degree.</p>
     <p><b>Wind factor</b> (for everyone): the share of the weather file's wind (measured in the open, 10 m up) that reaches people: a stand-in for shelter, which the viewer cannot work out yet. 1 is open ground; 0.5, the default, is a typical allowance for streets and buildings.</p>
-    <p><b>Walk from here</b> (in the card) starts walking where the person stands, looking the way they face. When you stop walking, you can place a person where you stopped.</p>` });
+    <p><b>Walk from here</b> (in the card) starts walking as the person, where they stand and looking the way they face; when you stop, they are left where you stopped, facing the way you looked. While walking, click another person to hop to them: the one you were walking as stays where you were. When you stop walking otherwise, you can place a person where you stopped.</p>` });
 }
 
 function bindPersonPanel() {
@@ -5182,7 +5258,7 @@ function syncPersonCard() {
   $('pcSun').className = 'sun-state ' + sunCls;
   setHtml($('pcSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
-    const why = r.missing === 'epw' ? '<span class="link" role="link" data-epw>Add a weather file</span>' : '<span class="fine">No weather at this time</span>';
+    const why = r.missing === 'epw' ? '<span class="link" role="link" data-epw>Add a weather file</span>' : r.missing === 'pending' ? '<span class="fine">Working it out…</span>' : '<span class="fine">No weather at this time</span>';
     setHtml($('pc-utci'), why);
     setHtml($('pc-mrt'), why);
     setHtml($('pc-utci-detail'), '');
@@ -5234,6 +5310,7 @@ function bindPersonCard() {
     if (!p || moving()) return;
     // Looking the way the person faces (the camera's yaw points from where it looks back to the eye).
     const f = sunVector(personBearing(p), 0, state.sun.north);
+    state.walkPerson = p.id;
     fadeIntoWalk(p.at, Math.atan2(-f[1], -f[0]));
   });
   $('pcFacing').innerHTML = PERSON_FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
@@ -5268,6 +5345,7 @@ function restorePeople(saved) {
   const list = Array.isArray(saved.people) ? saved.people : saved.person ? [saved.person] : [];
   state.people = list.filter((p) => p && okAt(p.at)).map((p, i) => ({ id: i + 1, at: p.at, facing: okFacing(p.facing) ? String(p.facing) : 'side', posture: SOLARCAL_POSTURES.includes(p.posture) ? p.posture : state.comfort.posture }));
   state.nextPersonId = state.people.length + 1;
+  subject.kept.clear(); subject.id = null;
   state.personSel = null; state.personHover = null; personCard.pin = null;
   state.person.placing = false;
   if (state.people.length) model.restored.push(state.people.length === 1 ? 'the person' : `${state.people.length} people`);
@@ -5302,6 +5380,7 @@ function comfortNow() {
   const w = e.at(month, day, state.sun.hour);
   if (w.dryBulb === null || w.relativeHumidity === null || w.windSpeed === null) return { missing: 'data', w };
   if (model && !analysisPoint()) return { missing: 'person', w };
+  if (model && ((activeLocation() && !sunlight) || !skyView || !surroundings)) return { missing: 'pending', w };
   const posture = analysisPosture();
   const pos = activeLocation() ? sunPosition() : null;
   const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
@@ -5357,7 +5436,7 @@ function syncComfortPanel() {
   setHtml($('comfortSun'), `<span class="dot"></span><span>${sunHtml}</span>`);
   if (r.missing) {
     $('comfortRead').style.removeProperty('--cat');
-    setHtml($('comfortRead'), r.missing === 'epw' ? '' : r.missing === 'person' ? PLACE_PERSON_HTML() : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
+    setHtml($('comfortRead'), r.missing === 'epw' ? '' : r.missing === 'person' ? PLACE_PERSON_HTML() : r.missing === 'pending' ? '<span class="fine">Working it out…</span>' : '<span class="fine">The weather file has no temperature, humidity or wind at this time.</span>');
     setHtml($('comfortInputs'), '');
     return;
   }
@@ -5467,7 +5546,7 @@ function syncMrtPanel() {
   const r = comfortNow(), f = (x) => x.toFixed(1);
   $('mrtAdd').hidden = r.missing !== 'epw';
   if (r.missing) {
-    setHtml($('mrtRead'), r.missing === 'person' ? PLACE_PERSON_HTML() : `<span class="fine">${r.missing === 'epw' ? 'Add a weather file (EPW): the radiant temperature needs its weather.' : 'The weather file has no temperature, humidity or wind at this time.'}</span>`);
+    setHtml($('mrtRead'), r.missing === 'person' ? PLACE_PERSON_HTML() : r.missing === 'pending' ? '<span class="fine">Working it out…</span>' : `<span class="fine">${r.missing === 'epw' ? 'Add a weather file (EPW): the radiant temperature needs its weather.' : 'The weather file has no temperature, humidity or wind at this time.'}</span>`);
     setHtml($('mrtChart'), '');
     return;
   }
@@ -5539,6 +5618,7 @@ const skyViewKey = (eye) => eye.map((v) => v.toFixed(4)).concat(modelKey('object
 
 function checkSkyView() {
   const a = analysisPoint();
+  const who = subject.id;
   if (!model || !renderer || !a) { if (skyView) { skyView = null; surroundings = null; syncSkyViewPanel(); syncComfortPanel(); } return; }
   const key = skyViewKey(a.eye);
   if (key === skyView?.key) return;
@@ -5553,7 +5633,9 @@ function checkSkyView() {
   const eye = a.eye, m = model;
   renderer.skyView(eye, 0.05 / (METRES_PER_UNIT[m.units] || 1), SKY_N, SKY_FACES).then((data) => {
     if (model !== m || !data) return;
-    skyView = { key, eye, data, ...skyViewFactors(data, SKY_N) };
+    const v = { key, eye, data, ...skyViewFactors(data, SKY_N) };
+    if (who !== subject.id) { resultsOf(who).skyView = v; return; }
+    skyView = v;
     syncSkyViewPanel();
     syncComfortPanel();
   }).finally(() => { skyViewBusy = false; });
@@ -5561,16 +5643,18 @@ function checkSkyView() {
 
 // The share of the sky the person sees, for the radiant temperature: the whole sky without a model.
 const skySeen = () => (model && skyView ? skyView.sky : 1);
+// What the surroundings worked out from a sky view depend on: it, the sun, and the model's materials.
+const surroundingsKey = (V) => [V.key, sunKey().map((v) => v.toFixed(4)), modelKey('appearance')].join('|');
 
 // The surfaces the person sees and which are in sun (skyview.js's surroundingsView), for the radiant
 // temperature: worked out from the latest sky view while a comfort widget is open, again when the sun
 // moves or the model's materials change. surroundings: null, or { key, view }.
 let surroundings = null, surrBusy = false, surrFailed = '';
 function checkSurroundings() {
+  syncSubject();
   if (!model || !renderer || !skyView) { surroundings = null; return; }
-  const pos = activeLocation() ? sunPosition() : null, up = pos && pos.altitude > 0;
-  const sun = up ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : [0, 0, -1];
-  const key = [skyView.key, sun.map((v) => v.toFixed(4)), modelKey('appearance')].join('|');
+  const sun = sunKey(), up = sun[2] > -1;
+  const key = surroundingsKey(skyView), who = subject.id;
   if (surrBusy || key === surroundings?.key || key === surrFailed) return;
   surrBusy = true;
   const V = skyView, m = model;
@@ -5581,7 +5665,9 @@ function checkSurroundings() {
     // Kept even if the camera has moved on meanwhile (as it does all the time while walking): it is
     // a moment old, and the next one starts at once.
     if (model !== m || (up && !l)) return;
-    surroundings = { key, view: surroundingsView(V.data, SKY_N, V.pts, sun, l) };
+    const r = { key, view: surroundingsView(V.data, SKY_N, V.pts, sun, l) };
+    if (who !== subject.id) { resultsOf(who).surroundings = r; return; }
+    surroundings = r;
     syncComfortPanel();
   }).catch(() => {}).finally(() => {
     surrBusy = false;
