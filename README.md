@@ -627,8 +627,7 @@ How it works (`src/lbm.js`, `src/wind.js`):
   surface such as a ground plane is a layer a cell thick. Vegetation is left out, since it is porous
   and the solver does not model that yet. The results are read 1.5 m above the top of the lowest
   stack of solid cells in each column: the ground, under a canopy too, or a roof, at the surface's own
-  height (along an edge, where a column's middle misses it, the height of the columns beside it). The
-  map is cut along the model's extent rather than stopping in whole cells.
+  height (along an edge, where a column's middle misses it, the height of the columns beside it).
 - A lattice Boltzmann solver (D3Q19, BGK collision with a Smagorinsky subgrid model for the eddies
   smaller than a cell) runs in compute shaders, keeping each cell's 19 values as half floats (less
   their value at rest, which keeps their precision): about 80 bytes of graphics memory a cell.

@@ -248,73 +248,22 @@ export function windMapTops(G, tops, mn, mx) {
 }
 
 // The map the results are drawn on: a point on the surface in each column with one (lifted a little),
-// joined into triangles except across steps (a building's edge), where a triangle of the three
-// corners on one side still is, so a step across the grid's diagonal comes out straight. With the
-// model's extent (mn, mx), the map reaches a column beyond its edge and is cut along it, rather than
-// stopping in whole cells (a sawtooth wherever the edge runs across the grid). tops: windMapTops.
-// Returns { pos, idx, z (each column's height, NaN where not drawn), extra: the points the cut adds,
-// each the weights of three columns (cols, weights, 3 each) for its value, count (all the points) }.
-export function windMapMesh(G, tops, lift, mn, mx) {
-  const { nx, ny, cell, dir, left, s0, t0 } = G, nxy = nx * ny, z = Float32Array.from(tops);
-  if (mn) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const c = i + nx * j;
-    if (Number.isFinite(tops[c])) continue;
-    let sum = 0, n = 0;
-    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-      const ii = i + di, jj = j + dj, v = tops[ii + nx * jj];
-      if (ii >= 0 && ii < nx && jj >= 0 && jj < ny && Number.isFinite(v)) { sum += v; n++; }
-    }
-    if (n) z[c] = sum / n;
-  }
-  const pos = [];
+// joined into triangles except across steps (a building's edge). tops: windMapTops.
+export function windMapMesh(G, tops, lift) {
+  const { nx, ny, cell, dir, left, s0, t0 } = G, pos = new Float32Array(nx * ny * 3), idx = [];
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const s = s0 + (i + 0.5) * cell, t = t0 + (j + 0.5) * cell, c = i + nx * j;
-    pos.push(dir[0] * s + left[0] * t, dir[1] * s + left[1] * t, (Number.isFinite(z[c]) ? z[c] : G.floor) + lift);
+    const s = s0 + (i + 0.5) * cell, t = t0 + (j + 0.5) * cell, c = i + nx * j, z = tops[c];
+    pos.set([dir[0] * s + left[0] * t, dir[1] * s + left[1] * t, (Number.isFinite(z) ? z : G.floor) + lift], c * 3);
   }
-  const ok = (c) => Number.isFinite(z[c]), step = 1.5 * cell;
-  const fits = (p, q, r) => ok(p) && ok(q) && ok(r) && Math.max(z[p], z[q], z[r]) - Math.min(z[p], z[q], z[r]) <= step;
-  const tris = [];
+  const ok = (c) => Number.isFinite(tops[c]), step = 1.5 * cell;
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const a = i + nx * j, b = a + 1, c = a + nx, d = c + 1;
-    const ad = [fits(a, b, d) && [a, b, d], fits(a, d, c) && [a, d, c]], bc = [fits(a, b, c) && [a, b, c], fits(b, d, c) && [b, d, c]];
-    const n = (p) => !!p[0] + !!p[1];
-    for (const tri of n(ad) >= n(bc) ? ad : bc) if (tri) tris.push(tri);
+    if (!ok(a) || !ok(b) || !ok(c) || !ok(d)) continue;
+    const zs = [tops[a], tops[b], tops[c], tops[d]];
+    if (Math.max(...zs) - Math.min(...zs) > step) continue;
+    idx.push(a, b, d, a, d, c);
   }
-  const idx = [], cols = [], weights = [];
-  if (!mn) { for (const t of tris) idx.push(...t); return { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), z, extra: { cols, weights }, count: nxy }; }
-  // Cut each triangle to the model's extent: its points carry their weights of the triangle's three
-  // corners, for the values of the points the cut adds.
-  const at = (c) => [pos[c * 3], pos[c * 3 + 1], pos[c * 3 + 2]];
-  const planes = [[0, 1, mn[0]], [0, -1, -mx[0]], [1, 1, mn[1]], [1, -1, -mx[1]]]; // [axis, sign, bound]: inside where sign * p[axis] >= bound
-  const inside = (p, [k, sg, bd]) => sg * p[k] >= bd - 1e-9;
-  for (const t of tris) {
-    const ps = t.map(at);
-    if (ps.every((p) => planes.every((pl) => inside(p, pl)))) { idx.push(...t); continue; }
-    let poly = ps.map((p, k) => ({ p, w: [k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0], c: t[k] }));
-    for (const pl of planes) {
-      const out = [];
-      for (let k = 0; k < poly.length; k++) {
-        const P = poly[k], Q = poly[(k + 1) % poly.length], pi = inside(P.p, pl), qi = inside(Q.p, pl);
-        if (pi) out.push(P);
-        if (pi !== qi) {
-          const [ax, sg, bd] = pl, u = (bd - sg * P.p[ax]) / (sg * (Q.p[ax] - P.p[ax]));
-          out.push({ p: P.p.map((v, m) => v + (Q.p[m] - v) * u), w: P.w.map((v, m) => v + (Q.w[m] - v) * u), c: -1 });
-        }
-      }
-      poly = out;
-      if (poly.length < 3) break;
-    }
-    if (poly.length < 3) continue;
-    const ids = poly.map((v) => {
-      if (v.c >= 0) return v.c;
-      pos.push(...v.p);
-      cols.push(...t);
-      weights.push(...v.w);
-      return pos.length / 3 - 1;
-    });
-    for (let k = 1; k < ids.length - 1; k++) idx.push(ids[0], ids[k], ids[k + 1]);
-  }
-  return { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), z, extra: { cols, weights }, count: pos.length / 3 };
+  return { pos, idx: Uint32Array.from(idx) };
 }
 
 // The widget. app gives what it needs from the viewer (see main.js).
@@ -323,7 +272,7 @@ export function createWindTool(app) {
   const W = {
     panel: false, on: true, source: 'epw', dir: 225, speed: 5, res: 'coarse', terrain: 'suburban', show: 'ratio', solids: false,
     // The latest run: { key, from, terrain, grid, voxels (windVoxels), shell (windVoxelShell, false if too
-    // big, null not made yet), map (windMapMesh), ratio (Float32Array per column, or null), status, progress, done }
+    // big, null not made yet), mapTops, ratio (Float32Array per column, or null), status, progress, done }
     run: null, token: 0, solver: null, ref: null,
   };
 
@@ -372,8 +321,9 @@ export function createWindTool(app) {
     const RY = 4;
     W.ref.setup({ nx: G.nx, ny: RY, nz: G.nz, solid: new Uint32Array(Math.ceil((G.nx * RY * G.nz) / 32)), inlet, periodicY: true });
     const refLevel = new Float32Array(G.nx * RY).fill(WIND_PEDESTRIAN / G.dx);
-    W.run.map = windMapMesh(G, windMapTops(G, vox.stand, mn, mx), 0.05 / mpu, mn, mx);
-    renderer.setWindMap(W.run.map.pos, W.run.map.idx, null);
+    W.run.mapTops = windMapTops(G, vox.stand, mn, mx);
+    const mesh = windMapMesh(G, W.run.mapTops, 0.05 / mpu);
+    renderer.setWindMap(mesh.pos, mesh.idx, null);
     // Steps: the wind crosses the grid once to settle (at the speed at 10 m), then once more while
     // the average is taken.
     const cross = Math.ceil(G.nx / u10), warm = Math.min(Math.max(cross, 1500), 30000), total = warm + Math.min(Math.max(cross, 1500), 30000);
@@ -440,14 +390,9 @@ export function createWindTool(app) {
   function recolour() {
     const r = W.run, renderer = app.renderer;
     if (!r?.ratio || !renderer) return;
-    const w = wind(), mps = W.show === 'speed' && w, m = r.map, n = r.ratio.length, v = new Float32Array(m.count);
-    const k = mps ? w.speed * windOpen(r.terrain) : 1, { cols, weights } = m.extra;
-    for (let i = 0; i < n; i++) v[i] = Number.isFinite(m.z[i]) ? r.ratio[i] * k : 1e30;
-    for (let e = 0; e < cols.length / 3; e++) {
-      let sum = 0;
-      for (let q = 0; q < 3; q++) sum += weights[e * 3 + q] * r.ratio[cols[e * 3 + q]];
-      v[n + e] = sum * k;
-    }
+    const w = wind(), mps = W.show === 'speed' && w, v = new Float32Array(r.ratio.length);
+    const k = mps ? w.speed * windOpen(r.terrain) : 1;
+    for (let i = 0; i < v.length; i++) v[i] = Number.isFinite(r.mapTops[i]) ? r.ratio[i] * k : 1e30;
     renderer.setWindMap(undefined, null, v, ColourScales.ramp(scale()));
     sync();
   }

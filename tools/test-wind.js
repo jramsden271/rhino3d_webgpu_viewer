@@ -112,18 +112,5 @@ for (const from of [0, 90, 225, 270]) {
   check(idx.length === 6 * 4, `quads either side of the step only (${idx.length / 6})`);
   const none = windMapTops(G, new Float32Array(12).fill(NaN), [0, 0, 0], [1.6, 3, 10]);
   check(none.filter(Number.isFinite).length === 6 && none.every((z, c) => Number.isFinite(z) === (c % 4 < 2)), 'nothing beyond the model, the floor within it');
-  // Cut along the model's edge: out to x = 1.6 exactly, flat, the cut's points valued from the columns.
-  const cut = windMapMesh(G, none, 0, [0, 0, 0], [1.6, 3, 10]);
-  const used = [...new Set(cut.idx)], xs = used.map((v) => cut.pos[v * 3]);
-  check(near(Math.max(...xs), 1.6, 1e-6) && near(Math.min(...xs), 0.5, 1e-6), `the map reaches the edge: ${Math.min(...xs)} to ${Math.max(...xs)}`);
-  check(used.every((v) => near(cut.pos[v * 3 + 2], 0, 1e-6)), 'the map stays flat to the edge');
-  const { cols, weights } = cut.extra;
-  check(cut.count === cut.pos.length / 3 && cols.length === (cut.count - 12) * 3 && cols.length > 0, `the cut adds points (${cols.length / 3})`);
-  check([...Array(cols.length / 3)].every((_, e) => near(weights[e * 3] + weights[e * 3 + 1] + weights[e * 3 + 2], 1, 1e-6)), "the cut's points' weights add up to 1");
-  // A step across the grid's diagonal: a triangle on each side of it, not a whole-cell staircase.
-  const diag = Float32Array.from([0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 10, 10]);
-  const D = windMapMesh(G, diag, 0);
-  // Three flat cells (6), and one triangle in each of the three cells the step crosses.
-  check(D.idx.length / 3 === 9, `triangles along the diagonal (${D.idx.length / 3})`);
 }
 
