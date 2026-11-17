@@ -3,7 +3,7 @@
 import { M4, V3 } from './math.js';
 import { MATERIAL_RULES, MAT_VEGETATION, MAT_WATER, SPECIAL, matchLayer } from './materials.js';
 import { MAGIC_BLOCKS, MAGIC_BY_ID, MAGIC_PARENT_LAYER, magicMeshes } from './magicblocks.js';
-import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes, mulRM } from './extract.js';
+import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes, mulRM, pictureSurfaces } from './extract.js';
 import { Dialog } from './dialog.js';
 import { CITIES } from './cities.js';
 import { Recent } from './recent.js';
@@ -610,6 +610,7 @@ async function openScene(sources, opts = {}) {
     Object.assign(renderer, { specialsOn: state.specials, layerMaterials: null, layerColours: null, layerSpecials: null });
     renderer.setModel(m.batches);
     bumpModel('objects');
+    syncPictures();
     m.batches = null;
     model.loadMs = performance.now() - t0;
     resetObjectState();
@@ -719,6 +720,7 @@ function layerEffective(i) {
 
 function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
+  for (const p of renderer.pictures || []) p.visible = p.layer < 0 || p.layer >= layerOn.length || layerEffective(p.layer);
   recheckMagicGround();
   saveViewState();
   redraw();
@@ -1303,6 +1305,36 @@ function applyLayerMaterials(save = true) {
   redraw();
 }
 
+// Pictures embedded in the model, shown on their surfaces. Each image is decoded once (with its
+// smaller copies, for distant views) and kept with its picture.
+const pictureMips = new WeakMap();
+function mipsOf(picture) {
+  if (!pictureMips.has(picture)) pictureMips.set(picture, (async () => {
+    const bytes = Uint8Array.from(atob(picture.data), (c) => c.charCodeAt(0));
+    let img = await createImageBitmap(new Blob([bytes]));
+    const max = renderer.device.limits.maxTextureDimension2D, k = Math.min(1, max / Math.max(img.width, img.height));
+    if (k < 1) img = await createImageBitmap(img, { resizeWidth: Math.floor(img.width * k), resizeHeight: Math.floor(img.height * k), resizeQuality: 'high' });
+    const mips = [img];
+    for (let w = img.width, h = img.height; w > 1 || h > 1;) {
+      w = Math.max(1, w >> 1); h = Math.max(1, h >> 1);
+      mips.push(await createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' }));
+    }
+    return mips;
+  })());
+  return pictureMips.get(picture);
+}
+
+async function syncPictures() {
+  const ver = (syncPictures.ver = (syncPictures.ver || 0) + 1), list = [];
+  for (const s of model ? pictureSurfaces(model) : []) {
+    try { list.push({ ...s, mips: await mipsOf(s.picture) }); } catch (e) { console.warn(`The picture ${s.picture.name} could not be shown`, e); }
+  }
+  if (ver !== syncPictures.ver) return; // a newer call has started
+  renderer.setPictures(list);
+  for (const p of renderer.pictures) p.visible = p.layer < 0 || p.layer >= layerOn.length || layerEffective(p.layer);
+  redraw();
+}
+
 // Rebuild the GPU batches after objects' attributes change.
 async function rebuildModel() {
   const slow = model.stats.triangles > 400000;
@@ -1310,6 +1342,7 @@ async function rebuildModel() {
   try {
     renderer.setModel(buildBatches(model));
     bumpModel('objects');
+    syncPictures();
   } finally {
     if (slow) hideBusy();
   }
@@ -1322,6 +1355,7 @@ async function rebuildModel() {
 function pushMagicBatches() {
   renderer.setModel(buildBatches(model));
   bumpModel('objects');
+  syncPictures();
   applyLayerVisibility();
   applyLayerMaterials(false);
   pushObjectFlags();
@@ -5598,6 +5632,7 @@ function newProject() {
   model = null;
   layerOn = [];
   renderer?.clearModel();
+  renderer?.setPictures([]);
   resetObjectState();
   Object.assign(site, { custom: null, city: null, epws: [], epw: null, use: null });
   results = [];

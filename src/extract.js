@@ -286,7 +286,7 @@ function sampleCurve(c, out) {
 
 const meshBuffers = (m) => {
   const b = m.toThreejsBuffers(false);
-  return { pos: b.position, nrm: b.normal, idx: b.index, col: b.color || null };
+  return { pos: b.position, nrm: b.normal, idx: b.index, col: b.color || null, uv: b.uv || null };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -384,7 +384,17 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
     } catch (e) { /* not a PBR material */ }
     let rgb = Array.isArray(d) || ArrayBuffer.isView(d) ? Array.from(d).slice(0, 3) : d && 'r' in d ? [d.r, d.g, d.b] : null;
     if (rgb && rgb.some((v) => v > 1)) rgb = rgb.map((v) => v / 255);
-    materials.push({ index: i, name: m.name || '', rgb: rgb || DEFAULT_MATERIAL.rgb, alpha: Math.min(Math.max(alpha, 0.1), 1) });
+    // A picture (Rhino's Picture command, or an image texture) whose image is embedded in the file:
+    // the surface shows the image, opaque, whatever the material's transparency.
+    let picture = null;
+    try {
+      const t = m.getBitmapTexture();
+      if (t && t.enabled !== false && t.fileName) {
+        const data = doc.getEmbeddedFileAsBase64(t.fileName);
+        if (data) picture = { name: t.fileName.split(/[\\/]/).pop(), data };
+      }
+    } catch (e) { /* no texture, or not embedded */ }
+    materials.push({ index: i, name: m.name || '', rgb: rgb || DEFAULT_MATERIAL.rgb, alpha: picture ? 1 : Math.min(Math.max(alpha, 0.1), 1), picture });
   }
 
   // Layer material as the file defines it (for the layer panel swatch and material dialog).
@@ -475,6 +485,7 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
       else if (tn === 'Point') def.entries.push({ ...base, k: 'point', p: Float64Array.from(g.location, (v) => v * k) });
       else {
         const parts = meshParts(g, tn, false);
+        for (const p of parts) delete p.uv; // pictures are shown on top-level objects only
         if (parts.length) def.entries.push({ ...base, k: 'mesh', parts });
         else if (!MESH_TYPES.includes(tn)) skip('unsupported', tn);
       }
@@ -525,6 +536,8 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
       Object.assign(it, { k: 'point', p: Float32Array.from(V3.sub(V3.scale(g.location, k), origin)) });
     } else if (MESH_TYPES.includes(tn)) {
       Object.assign(it, { k: 'mesh', parts: meshParts(g, tn, true) });
+      const mat = materials[ai.ms === 1 ? ai.mi : layers[ai.layer]?.material];
+      if (!mat?.picture) for (const p of it.parts) delete p.uv;
     } else if (tn === 'Light') {
       readLight(g, ai);
       continue;
@@ -536,6 +549,27 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
   }
   return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
     stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
+}
+
+// The surfaces that show a picture: top-level objects whose material has an embedded image, each
+// as { oid (its object index), layer, picture: { name, data (base64) }, pos, uv, idx }.
+export function pictureSurfaces(scene) {
+  const out = [];
+  scene.items.forEach((it, oid) => {
+    if (it.k !== 'mesh' || it.xf) return;
+    const { mat } = resolveLook(scene, it.ai, null), parts = it.parts.filter((p) => p.uv);
+    if (!mat.picture || !parts.length) return;
+    const n = parts.reduce((s, p) => s + p.pos.length / 3, 0), pos = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+    const idx = new Uint32Array(parts.reduce((s, p) => s + p.idx.length, 0));
+    let v = 0, t = 0;
+    for (const p of parts) {
+      pos.set(p.pos, v * 3); uv.set(p.uv, v * 2);
+      for (let j = 0; j < p.idx.length; j++) idx[t + j] = p.idx[j] + v;
+      v += p.pos.length / 3; t += p.idx.length;
+    }
+    out.push({ oid, layer: it.ai.layer, picture: mat.picture, pos, uv, idx });
+  });
+  return out;
 }
 
 const TYPE_LABEL = { Brep: 'Polysurface', Extrusion: 'Extrusion', Mesh: 'Mesh', SubD: 'SubD', InstanceReference: 'Block instance', Curve: 'Curve', Point: 'Point' };

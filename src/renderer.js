@@ -857,6 +857,15 @@ struct SkySpriteOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 }
 @fragment fn fsSkySprite(in: SkySpriteOut) -> @location(0) vec4f { return textureSample(skyAtlas, skySampler, in.uv); }
 
+// Pictures: an image on its surface, as it is (unlit), over the surface itself. Image rows run top
+// down, and the surface's v up.
+struct PicOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vsPic(@location(0) p: vec3f, @location(3) uv: vec2f, @location(4) oid: u32) -> PicOut {
+  if (objFlag(oid, 1u)) { return PicOut(CULLED, uv); }
+  return PicOut(F.viewProj * vec4f(p, 1.0), uv);
+}
+@fragment fn fsPic(in: PicOut) -> @location(0) vec4f { return vec4f(textureSample(skyAtlas, skySampler, vec2f(in.uv.x, 1.0 - in.uv.y)).rgb, 1.0); }
+
 // Result maps: each vertex holds a value, looked up in the map's colour table for each pixel, so that
 // the edges of grouped scales stay sharp. A huge value means there is none, and hides the triangle.
 struct MapUniform { z: f32, lo: f32, hi: f32, index: f32 };
@@ -1241,6 +1250,7 @@ export class Renderer {
       { binding: 8, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
     ] });
     this.skySampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    this.pictureSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', maxAnisotropy: 8 });
     const skyPipes = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout, this.skyLayout] });
     const SKY_LINE = { arrayStride: 48, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
       { shaderLocation: 2, offset: 24, format: 'float32x4' }, { shaderLocation: 3, offset: 40, format: 'float32x2' }] };
@@ -1253,6 +1263,9 @@ export class Renderer {
       map: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes }),
       mapX: mk('vsMap', 'fsMap', [POS, VAL], { layout: mapPipes, compare: 'always', write: false }),
       mapPick: mk('vsMap', 'fsMapPick', [POS, VAL], { format: 'rgba32float', samples: 1, layout: mapPipes }),
+      // Drawn on the picture's own surface, which is drawn first (pushed back a little by its bias).
+      picture: mk('vsPic', 'fsPic', [POS, { arrayStride: 8, attributes: [{ shaderLocation: 3, offset: 0, format: 'float32x2' }] }, OID],
+        { layout: skyPipes, compare: 'greater-equal', write: false }),
       bg: mk('vsBg', 'fsBg', [], { write: false, compare: 'always', layout: frameOnly }),
       mesh: mk('vsMesh', 'fsMesh', [POS, NRM, OID], { bias: true }),
       meshVC: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true }),
@@ -1729,6 +1742,7 @@ export class Renderer {
       this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
+    if (!s.xray) this.drawPictures(pass);
     for (const A of actors) {
       pass.setPipeline(s.xray ? P.meshVCT : P.meshVC);
       pass.setBindGroup(1, A.bg, [0]);
@@ -1842,6 +1856,38 @@ export class Renderer {
   // Result maps to draw: [{ pos: Float32Array, indices: Uint32Array }]. setMapResult gives one its
   // values and colour table, and each frame's s.resultMaps says which are shown, s.resultMapZ how
   // far they are moved up.
+  // Pictures: [{ pos, uv, idx, oid (the surface's object index), layer, mips (ImageBitmaps, the full image first, each half the last) }].
+  setPictures(list) {
+    for (const p of this.pictures || []) for (const k of ['pos', 'uv', 'idx', 'oid', 'tex']) p[k].destroy();
+    const dev = this.device, U = GPUBufferUsage;
+    const make = (arr, usage) => {
+      const buf = dev.createBuffer({ size: Math.ceil(arr.byteLength / 4) * 4, usage: usage | U.COPY_DST });
+      dev.queue.writeBuffer(buf, 0, arr);
+      return buf;
+    };
+    this.pictures = list.map(({ pos, uv, idx, oid, layer, mips }) => {
+      const tex = dev.createTexture({ size: [mips[0].width, mips[0].height], mipLevelCount: mips.length, format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+      mips.forEach((m, level) => dev.queue.copyExternalImageToTexture({ source: m }, { texture: tex, mipLevel: level }, [m.width, m.height]));
+      return { count: idx.length, layer, visible: true, pos: make(pos, U.VERTEX), uv: make(uv, U.VERTEX), idx: make(idx, U.INDEX),
+        oid: make(new Uint32Array(pos.length / 3).fill(oid), U.VERTEX), tex,
+        bg: dev.createBindGroup({ layout: this.skyLayout, entries: [{ binding: 7, resource: tex.createView() }, { binding: 8, resource: this.pictureSampler }] }) };
+    });
+    this.dirty = true;
+  }
+
+  drawPictures(pass) {
+    if (!this.pictures?.length) return;
+    pass.setPipeline(this.pipes.picture);
+    for (const p of this.pictures) {
+      if (!p.visible) continue; // its layer is off
+      pass.setBindGroup(1, p.bg);
+      pass.setVertexBuffer(0, p.pos); pass.setVertexBuffer(1, p.uv); pass.setVertexBuffer(2, p.oid);
+      pass.setIndexBuffer(p.idx, 'uint32');
+      pass.drawIndexed(p.count);
+    }
+  }
+
   setResultMaps(list) {
     for (const m of this.resultMaps || []) { m.pos.destroy(); m.idx.destroy(); m.val.destroy(); m.uni.destroy(); m.ramp?.destroy(); }
     this.resultMaps = list.map(({ pos, indices }, index) => this.makeMap(pos, indices, index));
