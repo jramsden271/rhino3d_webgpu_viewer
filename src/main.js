@@ -2812,15 +2812,40 @@ function setSun(changes) {
   redraw();
 }
 
-function toggleDatePanel() {
-  state.datePanel = !state.datePanel;
-  $('datePanel').hidden = !state.datePanel;
+// The Date and Time widgets drop down from their buttons in the top bar, one at a time. They close
+// with their button, their ×, Esc, or a click anywhere else (a right-click menu of theirs aside).
+const DROP_BUTTON = { datePanel: '[data-act="date"]', timePanel: '[data-act="time"]' };
+function placeDropWidget(id) {
+  const p = $(id);
+  if (p.hidden) return;
+  const r = document.querySelector(DROP_BUTTON[id]).getBoundingClientRect(), w = p.offsetWidth;
+  p.style.top = `${Math.round(r.bottom + 10)}px`;
+  p.style.left = `${Math.round(Math.max(12, Math.min(innerWidth - w - 12, r.left)))}px`;
+}
+function setDropWidget(id, open) {
+  if (open) for (const other of Object.keys(DROP_BUTTON)) if (other !== id && state[other]) setDropWidget(other, false);
+  state[id] = open;
+  $(id).hidden = !open;
+  placeDropWidget(id);
   syncDateWeather();
 }
-function toggleTimePanel() {
-  state.timePanel = !state.timePanel;
-  $('timePanel').hidden = !state.timePanel;
-  syncDateWeather();
+function toggleDatePanel() { setDropWidget('datePanel', !state.datePanel); }
+function toggleTimePanel() { setDropWidget('timePanel', !state.timePanel); }
+function bindDropWidgets() {
+  window.addEventListener('pointerdown', (e) => {
+    for (const id of Object.keys(DROP_BUTTON)) {
+      if (!state[id] || $(id).contains(e.target) || e.target.closest(`${DROP_BUTTON[id]}, #layerMenu`)) continue;
+      setDropWidget(id, false);
+    }
+  }, true);
+  window.addEventListener('keydown', (e) => {
+    const id = Object.keys(DROP_BUTTON).find((k) => state[k]);
+    if (e.key !== 'Escape' || !id || !$('layerMenu').hidden) return;
+    e.preventDefault(); e.stopPropagation();
+    setDropWidget(id, false);
+    document.querySelector(DROP_BUTTON[id]).focus();
+  }, true);
+  window.addEventListener('resize', () => Object.keys(DROP_BUTTON).forEach(placeDropWidget));
 }
 
 // Runs the time through the day: from just before sunrise to just after sunset at the location.
@@ -6206,6 +6231,7 @@ function bindUi() {
   document.querySelectorAll('[data-act="extents"]').forEach((b) => b.addEventListener('click', zoomExtents));
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
+  bindDropWidgets();
   document.querySelector('[data-act="time"]').addEventListener('click', toggleTimePanel);
   bindCompass();
   $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
