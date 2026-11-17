@@ -3331,41 +3331,31 @@ function fillMaps() {
   renderer.setResultMaps(M.list.map(({ map }) => ({ pos: cfdMapVertices(map, model.metresPerUnit, model.origin), indices: map.indices })));
   M.list.forEach((_, i) => showMapResult(i));
   if (M.panel && !M.list.length) toggleMapPanel();
-  const changed = () => { syncMaps(); hideMapHover(); saveViewState(); redraw(); };
-  const caret = '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
-  $('mapList').replaceChildren(...M.list.flatMap((m, i) => {
-    const top = document.createElement('div');
-    top.className = 'layer-row';
-    top.title = `${m.map.name} in ${m.file.name}`;
-    top.dataset.key = m.key;
-    top.innerHTML = `<button class="caret" aria-label="Expand">${caret}</button><input type="checkbox" class="eye" aria-label="Show this map" title="Show or hide"><span class="layer-name"></span>`;
-    top.querySelector('.layer-name').textContent = m.label;
-    top.querySelector('.caret').addEventListener('click', () => {
-      if (M.collapsed.has(m.key)) M.collapsed.delete(m.key); else M.collapsed.add(m.key);
-      syncMaps();
-    });
-    top.querySelector('input').addEventListener('change', (e) => {
-      if (e.target.checked) M.off.delete(m.key); else M.off.add(m.key);
-      changed();
-    });
-    const kids = m.map.results.map((r) => {
-      const row = document.createElement('label'), unit = resultUnit(r);
-      row.className = 'layer-row';
-      row.style.paddingLeft = '26px';
-      row.dataset.parent = m.key;
-      row.dataset.result = r.name;
-      row.innerHTML = `<span class="caret empty"></span><input type="radio" name="map-${i}"><span class="layer-name"></span>`;
-      row.querySelector('.layer-name').textContent = unit ? `${r.name} [${unit}]` : r.name;
-      row.querySelector('input').addEventListener('change', () => {
-        M.picked[m.key] = r.name;
-        showMapResult(i);
-        changed();
-      });
-      return row;
-    });
-    return [top, ...kids];
-  }));
+  // One map at a time: the first that is on (or the first of all) stays on, the rest go off.
+  const shown = M.list.find((m) => !M.off.has(m.key)) || M.list[0];
+  for (const m of M.list) if (m !== shown) M.off.add(m.key); else M.off.delete(m.key);
+  // The dropdown: every result of every map, as "file · map: result [unit]", leaving out the map's
+  // name when the file's name already has it (June1030am_Ground1500.csv, map Ground1500).
+  const squash = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const mapName = (m) => {
+    const file = m.file.name.replace(/\.[^.]+$/, '');
+    return squash(file).includes(squash(m.map.name)) ? file : `${file} · ${m.map.name}`;
+  };
+  $('mapPick').replaceChildren(...M.list.flatMap((m, i) => m.map.results.map((r) => {
+    const unit = resultUnit(r);
+    return new Option(`${M.list.length > 1 ? `${mapName(m)}: ` : ''}${r.name}${unit ? ` [${unit}]` : ''}`, `${i}|${r.name}`);
+  })));
   syncMaps();
+}
+
+// Shows one map's result, and no other map.
+function pickMap(value) {
+  const M = state.maps, bar = value.indexOf('|'), i = +value.slice(0, bar), m = M.list[i];
+  if (!m) return;
+  for (const x of M.list) if (x === m) M.off.delete(x.key); else M.off.add(x.key);
+  M.picked[m.key] = value.slice(bar + 1);
+  showMapResult(i);
+  syncMaps(); hideMapHover(); saveViewState(); redraw();
 }
 
 function syncMaps() {
@@ -3374,24 +3364,12 @@ function syncMaps() {
   syncResultsMenu();
   $('mapZ').value = M.z;
   $('mapZOut').value = `${M.z > 0 ? '+' : ''}${M.z.toFixed(1)} m`;
-  for (const row of $('mapList').children) {
-    const parent = row.dataset.parent, input = row.querySelector('input');
-    if (parent) {
-      const m = M.list.find((x) => x.key === parent);
-      input.checked = pickedResult(m).name === row.dataset.result;
-      row.hidden = M.collapsed.has(parent);
-      row.classList.toggle('inherited-off', !M.on || M.off.has(parent));
-    } else {
-      const on = !M.off.has(row.dataset.key);
-      input.checked = on;
-      row.classList.toggle('off', !on);
-      row.classList.toggle('inherited-off', on && !M.on);
-      row.querySelector('.caret').classList.toggle('collapsed', M.collapsed.has(row.dataset.key));
-    }
-  }
+  const i = M.list.findIndex((m) => !M.off.has(m.key));
+  if (i >= 0) $('mapPick').value = `${i}|${pickedResult(M.list[i]).name}`;
+  // The legend of the result shown (the dropdown names it).
   setHtml($('mapLegends'), M.list.filter((m) => !M.off.has(m.key)).map((m) => {
     const r = pickedResult(m);
-    return colourLegendHtml(resultScale(r), M.list.length > 1 ? `${m.label}: ${r.name}` : r.name, resultUnit(r));
+    return colourLegendHtml(resultScale(r), r.name, resultUnit(r));
   }).join(''));
 }
 
@@ -3460,6 +3438,7 @@ function bindMapPanel() {
   $('mapOn').addEventListener('change', (e) => setMapsOn(e.target.checked));
   $('mapClose').addEventListener('click', () => state.maps.panel && toggleMapPanel());
   $('mapZ').addEventListener('input', (e) => { state.maps.z = +e.target.value; syncMaps(); saveViewState(); redraw(); });
+  $('mapPick').addEventListener('change', (e) => pickMap(e.target.value));
   for (const id of ['mapLegends', 'streamlineLegend']) {
     $(id).addEventListener('change', (e) => { if (e.target.dataset.metric) setColourScale(e.target.dataset.metric, e.target.value); });
   }
