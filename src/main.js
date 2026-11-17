@@ -24,7 +24,7 @@ import { DRIVE_CAMS, Driver } from './drive.js';
 import { EXPOSURE_FULL, MAX_LAMPS, MSAA, Renderer, lampShadowPlan, shadowCascades } from './renderer.js';
 import { DEMO_3DM } from './demo.js';
 import { Widgets } from './widgets.js';
-import { PERSON_HEIGHT, personGeometry } from './person.js';
+import { PERSON_COLOUR, PERSON_HEIGHT, personGeometry } from './person.js';
 import { createWindTool } from './wind.js';
 import { drawSkyView, skyFaces, skyViewFactors, skyViewPoint, surroundingPoints, surroundingsView } from './skyview.js';
 
@@ -39,7 +39,7 @@ const canvas = $('gfx');
 //   and weather choices, its weather and results files, and the changes made to its model and how it is
 //   viewed (readStored). Lamps added in the viewer are not kept.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, skyViewMode: state.skyView.mode, skyViewSunPath: state.skyView.sunPath, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, skyViewMode: state.skyView.mode, skyViewSunPath: state.skyView.sunPath, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, personColour: state.person.colour, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -60,7 +60,7 @@ const state = {
   // null). person: the Person widget, which places them.
   people: [], nextPersonId: 1, personSel: null, personHover: null,
   walkPerson: null, // the person you are walking as (Walk from here, or hopped to): left where you stop
-  person: { panel: false, placing: false },
+  person: { panel: false, placing: false, colour: prefs.personColour === 'utci' ? 'utci' : 'none' }, // colour: how the figures are coloured
   datePanel: false, timePanel: false,
   // The Date and Time widgets show a slider, or a picker (a calendar, a clock face).
   dateMode: prefs.dateMode === 'picker' ? 'picker' : 'slider', timeMode: prefs.timeMode === 'picker' ? 'picker' : 'slider',
@@ -728,6 +728,7 @@ function applyLayerVisibility() {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
   for (const p of renderer.pictures || []) p.visible = p.layer < 0 || p.layer >= layerOn.length || layerEffective(p.layer);
   recheckMagicGround();
+  schedulePeopleColours(); // what is shown shades people, and they see it
   saveViewState();
   redraw();
 }
@@ -2169,6 +2170,7 @@ function pushObjectFlags() {
   if (state.blockOff.size) model.objects.forEach((o, id) => { if (o.k === 'inst' && state.blockOff.has(o.idef)) objFlags[id] |= 1; });
   for (const id of state.sel.ids) objFlags[id] |= 2;
   renderer.setObjectFlags(objFlags);
+  schedulePeopleColours();
   redraw();
 }
 
@@ -4837,21 +4839,28 @@ function checkSunlight() {
   const pos = model && activeLocation() ? sunPosition() : null, a = analysisPoint();
   if (!pos || pos.altitude <= 0) { setSunlight(pos && { night: true }); return; }
   if (!a) { setSunlight(null); return; }
-  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), eye = a.eye, u = 1 / (METRES_PER_UNIT[model.units] || 1);
-  const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
-  // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
-  const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
-  const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
   sunlightBusy = true;
-  const who = subject.id, key = sunlightKey(eye);
-  renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
-    if (!model) return;
-    const layer = h && model.layers[model.objects[h.id]?.layer];
-    const r = h ? { key, lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { key, lit: true };
+  const who = subject.id;
+  sunRay(a.eye, pos).then((r) => {
+    if (!r) return;
     // Someone else's now (the selection changed meanwhile): kept for when they are selected again.
     if (who !== subject.id) { resultsOf(who).sunlight = r; return; }
     setSunlight(r);
   }).finally(() => { sunlightBusy = false; });
+}
+// The ray from eye towards the sun (pos, above the horizon): { key, lit, by, dist }, or null.
+function sunRay(eye, pos) {
+  const d = sunVector(pos.azimuth, pos.altitude, state.sun.north), u = 1 / (METRES_PER_UNIT[model.units] || 1);
+  const [mn, mx] = visibleBounds(), far = V3.len(V3.sub(eye, V3.scale(V3.add(mn, mx), 0.5))) + V3.len(V3.sub(mx, mn)) / 2 + u;
+  // A one-pixel orthographic view along the ray: pixel (W/2 - 0.5, H/2 - 0.5) is its centre.
+  const W = renderer.width, H = renderer.height, hh = 0.005 * u * H;
+  const view = M4.lookAt(eye, V3.add(eye, d), Math.abs(d[2]) > 0.99 ? [0, 1, 0] : [0, 0, 1]);
+  const key = sunlightKey(eye), m = model;
+  return renderer.pick(W / 2 - 0.5, H / 2 - 0.5, M4.mul(M4.ortho(hh, W / H, 0.05 * u, far), view), frameState()).then((h) => {
+    if (model !== m) return null;
+    const layer = h && model.layers[model.objects[h.id]?.layer];
+    return h ? { key, lit: false, by: layer?.name, dist: V3.len(V3.sub(h.p, eye)) / u } : { key, lit: true };
+  });
 }
 
 function setSunlight(s) {
@@ -4939,6 +4948,10 @@ function analysisPoint() {
   const p = cardPerson();
   if (!p && (walker.active || driver.active)) return { eye: [...camera.eye], who: 'you', posture: driver.active ? 'sitting' : 'standing', facing: 'side' };
   if (!p) return null;
+  return personPoint(p);
+}
+// The analysis point for a person: the middle of their body.
+function personPoint(p) {
   const u = 1 / (METRES_PER_UNIT[model.units] || 1);
   return { eye: [p.at[0], p.at[1], p.at[2] + PERSON_CENTRE[p.posture] * u], who: 'person', person: p, posture: p.posture, facing: p.facing };
 }
@@ -4947,8 +4960,7 @@ const analysisPosture = () => analysisPoint()?.posture || state.comfort.posture;
 
 // The sun's angle from the person's front (SHARP, degrees, 0-180) for SolarCal: side-on and turned
 // away from the glare (135, SolarCal's own) unless the person faces a compass direction.
-function personSharp(pos) {
-  const f = analysisPoint()?.facing || 'side';
+function personSharp(pos, f = analysisPoint()?.facing || 'side') {
   if (f === 'side' || !pos) return 135;
   return Math.abs((((pos.azimuth - Number(f)) % 360) + 540) % 360 - 180);
 }
@@ -5054,9 +5066,11 @@ function syncPersonFigures() {
     const slot = `person${p.id}`, bearing = personBearing(p);
     live.add(slot);
     let F = figures.get(slot);
-    if (!F || F.posture !== p.posture || !renderer[slot]) {
-      renderer.setActor(personGeometry(p.posture), slot);
-      F = { key: '', posture: p.posture };
+    // Coloured by their UTCI (in the UTCI colour scale chosen for the results), or orange.
+    const col = state.person.colour === 'utci' && peopleUtci.has(p.id) ? ColourScales.colour(ColourScales.preferred('utci'), peopleUtci.get(p.id)) : PERSON_COLOUR;
+    if (!F || F.posture !== p.posture || F.colour !== col.join() || !renderer[slot]) {
+      renderer.setActor(personGeometry(p.posture, col), slot);
+      F = { key: '', posture: p.posture, colour: col.join() };
       figures.set(slot, F);
     }
     const key = [...p.at, bearing, mpu, state.sun.north].join();
@@ -5245,6 +5259,11 @@ function syncPersonPanel() {
   $('comfortWind').value = C.wind;
   $('comfortWindOut').value = C.wind.toFixed(2);
   $('comfortPosture').value = C.posture;
+  $('personColour').value = P.colour;
+  const why = P.colour !== 'utci' ? '' : !site.epw ? 'Colouring by UTCI needs a weather file (EPW).'
+    : state.people.length && peopleUtci.size < state.people.length ? 'Working out everyone\'s UTCI…' : '';
+  $('personColourNote').textContent = why;
+  $('personColourNote').hidden = !why;
   if (!P.panel) return;
   const you = walker.active || driver.active, n = state.people.length;
   $('personPlace').textContent = P.placing ? 'Click in the model…' : 'Place a person';
@@ -5278,6 +5297,13 @@ function bindPersonPanel() {
     removeAllPeople();
   });
   $('comfortPosture').addEventListener('change', (e) => { state.comfort.posture = e.target.value; savePrefs(); });
+  $('personColour').addEventListener('change', (e) => {
+    state.person.colour = e.target.value;
+    savePrefs();
+    schedulePeopleColours();
+    syncPersonPanel();
+    redraw();
+  });
   // "Place a person" links in the widgets.
   for (const id of ['comfortPanel', 'mrtPanel', 'skyViewPanel']) $(id).addEventListener('click', (e) => { if (e.target.closest('[data-place]')) setPersonPlacing(true); });
   bindPersonCard();
@@ -5435,22 +5461,28 @@ function comfortNow() {
   if (w.dryBulb === null || w.relativeHumidity === null || w.windSpeed === null) return { missing: 'data', w };
   if (model && !analysisPoint()) return { missing: 'person', w };
   if (model && ((activeLocation() && !sunlight) || !skyView || !surroundings)) return { missing: 'pending', w };
-  const posture = analysisPosture();
+  return comfortFor(w, analysisPoint(), sunlight, skyView, surroundings);
+}
+
+// The UTCI and what goes into it, for the weather w at the analysis point a (or, without a model,
+// open ground), with the sunlight sl, sky view sv and surroundings su worked out there.
+function comfortFor(w, a, sl, sv, su) {
+  const posture = a?.posture || state.comfort.posture;
   const pos = activeLocation() ? sunPosition() : null;
-  const sun = sunlight?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
+  const sun = sl?.lit && pos && pos.altitude > 0 && w.directNormal > 0;
   const ta = w.dryBulb, rh = w.relativeHumidity, va = w.windSpeed * state.comfort.wind;
   // With simulated clouds the sun on the person is the beam between the clouds, cut by the cloud
   // over the camera if there is one (the same cloud field as the sky and its shadows). The
   // surroundings keep the hour's average: ground and walls do not cool as a cloud passes.
-  const sim = comfortClouds(pos);
+  const sim = comfortClouds(pos, a?.eye || camera.eye);
   const beam = sim?.shade != null ? sim.gap * sim.shade : w.directNormal;
   // Without a location the sun's height is unknown: the skylight is still counted, the sun on the
   // person and on the surroundings are not. Only the sky seen counts for the skylight and the cold
   // sky; the rest of the view is surfaces, which reflect light onto the person and, where the sun is
   // on them, are warmer than the air (surroundingsGains). Without a model, open ground in the sun.
-  const seen = skySeen(), view = surroundingsNow(pos);
+  const seen = model && sv ? sv.sky : 1, view = model && su ? su.view : openGroundView(pos ? pos.altitude : 0);
   const g = surroundingsGains(view, w.directNormal, w.diffuseHorizontal ?? 0);
-  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, posture, sharp: personSharp(pos), skyView: seen, reflectedFlux: g.reflectedFlux });
+  const sc = solarCal(pos ? pos.altitude : 0, beam, w.diffuseHorizontal ?? 0, { lit: !!sun, posture, sharp: personSharp(pos, a?.facing || 'side'), skyView: seen, reflectedFlux: g.reflectedFlux });
   const dSurr = g.warmth;
   const dSky = skyLongwaveMrtDelta(w.horizontalInfrared, ta, seen); // the cold sky, day and night
   const tr = ta + sc.total + dSurr + dSky;
@@ -5460,16 +5492,17 @@ function comfortNow() {
 
 // The simulated cloud over the person: null with the option off; { off: reason } when there are no
 // clouds to count; else { shade (1 open .. 0.1 under a cloud), gap (the beam between clouds, W/m²) }.
-function comfortClouds(pos) {
+function comfortClouds(pos, eye = analysisPoint()?.eye || camera.eye) {
   if (!state.comfort.clouds) return null;
   if (!pos || pos.altitude <= 0) return { off: 'No sun to cover' };
   const sky = currentSky(pos.altitude);
   if (!sky || sky.cover < 0.01) return { off: 'No cloud in the weather file at this hour' };
   const mpu = (model && METRES_PER_UNIT[model.units]) || 1;
-  return { shade: cloudShadeAt(analysisPoint()?.eye || camera.eye, sunVector(pos.azimuth, pos.altitude, state.sun.north), sky.cover, clouds.drift, mpu), gap: sky.gapBeam };
+  return { shade: cloudShadeAt(eye, sunVector(pos.azimuth, pos.altitude, state.sun.north), sky.cover, clouds.drift, mpu), gap: sky.gapBeam };
 }
 
 function syncComfortPanel() {
+  schedulePeopleColours();
   syncMrtPanel();
   syncPersonCard();
   if (!state.comfort.panel) return;
@@ -5728,6 +5761,63 @@ function checkSurroundings() {
     // Something may have changed meanwhile.
     if (comfortShown()) setTimeout(checkSurroundings, 0);
   });
+}
+
+// Colouring the people by their UTCI. Everyone's sunlight, sky view and surroundings are worked out
+// as the selected person's are, one person after another, and kept with them (subject.kept), so
+// selecting one later shows theirs at once; then their UTCI, as on their card. A run starts whenever
+// something that can change a UTCI does (syncComfortPanel); one already under way runs again after.
+const peopleUtci = new Map(); // person id -> UTCI (°C), for those worked out
+let peopleColourRun = null, peopleColourAgain = false;
+function schedulePeopleColours() {
+  if (state.person.colour !== 'utci' || !model) {
+    if (peopleUtci.size) { peopleUtci.clear(); redraw(); }
+    return;
+  }
+  if (peopleColourRun) { peopleColourAgain = true; return; }
+  peopleColourRun = (async () => {
+    do { peopleColourAgain = false; await colourPeopleOnce(); } while (peopleColourAgain && state.person.colour === 'utci');
+  })().catch((e) => console.warn('Colouring people by UTCI failed', e)).finally(() => { peopleColourRun = null; });
+}
+// A sky view, worked out at eye, as checkSkyView keeps it; null if it could not be.
+function skyViewOf(eye) {
+  const m = model, key = skyViewKey(eye);
+  return renderer.skyView(eye, 0.05 / (METRES_PER_UNIT[m.units] || 1), SKY_N, SKY_FACES)
+    .then((data) => (model === m && data ? { key, eye, data, ...skyViewFactors(data, SKY_N) } : null));
+}
+// The surroundings seen in the sky view V, as checkSurroundings keeps them; null if they could not be.
+function surroundingsOf(V) {
+  const m = model, sun = sunKey(), up = sun[2] > -1, key = surroundingsKey(V);
+  V.pts ??= surroundingPoints(V.data, SKY_N, V.eye);
+  const lit = up ? renderer.surroundingsLit(V.pts, sun, 0.1 / (METRES_PER_UNIT[m.units] || 1)) : Promise.resolve(null);
+  return lit.then((l) => (model !== m || (up && !l) ? null : { key, view: surroundingsView(V.data, SKY_N, V.pts, sun, l) }));
+}
+async function colourPeopleOnce() {
+  const e = site.epw, seen = new Set();
+  const { month, day } = dateFromDayOfYear(EPW_YEAR, state.sun.doy), w = e?.at(month, day, state.sun.hour);
+  if (w && w.dryBulb !== null && w.relativeHumidity !== null && w.windSpeed !== null) {
+    const pos = activeLocation() ? sunPosition() : null, up = pos && pos.altitude > 0;
+    for (const p of [...state.people]) {
+      if (state.person.colour !== 'utci' || !model) return;
+      if (!personById(p.id)) continue;
+      // The selected person's are the live ones; anyone else's are kept with them.
+      const a = personPoint(p), mine = subject.id === p.id, k = mine ? { sunlight, skyView, surroundings } : resultsOf(p.id);
+      let sl = pos ? k.sunlight : null, sv = k.skyView, su = k.surroundings;
+      if (pos && !up) sl = { night: true };
+      else if (pos && (!sl || sl.night || sl.key !== sunlightKey(a.eye))) sl = await sunRay(a.eye, pos);
+      if (!sv || sv.key !== skyViewKey(a.eye)) { sv = await skyViewOf(a.eye); su = null; }
+      if (sv && (!su || su.key !== surroundingsKey(sv))) su = await surroundingsOf(sv);
+      if (!model || !personById(p.id)) continue;
+      if (!mine) Object.assign(resultsOf(p.id), { sunlight: sl, skyView: sv, surroundings: su });
+      if ((pos && !sl) || !sv || !su) continue;
+      peopleUtci.set(p.id, comfortFor(w, a, sl, sv, su).value);
+      seen.add(p.id);
+      redraw(); // each figure takes its colour as soon as it has it
+    }
+  }
+  for (const id of [...peopleUtci.keys()]) if (!seen.has(id)) peopleUtci.delete(id);
+  syncPersonPanel();
+  redraw();
 }
 
 // The view of the surroundings for the radiant temperature: measured, or open ground in the sun.

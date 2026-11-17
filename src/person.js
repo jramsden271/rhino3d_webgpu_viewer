@@ -119,8 +119,9 @@ const TORSO = [
 
 // The figure: 'standing' (1.75 m tall) or 'sitting' (on a 0.45 m stool), its torso lowered by SIT.
 const SIT = 0.35;
-export function personGeometry(posture = 'standing') {
-  const c = PERSON_COLOUR, B = builder(), sitting = posture === 'sitting', dz = sitting ? -SIT : 0;
+// colour: the figure's, sRGB 0-255 (the stool keeps its own).
+export function personGeometry(posture = 'standing', colour = PERSON_COLOUR) {
+  const c = colour, B = builder(), sitting = posture === 'sitting', dz = sitting ? -SIT : 0;
   const side = (f) => { f(1); f(-1); };
   B.loft(TORSO.map((S) => ({ ...S, z: S.z + dz })), c);
   // Head and nose (so the way it faces shows).

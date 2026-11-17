@@ -211,6 +211,8 @@
         <button class="btn small" id="personRemove" title="Take everyone away">Remove all</button>
       </div>
       <label class="field-row" data-full title="Standing or sitting, for the people placed from now on (each person's card sets their own)">New people <select id="comfortPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
+      <label class="field-row" data-full title="Colours everyone by their thermal comfort (UTCI) where they stand, in the UTCI colour scale chosen for the results. Needs a weather file">Colour <select id="personColour"><option value="none">None</option><option value="utci">UTCI</option></select></label>
+      <div class="fine" id="personColourNote" data-full hidden></div>
       <div class="field" data-full>
         <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
         <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind, for everyone: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
