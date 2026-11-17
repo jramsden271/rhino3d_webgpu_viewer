@@ -559,7 +559,21 @@ async function openBytes(name, bytes, handle = null) {
 // The Rhino files shown together as one model: sources = [{ name, bytes, handle }]. The first file's
 // origin is used for all, so they line up as they do in Rhino. handle: the first file's, which
 // holds the model's settings (see Recent).
+// While one is opening, nothing else may be opened or dropped (see refuseWhileOpening): the model is
+// set part way through, and a file opened then (onto a project still blank) would start a new project
+// and take the model away from under it.
+let openingScene = 0;
+function refuseWhileOpening() {
+  if (!openingScene) return false;
+  notice('A model is still opening: wait for it to finish, then try again.', true, 5000);
+  return true;
+}
+
 async function openScene(sources, opts = {}) {
+  openingScene++;
+  try { return await openSceneNow(sources, opts); } finally { openingScene--; }
+}
+async function openSceneNow(sources, opts) {
   const t0 = performance.now(), [first] = sources, handle = first.handle ?? null;
   const name = sources.map((s) => s.name).join(' + ');
   walker.exit();
@@ -6110,6 +6124,7 @@ const canAttach = (name) => /\.(3dm|epw)$/i.test(name) || resultParsersFor(name)
 // a new one. Its name: the first Rhino file's, or Untitled. Rhino files go in by handle, and weather and
 // results files are attached once the model is open.
 async function openEntries(entries) {
+  if (refuseWhileOpening()) return;
   // A project zip is opened on its own, with Open zip; one among other files is left out (said once the
   // files are open, as opening a model clears the notices before it).
   const zips = entries.filter(({ file }) => /\.zip$/i.test(file.name));
@@ -6642,6 +6657,7 @@ function bindUi() {
     if (!hasFiles(e)) { if (!editable(e)) e.preventDefault(); return; }
     e.preventDefault(); depth = 0; drop.classList.remove('over');
     drop.hidden = true;
+    if (refuseWhileOpening()) return;
     // The handles have to be requested before anything else is awaited.
     const files = [...e.dataTransfer.files], items = [...e.dataTransfer.items].filter((i) => i.kind === 'file');
     const asked = Recent.supported ? items.map((i) => i.getAsFileSystemHandle?.()) : [];
