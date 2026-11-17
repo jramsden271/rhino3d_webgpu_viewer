@@ -4940,8 +4940,12 @@ function sunState(r) {
 
 const PERSON_CENTRE = { standing: 1.1, sitting: 0.6 }; // m above the ground: the middle of the body, where it is measured
 const PERSON_STEP = 0.3; // m: a spot clicked on a wall puts the person this far out from it, on the ground below
-const COMPASS8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-const PERSON_FACINGS = [['side', 'Side-on to the sun'], ...COMPASS8.map((c, i) => [String(i * 45), `Facing ${c}`])];
+// Black or white text, whichever reads better on a colour ([r, g, b], 0-255): the one with more contrast.
+function textOn([r, g, b]) {
+  const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#111' : '#fff';
+}
 // How the figure glows (linear rgb, see renderer.setActorGlow): under the cursor, and selected.
 const PERSON_GLOW = { hover: [0.07, 0.045, 0.005], selected: [0.16, 0.1, 0.01], both: [0.21, 0.135, 0.015] };
 
@@ -5322,7 +5326,7 @@ function showPersonHelp() {
     <p><b>Click</b> a person to select them: their card opens beside them, with <b>thermal comfort</b> (the UTCI), the <b>radiant temperature</b> and the <b>sky view</b> where they stand. Click a figure in the card for its details. The Thermal comfort, Radiant temperature and Sky view widgets show the same for the selected person, or, while you walk or drive, for you.</p>
     <p><b>Drag</b> a person to move them: they face the way they go. A short drag only turns them to face the way you drag. <kbd>Delete</kbd> removes the selected person.</p>
     <p><b>Posture</b> (in each card; this widget's sets it for new people): standing or sitting. It sets how much of the body the sun falls on, and the height everything is measured at, the middle of the body: ${PERSON_CENTRE.standing} m up standing, ${PERSON_CENTRE.sitting} m sitting. Sitting low sees more of the ground and less of the sky.</p>
-    <p><b>Facing</b> (in each card): side-on to the sun and turned away from it (SolarCal's usual assumption, and the default), or a compass direction, which changes how much of the body the direct sun falls on through the day. Turning a person by dragging sets it too, to the degree.</p>
+    <p><b>Facing</b>: a person starts side-on to the sun and turned away from it (SolarCal's usual assumption). Turn them by dragging to face a direction of your own, which changes how much of the body the direct sun falls on through the day.</p>
     <p><b>Wind factor</b> (for everyone): the share of the weather file's wind (measured in the open, 10 m up) that reaches people: a stand-in for shelter, which the viewer cannot work out yet. 1 is open ground; 0.5, the default, is a typical allowance for streets and buildings.</p>
     <p><b>Walk from here</b> (in the card) starts walking as the person, where they stand and looking the way they face; when you stop, they are left where you stopped, facing the way you looked. While walking, click another person for their card, and its <b>Walk from here</b> hops to them: the one you were walking as stays where you were. While their card is open, the comfort widgets show them rather than you. When you stop walking otherwise, you can place a person where you stopped.</p>` });
 }
@@ -5361,10 +5365,6 @@ function syncPersonCard() {
   if (!show) return;
   $('pcTitle').textContent = personName(p);
   $('pcPosture').value = p.posture;
-  const sel = $('pcFacing');
-  sel.querySelector('[data-custom]')?.remove();
-  if (!PERSON_FACINGS.some(([v]) => v === p.facing)) sel.insertAdjacentHTML('beforeend', `<option value="${p.facing}" data-custom>Facing ${p.facing}° (${COMPASS8[Math.round(Number(p.facing) / 45) % 8]})</option>`);
-  sel.value = p.facing;
   for (const k of ['utci', 'mrt', 'sky']) {
     const row = box.querySelector(`[data-pc="${k}"]`);
     row.setAttribute('aria-expanded', String(personCard.open[k]));
@@ -5385,7 +5385,9 @@ function syncPersonCard() {
     $('pc-utci').style.removeProperty('--cat');
   } else {
     const cat = utciCategory(r.value);
-    $('pc-utci').style.setProperty('--cat', ColourScales.css(ColourScales.preferred('utci'), r.value));
+    const scale = ColourScales.preferred('utci');
+    $('pc-utci').style.setProperty('--cat', ColourScales.css(scale, r.value));
+    $('pc-utci').style.setProperty('--cat-text', textOn(ColourScales.colour(scale, r.value)));
     setHtml($('pc-utci'), `<b>${f(r.value)}</b> °C <span class="pc-cat">${cat.name}</span>`);
     setHtml($('pc-mrt'), `<b>${f(r.tr)}</b> °C <span class="fine">air ${r.tr < r.ta ? '−' : '+'} ${f(Math.abs(r.tr - r.ta))}</span>`);
     if (personCard.open.utci) setHtml($('pc-utci-detail'), `${comfortInputsHtml(r, false)}${r.inRange ? '' : '<div class="fine">Outside the range the UTCI was fitted over, so only a rough guide.</div>'}${comfortCloudNote(r)}`);
@@ -5433,8 +5435,6 @@ function bindPersonCard() {
     state.walkPerson = p.id;
     fadeIntoWalk(p.at, Math.atan2(-f[1], -f[0]));
   });
-  $('pcFacing').innerHTML = PERSON_FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
-  $('pcFacing').addEventListener('change', (e) => { const p = selectedPerson(); if (p) { p.facing = e.target.value || 'side'; peopleChanged(); } });
   $('pcPosture').addEventListener('change', (e) => { const p = selectedPerson(); if (p) { p.posture = e.target.value; peopleChanged(); } });
   const box = $('personCard');
   box.addEventListener('click', (e) => {
@@ -5625,7 +5625,7 @@ function setHtml(el, html) { if (el.dataset.html !== html) { el.dataset.html = h
 function showComfortHelp() {
   Dialog.open({ title: 'Thermal comfort', html: true, width: 400, body: `<p>The Universal Thermal Climate Index (UTCI) is the air temperature that would feel the same in calm, shaded, reference conditions. 9 to 26 °C is <b>no thermal stress</b>.</p>
     <p>It is estimated where the selected <b>person</b> stands (Tools → Person places people; click one to select them), or where you are while walking, at the Date and Time widgets' date and time, from the weather file: the air temperature and humidity as they are, and the wind speed times the <b>wind factor</b> (set in the Person widget, for everyone). The factor stands in for shelter, which the viewer cannot work out yet: 1 is the open-ground wind of the weather file, lower values are more sheltered. It starts at 0.5, a typical allowance for the shelter of streets and buildings compared with the open site where weather files are recorded (at 10 m, which is the height the UTCI expects). The UTCI was fitted for wind speeds from 0.5 m/s, so slower winds, including calm, are counted as 0.5 m/s.</p>
-    <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. The person's <b>Facing</b> and <b>Posture</b>, set in their card, say which way they face and whether they stand or sit, which changes how much of the body the direct sun falls on.</p>
+    <p>The <b>mean radiant temperature</b> starts from the air temperature, and sunlight and skylight on the person are added by the SolarCal method (ASHRAE 55, Appendix C), from the weather file's radiation for the hour: <b>skylight</b> (its diffuse radiation), in sun or shade, and the <b>direct sun</b> on the person when the camera is in sunlight. Whether the person stands or sits (<b>Posture</b>, in their card) and which way they face (turn them by dragging) change how much of the body the direct sun falls on.</p>
     <p>The ground and walls the person sees add two more parts. Every surface seen, all round and above and below the horizon, is tested for sun, as the sun exposure tool does, and counts by its share of the view (<b>Surfaces in sun</b> in the details). <b>Reflected light</b>: the surfaces reflect a quarter of the sun and skylight on them onto the person. <b>Sun-warmed surfaces</b>: those in sun are warmer than the air by the sun they absorb (about 25 °C for sunlit paving at midday in summer), which warms the person too; those in shade are taken to be at the air temperature. So in a building's shadow the ground round about is mostly shaded and adds little, and a sunlit street adds most. Where nothing is drawn below the horizon, open ground in the sun is assumed, and without a model, open ground all round.</p>
     <p>The <b>cold sky</b> takes some off, day and night: the sky is colder than the air, much colder when it is clear, and the half of the body facing it loses heat to it. Its temperature comes from the weather file's horizontal infrared radiation, as ladybug-comfort works it out; ground and walls are taken to be at the air temperature.</p>
     <p>Only the sky the person can see counts for the skylight and the cold sky: the share of the sky the person sees, as the <b>Sky view</b> widget (Tools) works it out from what is shown, under <b>Sky seen</b> in the details. Not counted yet: surfaces heating up and cooling down over the day (a surface is as warm as the sun on it now), their materials, and light reflected more than once.</p>

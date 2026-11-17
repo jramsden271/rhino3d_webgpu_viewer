@@ -796,7 +796,7 @@ body.walking .walk-frame { display: block; }
 .pc-v { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-v b { font-size: 14px; }
 .pc-v .fine { font-size: 11px; color: var(--muted); }
-.pc-cat { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: 11px; background: var(--cat, transparent); color: #111; }
+.pc-cat { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: 11px; background: var(--cat, transparent); color: var(--cat-text, #111); }
 .pc-row .caret { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; align-self: center; transition: transform 0.15s; }
 .pc-row .caret.collapsed { transform: rotate(-90deg); }
 .pc-detail { padding: 0 0 6px; }
