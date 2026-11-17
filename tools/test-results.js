@@ -29,6 +29,17 @@ d = parseCfdStreamlines(file);
 assert.deepStrictEqual(d.streamlines.map((l) => l.name), ['One', 'Two']);
 assert.deepStrictEqual([...d.streamlines[1].polylines[0].velocity], [2, 1]);
 
+// Traced both ways from a seed: two polylines from the same place (nodes 0 and 1 at x = 0) become one
+// through it, from the end of the second to the end of the first.
+d = parseCfdStreamlines(`[Name]
+Both ways
+${data([[0, 0, 0, 0, 1], [1, 0, 0, 0, 1], [2, 1, 0, 0, 2], [3, 2, 0, 0, 3], [4, -1, 0, 0, 4]])}${lines([[0, 2], [2, 3], [1, 4]])}`);
+assert.strictEqual(d.streamlines[0].polylines.length, 1);
+assert.deepStrictEqual([...d.streamlines[0].polylines[0].points].filter((_, k) => k % 3 === 0), [-1, 0, 1, 2]);
+assert.deepStrictEqual([...d.streamlines[0].polylines[0].velocity], [4, 1, 2, 3]);
+// Reversed: the time runs from the far end.
+const rv = streamlineVertices(d.streamlines, 1, [0, 0, 0], () => [0, 0, 0], () => true);
+assert(rv.verts[7] > 1 && Math.abs(rv.verts[3 * 16 + 7]) < 1e-6, 'reversed: the last node is where the air starts');
 // A closed loop and a fork lose nothing.
 d = parseCfdStreamlines(`[Name]\nLoop\n${data(nodes)}${lines([[0, 1], [1, 2], [2, 0]])}`);
 assert.strictEqual(d.streamlines[0].polylines[0].velocity.length, 4);

@@ -150,7 +150,8 @@
       <span>CFD streamlines</span>
       <span class="panel-actions"><label class="switch" title="Show the chosen streamlines, or none"><input type="checkbox" id="streamlinesOn"><span></span></label><button class="x" id="streamlinesClose" aria-label="Close CFD streamlines" title="Close">×</button></span>
     </div>
-    <div class="map-pick"><select id="streamlinePick" aria-label="Streamlines shown" title="The file whose streamlines are shown: one at a time, all of its lines"></select></div>
+    <div class="map-pick"><select id="streamlinePick" aria-label="Streamlines shown" title="The file whose streamlines are shown: one at a time, all of its lines"></select>
+      <label class="check" title="The file gives the wind's speed along the lines but not which way it blows: tick this if the pulses run against the wind"><input type="checkbox" id="streamlineReverse"> Reverse flow</label></div>
     <div id="streamlineLegend" class="res-foot"></div>
   </aside>
   <aside id="mapPanel" class="chrome panel layers-panel" hidden aria-label="CFD map" data-min>

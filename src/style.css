@@ -602,6 +602,7 @@ body.walking .walk-frame { display: block; }
 .res-row .fine { font-size: 11.5px; color: var(--muted); }
 /* The CFD map widget: one result at a time, picked from a dropdown. */
 .map-pick { padding: 8px 10px 4px; }
+.map-pick .check { display: flex; margin-top: 6px; }
 .map-pick select { font: inherit; width: 100%; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
 .res-foot { flex: 0 1 auto; overflow: auto; padding: 8px 12px 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
 .res-foot:empty { display: none; }

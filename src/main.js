@@ -93,7 +93,8 @@ let results = [];
 ColourScales.choices = prefs.colourScales || {};
 // The CFD streamlines panel. on: its master switch. off: the names of the files not shown (all but
 // the one picked). lines: what was given to the renderer, a { key (file name), ranges } for each file.
-state.streamlines = { panel: false, on: true, off: new Set(), lines: [] };
+// reversed: the names of the files whose flow runs the other way along their lines (see joinSeedHalves).
+state.streamlines = { panel: false, on: true, off: new Set(), reversed: new Set(), lines: [] };
 // The CFD map panel. on: its master switch. off: keys of the unticked maps. collapsed: of those
 // folded up. picked: map key -> the name of the result shown. z: metres moved up. list: what was
 // given to the renderer, a { key, map, label } for each map.
@@ -1604,7 +1605,7 @@ function saveViewState() {
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view }, people: state.people.map((p) => ({ at: p.at, facing: p.facing, posture: p.posture })) });
+    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off], reversed: [...state.streamlines.reversed] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view }, people: state.people.map((p) => ({ at: p.at, facing: p.facing, posture: p.posture })) });
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -1617,6 +1618,7 @@ function restoreLayersAndHidden(saved) {
   for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   state.streamlines.on = saved.streamlines?.on !== false;
   state.streamlines.off = new Set(saved.streamlines?.off || []);
+  state.streamlines.reversed = new Set(saved.streamlines?.reversed || []);
   Object.assign(state.maps, { on: saved.maps?.on !== false, off: new Set(saved.maps?.off || []), picked: saved.maps?.picked || {}, z: Number.isFinite(saved.maps?.z) ? Math.min(MAP_Z_MAX, Math.max(MAP_Z_MIN, saved.maps.z)) : 0 });
   pushObjectFlags();
   syncHiddenButton();
@@ -3300,7 +3302,7 @@ function fillStreamlines() {
   const SL = state.streamlines, files = model ? results.filter((r) => r.parser?.id === 'cfdStreamlines' && !r.off) : [];
   const all = files.flatMap((file) => file.data.streamlines.map((line) => ({ file, line })));
   const wind = ColourScales.preferred('windSpeed');
-  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed)) : null;
+  const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed), (i) => SL.reversed.has(all[i].file.name)) : null;
   setHtml($('streamlineLegend'), all.length ? colourLegendHtml(wind, 'Velocity', ColourScales.metrics.windSpeed.unit) : '');
   renderer.setResultLines(v);
   // SL.lines: one for each file, with the ranges of all its polylines; its key is the file's name.
@@ -3334,6 +3336,7 @@ function syncStreamlines() {
   syncResultsMenu();
   const i = SL.lines.findIndex((l) => !SL.off.has(l.key));
   if (i >= 0) $('streamlinePick').value = String(i);
+  $('streamlineReverse').checked = i >= 0 && SL.reversed.has(SL.lines[i].key);
 }
 
 // The CFD map panel, and the maps it shows.
@@ -3493,6 +3496,14 @@ function bindStreamlinesPanel() {
   $('streamlinesOn').addEventListener('change', (e) => setStreamlinesOn(e.target.checked));
   $('streamlinesClose').addEventListener('click', () => state.streamlines.panel && toggleStreamlinesPanel());
   $('streamlinePick').addEventListener('change', (e) => pickStreamlines(+e.target.value));
+  $('streamlineReverse').addEventListener('change', (e) => {
+    const SL = state.streamlines, l = SL.lines.find((x) => !SL.off.has(x.key));
+    if (!l) return;
+    if (e.target.checked) SL.reversed.add(l.key); else SL.reversed.delete(l.key);
+    fillStreamlines();
+    saveViewState();
+    redraw();
+  });
 }
 
 // Set location dialog: one choice of location source, picked from a list. Changes apply as they are made.

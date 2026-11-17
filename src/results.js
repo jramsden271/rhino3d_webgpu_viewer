@@ -48,7 +48,7 @@ export function parseCfdStreamlines(text) {
   const finish = () => {
     if (!cur) return true;
     if (!cur.starts.length) return false;
-    streamlines.push({ name: cur.name, segments: cur.starts.length, polylines: streamlinePolylines(cur) });
+    streamlines.push({ name: cur.name, segments: cur.starts.length, polylines: joinSeedHalves(streamlinePolylines(cur)) });
     return true;
   };
   for (const raw of text.split('\n')) {
@@ -89,6 +89,27 @@ export function parseCfdStreamlines(text) {
 // Joins segments end to end. Usually each starts where the last ended, but nothing relies on that:
 // a line starts at a node nothing leads into, and anything left over (a closed loop, the second
 // branch of a fork) starts where it can.
+// CFD-Post's streamlines traced both ways from their seeds come as two polylines for each seed, both
+// starting at it, one downstream and one upstream, listed one after the other. Each such pair becomes one
+// polyline through its seed, running from the end of the second to the end of the first. The file has
+// only the speed, not the velocity's direction, so which half is downstream cannot be told: the first is
+// taken to be (the CFD streamlines widget can reverse a file's flow).
+function joinSeedHalves(polylines) {
+  const out = [];
+  for (let i = 0; i < polylines.length; i++) {
+    const a = polylines[i], b = polylines[i + 1];
+    const same = b && a.points[0] === b.points[0] && a.points[1] === b.points[1] && a.points[2] === b.points[2];
+    if (!same) { out.push(a); continue; }
+    const nb = b.velocity.length, na = a.velocity.length, points = new Float64Array((nb + na - 1) * 3), velocity = new Float32Array(nb + na - 1);
+    for (let k = 0; k < nb; k++) { const j = nb - 1 - k; points.set(b.points.subarray(j * 3, j * 3 + 3), k * 3); velocity[k] = b.velocity[j]; }
+    points.set(a.points.subarray(3), nb * 3);
+    velocity.set(a.velocity.subarray(1), nb);
+    out.push({ points, velocity });
+    i++;
+  }
+  return out;
+}
+
 function streamlinePolylines({ xyz, velocity, starts, ends }) {
   const n = velocity.length, incoming = new Uint32Array(n), first = new Int32Array(n).fill(-1), next = new Int32Array(starts.length).fill(-1);
   for (let i = starts.length - 1; i >= 0; i--) { incoming[ends[i]]++; next[i] = first[starts[i]]; first[starts[i]] = i; }
@@ -275,17 +296,19 @@ export function parseResultsFile(bytes, fileName) {
 // (-1 or 1) and the time the air takes to get there from the polyline's start (s, for animating
 // the flow). col: each vertex the colour (colourOf, velocity -> [r, g, b]) of its node. idx: two
 // triangles a segment. ranges: for each streamline, a { first, count } in idx for each polyline.
+// reversed(i): the air runs along streamline i the other way, from each polyline's last node.
 export const STREAMLINE_SLOWEST = 0.05; // m/s: slower air counts as this, for the time to travel
-export function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
+export function streamlineVertices(streamlines, metresPerUnit, origin, colourOf, reversed = () => false) {
   let nodes = 0, segments = 0;
   for (const line of streamlines) for (const { velocity } of line.polylines) { nodes += velocity.length; segments += Math.max(0, velocity.length - 1); }
   const verts = new Float32Array(nodes * 16), col = new Uint8Array(nodes * 8), idx = new Uint32Array(segments * 6), ranges = [];
   let v = 0, at = 0;
-  for (const line of streamlines) {
-    const parts = [];
+  streamlines.forEach((line, li) => {
+    const parts = [], back = reversed(li);
     for (const { points, velocity } of line.polylines) {
       const n = velocity.length, first = at, P = (i, k) => points[i * 3 + k] / metresPerUnit - origin[k];
       let time = 0;
+      const v0 = v;
       for (let i = 0; i < n; i++) {
         if (i > 0) {
           const d = Math.hypot(points[i * 3] - points[i * 3 - 3], points[i * 3 + 1] - points[i * 3 - 2], points[i * 3 + 2] - points[i * 3 - 1]);
@@ -304,9 +327,10 @@ export function streamlineVertices(streamlines, metresPerUnit, origin, colourOf)
         }
         if (i > 0) { const q = v - 4; idx.set([q, q + 1, q + 2, q + 1, q + 3, q + 2], at); at += 6; }
       }
+      if (back) for (let k = v0; k < v; k++) verts[k * 8 + 7] = time - verts[k * 8 + 7];
       parts.push({ first, count: at - first });
     }
     ranges.push(parts);
-  }
+  });
   return { verts, col, idx, ranges };
 }
