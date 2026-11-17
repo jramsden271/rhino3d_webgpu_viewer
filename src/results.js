@@ -269,29 +269,44 @@ export function parseResultsFile(bytes, fileName) {
   return null;
 }
 
-// Line-list vertices for streamlines, in the model's units relative to its origin, with each
-// segment the colour (colourOf, velocity -> [r, g, b]) of its start node. ranges: for each streamline, a { first, count } in vertices
-// for each of its polylines.
+// Streamlines as ribbons for the GPU (drawn as tubes facing the camera): two vertices at each node of
+// each polyline, one either side, in the model's units relative to its origin. verts: 8 floats a
+// vertex: position (3), the line's direction there (3, a unit vector, in model units), the side
+// (-1 or 1) and the time the air takes to get there from the polyline's start (s, for animating
+// the flow). col: each vertex the colour (colourOf, velocity -> [r, g, b]) of its node. idx: two
+// triangles a segment. ranges: for each streamline, a { first, count } in idx for each polyline.
+export const STREAMLINE_SLOWEST = 0.05; // m/s: slower air counts as this, for the time to travel
 export function streamlineVertices(streamlines, metresPerUnit, origin, colourOf) {
-  const total = streamlines.reduce((s, l) => s + l.segments, 0);
-  const pos = new Float32Array(total * 6), col = new Uint8Array(total * 8), ranges = [];
-  let at = 0;
+  let nodes = 0, segments = 0;
+  for (const line of streamlines) for (const { velocity } of line.polylines) { nodes += velocity.length; segments += Math.max(0, velocity.length - 1); }
+  const verts = new Float32Array(nodes * 16), col = new Uint8Array(nodes * 8), idx = new Uint32Array(segments * 6), ranges = [];
+  let v = 0, at = 0;
   for (const line of streamlines) {
     const parts = [];
     for (const { points, velocity } of line.polylines) {
-      const first = at;
-      for (let i = 0; i + 1 < velocity.length; i++, at += 2) {
-        for (let k = 0; k < 3; k++) {
-          pos[at * 3 + k] = points[i * 3 + k] / metresPerUnit - origin[k];
-          pos[at * 3 + 3 + k] = points[i * 3 + 3 + k] / metresPerUnit - origin[k];
+      const n = velocity.length, first = at, P = (i, k) => points[i * 3 + k] / metresPerUnit - origin[k];
+      let time = 0;
+      for (let i = 0; i < n; i++) {
+        if (i > 0) {
+          const d = Math.hypot(points[i * 3] - points[i * 3 - 3], points[i * 3 + 1] - points[i * 3 - 2], points[i * 3 + 2] - points[i * 3 - 1]);
+          time += d / Math.max(STREAMLINE_SLOWEST, (velocity[i] + velocity[i - 1]) / 2);
         }
+        // The direction: from the node before to the node after (or the one there is).
+        const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+        let t = [P(b, 0) - P(a, 0), P(b, 1) - P(a, 1), P(b, 2) - P(a, 2)];
+        const l = Math.hypot(...t) || 1;
+        t = t.map((x) => x / l);
         const c = colourOf(velocity[i]);
-        col.set(c, at * 4); col[at * 4 + 3] = 255;
-        col.set(c, at * 4 + 4); col[at * 4 + 7] = 255;
+        for (const side of [-1, 1]) {
+          verts.set([P(i, 0), P(i, 1), P(i, 2), ...t, side, time], v * 8);
+          col.set(c, v * 4); col[v * 4 + 3] = 255;
+          v++;
+        }
+        if (i > 0) { const q = v - 4; idx.set([q, q + 1, q + 2, q + 1, q + 3, q + 2], at); at += 6; }
       }
       parts.push({ first, count: at - first });
     }
     ranges.push(parts);
   }
-  return { pos, col, ranges };
+  return { verts, col, idx, ranges };
 }

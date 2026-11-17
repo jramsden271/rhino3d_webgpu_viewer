@@ -251,6 +251,7 @@ function frameState() {
   s.windShell = !!windTool?.shellShown();
   checkExposure();
   s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.ranges) : [];
+  s.flow = flowing();
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
   // Look: the sky behind the model, haze beyond the orbit target (perspective views only).
@@ -389,8 +390,12 @@ function fillSunPath() {
   renderer.setSunPath(sunPathDiagram({ lat: S.lat, lon: S.lon, utcOffset: S.utcOffset, year: EPW_YEAR, north: S.north, doy: S.doy, dayName: `${day} ${MONTHS[month - 1]}` }), scale);
 }
 
+// Streamlines shown, with Animations on: pulses run along them with the wind.
+const flowing = () => !!(model && state.animations && state.streamlines.on && state.streamlines.lines.some((l) => !state.streamlines.off.has(l.key)));
+
 // The water's clock, stopped while Animations is off, and when the last frame was drawn.
 const anim = { time: 0, last: performance.now(), drawn: 0 };
+let lastFrame = null; // the last frame drawn in full (frameState), drawn again with the streamlines moved on
 const ANIM_FRAME = 30; // ms between frames drawn only for the animations: about 30 a second, as they need no more
 
 function loop() {
@@ -422,13 +427,22 @@ function loop() {
     anim.drawn = now;
     renderer.dirty = false;
     const t = performance.now();
-    renderer.draw(frameState());
+    lastFrame = frameState();
+    renderer.draw(lastFrame);
     if (thumb.take) { thumb.take = false; captureThumb(); } // the frame can only be read before this task ends
     if (state.devMode) diagFrame(t);
     positionInspector(); positionPersonCard(); syncCompass();
     if (comfortShown()) checkSunlight();
     if (comfortShown() || state.skyView.panel) checkSkyView();
     if (comfortShown()) checkSurroundings();
+  } else if (lastFrame && flowing() && now - anim.drawn >= ANIM_FRAME) {
+    // Streamlines keep flowing while they are shown, idle or not (they are shown to be watched).
+    // Nothing else has changed, so only they are drawn again, over the scene the renderer kept.
+    anim.drawn = now;
+    lastFrame.time = anim.time;
+    lastFrame.linesOnly = true;
+    renderer.draw(lastFrame);
+    lastFrame.linesOnly = false;
   }
   requestAnimationFrame(loop);
 }
@@ -5950,7 +5964,7 @@ const RENDER_TOGGLES = [
   { id: 'showEdges', label: 'Edges', hint: 'E' },
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
   { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
-  { id: 'animations', label: 'Animations', title: 'Water ripples and drifting clouds. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
+  { id: 'animations', label: 'Animations', title: 'Water ripples, drifting clouds and the flow along CFD streamlines. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];

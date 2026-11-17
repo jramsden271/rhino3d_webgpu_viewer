@@ -72,7 +72,7 @@ struct Frame {
   surface: vec4f,   // xyz = origin of the surface noise (model units), w = surface variation strength (0 off)
   marker: vec4f,    // where walking would start: xyz centre, w = radius (model units, 0 = none)
   shadow: array<mat4x4f, ${CASCADES}>,
-  lampCount: vec4f, // x = number of lamps in use
+  lampCount: vec4f, // x = number of lamps in use, y = 1 to run pulses along the result lines (s.flow)
   // Per lamp: xyz position, w = range (m); rgb = colour x power, w = cos of the spot's inner cone;
   // xyz = spot direction, w = cos of the outer cone (-2 for a point light shining all round);
   // shadow: x = first layer in lampShadowMap (-1 none), y = near plane (model units),
@@ -813,13 +813,43 @@ struct LOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
   return vec4f(mix(horizon(), B.color.rgb * min(F.sunColor.w * 1.5, 1.0), fade), 1.0);   // dimmer at dusk and night
 }
 
-// Result lines, each vertex with its own colour; not picked, and not faded by the haze.
-struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f };
-@vertex fn vsResultLine(@location(0) p: vec3f, @location(2) col: vec4f) -> ResultOut {
+// Result lines (CFD streamlines): ribbons turned to face the camera and shaded across like tubes,
+// a little see-through, each node its own colour; not picked, and not faded by the haze. Each is
+// TUBE_RADIUS metres across, but never under TUBE_MIN_PX pixels, so far ones stay visible. Pulses
+// of light run along them with the air: ex.y is the time (s) the air takes to reach a node, so a
+// pulse moves FLOW_SPEEDUP times as fast as the wind there, one every FLOW_EVERY seconds of travel.
+const TUBE_RADIUS = 0.3;
+const TUBE_MIN_PX = 1.6;
+const FLOW_SPEEDUP = 6.0;
+const FLOW_EVERY = 6.0;
+struct ResultOut { @builtin(position) pos: vec4f, @location(0) col: vec3f, @location(1) across: f32, @location(2) time: f32 };
+@vertex fn vsResultLine(@location(0) p: vec3f, @location(1) t: vec3f, @location(2) col: vec4f, @location(3) ex: vec2f) -> ResultOut {
   let c = F.viewProj * vec4f(p, 1.0);
-  return ResultOut(vec4f(c.xy, min(c.z * LINE_PULL, c.w), c.w), col.rgb);
+  let half = F.viewport.xy * 0.5;
+  // The line's direction on screen, and the way across it.
+  let c1 = F.viewProj * vec4f(p + t * (0.25 / F.misc.y), 1.0);
+  var dir = (c1.xy / c1.w - c.xy / c.w) * half;
+  dir = select(vec2f(1.0, 0.0), normalize(dir), length(dir) > 1e-6);
+  // How wide the tube is on screen: its radius, across the line and the view.
+  let toEye = select(F.eye.xyz - p, -F.viewDir.xyz, F.eye.w > 0.5);
+  var side = cross(t, toEye);
+  side = select(F.camRight.xyz, normalize(side), length(side) > 1e-9);
+  let c2 = F.viewProj * vec4f(p + side * (TUBE_RADIUS / F.misc.y), 1.0);
+  let px = max(length((c2.xy / c2.w - c.xy / c.w) * half), TUBE_MIN_PX);
+  let off = vec2f(-dir.y, dir.x) * ex.x * px / half * c.w;
+  return ResultOut(vec4f(c.xy + off, min(c.z * LINE_PULL, c.w), c.w), col.rgb, ex.x, ex.y);
 }
-@fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f { return vec4f(in.col, 1.0); }
+@fragment fn fsResultLine(in: ResultOut) -> @location(0) vec4f {
+  let a = abs(in.across);
+  let round = sqrt(max(1.0 - a * a, 0.0));                     // a tube's curve across it
+  let edge = 1.0 - smoothstep(0.75, 1.0, a);                     // soft edges
+  // The pulse: bright at its head, downstream, fading back upstream.
+  let phase = fract((in.time - F.misc.x * FLOW_SPEEDUP) / FLOW_EVERY);
+  let pulse = smoothstep(0.55, 0.97, phase) * (1.0 - smoothstep(0.97, 1.0, phase)) * F.lampCount.y;
+  let lit = in.col * (0.6 + 0.4 * round) + vec3f(0.35 * pow(round, 6.0));  // a highlight down the middle
+  let rgb = mix(lit, vec3f(1.0), 0.45 * pulse);
+  return vec4f(rgb, edge * mix(0.55, 0.95, max(pulse, 0.0)));
+}
 
 // What the wind sees (wind.js): the solid cells' faces, translucent, each its own colour and alpha.
 struct ShellOut { @builtin(position) pos: vec4f, @location(0) col: vec4f };
@@ -1230,6 +1260,8 @@ export class Renderer {
     const COL = { arrayStride: 4, attributes: [{ shaderLocation: 2, offset: 0, format: 'unorm8x4' }] };
     const OID = { arrayStride: 4, attributes: [{ shaderLocation: 4, offset: 0, format: 'uint32' }] };
     const POS_INST = { ...POS, stepMode: 'instance' };
+    // Result lines' vertices (streamlineVertices): position, direction, then side and travel time.
+    const TUBE = { arrayStride: 32, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 3, offset: 24, format: 'float32x2' }] };
     const OID_INST = { arrayStride: 4, stepMode: 'instance', attributes: [{ shaderLocation: 4, offset: 0, format: 'uint32' }] };
     const frameOnly = device.createPipelineLayout({ bindGroupLayouts: [this.frameLayout] });
     const blend = { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
@@ -1278,8 +1310,8 @@ export class Renderer {
       meshVCT: mk('vsMeshVC', 'fsMesh', [POS, NRM, COL, OID], { bias: true, blend, write: false }),
       line: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'greater-equal', blend }),
       lineX: mk('vsLine', 'fsLine', [POS, OID], { topology: 'line-list', compare: 'always', blend, write: false }),
-      resultLine: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'greater-equal', layout: frameOnly }),
-      resultLineX: mk('vsResultLine', 'fsResultLine', [POS, COL], { topology: 'line-list', compare: 'always', write: false, layout: frameOnly }),
+      resultLine: mk('vsResultLine', 'fsResultLine', [TUBE, COL], { compare: 'greater-equal', write: false, blend, layout: frameOnly }),
+      resultLineX: mk('vsResultLine', 'fsResultLine', [TUBE, COL], { compare: 'always', write: false, blend, layout: frameOnly }),
       shell: mk('vsShell', 'fsShell', [POS, COL], { compare: 'greater-equal', write: false, blend, layout: frameOnly }),
       shellX: mk('vsShell', 'fsShell', [POS, COL], { compare: 'always', write: false, blend, layout: frameOnly }),
       point: mk('vsPoint', 'fsPoint', [POS_INST, OID_INST], { topology: 'triangle-strip', compare: 'greater-equal' }),
@@ -1300,10 +1332,13 @@ export class Renderer {
     if (w === this.width && h === this.height) return;
     this.width = w; this.height = h;
     this.canvas.width = w; this.canvas.height = h;
-    for (const t of ['msaaTex', 'depthTex', 'gbufTex', 'gdepthTex', 'aoRawTex', 'aoTex']) this[t]?.destroy();
+    for (const t of ['msaaTex', 'depthTex', 'gbufTex', 'gdepthTex', 'aoRawTex', 'aoTex', 'keptColor', 'keptDepth']) this[t]?.destroy();
+    this.keptColor = this.keptDepth = null;
+    this.keptValid = false;
     const dev = this.device, RA = GPUTextureUsage.RENDER_ATTACHMENT, TB = GPUTextureUsage.TEXTURE_BINDING;
-    this.msaaTex = dev.createTexture({ size: [w, h], format: this.format, sampleCount: MSAA, usage: RA });
-    this.depthTex = dev.createTexture({ size: [w, h], format: DEPTH, sampleCount: MSAA, usage: RA });
+    // COPY_DST: the scene kept for flowing streamlines is copied in (drawLinesOver).
+    this.msaaTex = dev.createTexture({ size: [w, h], format: this.format, sampleCount: MSAA, usage: RA | GPUTextureUsage.COPY_DST });
+    this.depthTex = dev.createTexture({ size: [w, h], format: DEPTH, sampleCount: MSAA, usage: RA | GPUTextureUsage.COPY_DST });
     this.gbufTex = dev.createTexture({ size: [w, h], format: 'rgba32float', usage: RA | TB });
     this.gdepthTex = dev.createTexture({ size: [w, h], format: DEPTH, usage: RA });
     // The soft edges read the prepass, so it stays the window's size; the occlusion itself need not.
@@ -1630,6 +1665,7 @@ export class Renderer {
     const plan = s.xray ? [] : lampShadowPlan(lamps), near = LAMP_NEAR / (s.metresPerUnit || 1);
     f.fill(0, L0, L0 + 4 + MAX_LAMPS * 16);
     f[L0] = lamps.length;
+    f[L0 + 1] = s.flow ? 1 : 0;
     lamps.forEach((l, i) => {
       const o = L0 + 4 + i * 16, cos = (deg) => Math.cos((deg * Math.PI) / 180), sp = plan[i];
       f.set([...l.p, l.range], o);
@@ -1723,6 +1759,19 @@ export class Renderer {
     s.aoActive = !!(s.ao && s.cam && !s.xray);
     this.writeFrame(this.frameBuf, s.viewProj, s);
     const enc = this.device.createCommandEncoder();
+    // Flowing streamlines (s.flow): the scene is drawn without them and kept, and they are drawn over a
+    // copy of it, so that a frame that only moves them on (s.linesOnly) need not draw the scene again.
+    const lines = !!(this.resultLines && s.resultRanges?.length), keep = lines && s.flow;
+    if (keep && s.linesOnly && this.keptValid) {
+      this.drawLinesOver(enc, s);
+      this.device.queue.submit([enc.finish()]);
+      return;
+    }
+    if (keep && !this.keptColor) {
+      const U = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC, size = [this.width, this.height];
+      this.keptColor = this.device.createTexture({ size, format: this.format, sampleCount: MSAA, usage: U });
+      this.keptDepth = this.device.createTexture({ size, format: DEPTH, sampleCount: MSAA, usage: U });
+    }
     // What is shown: the geometry version and which batches are visible.
     let geom = this.geomVersion;
     for (const b of this.batches) if (b.visible) geom = (geom * 31 + b.offset + 1) | 0;
@@ -1733,7 +1782,10 @@ export class Renderer {
     this.renderLampShadows(enc, s);
     if (s.aoActive) this.renderAO(enc, s, withActor);
     else this.aoKey = null;
-    const pass = enc.beginRenderPass({
+    const pass = enc.beginRenderPass(keep ? {
+      colorAttachments: [{ view: this.keptColor.createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
+      depthStencilAttachment: { view: this.keptDepth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    } : {
       colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(),
         clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'discard' }],
       depthStencilAttachment: { view: this.depthTex.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'discard' },
@@ -1795,11 +1847,7 @@ export class Renderer {
       pass.setPipeline(s.xray ? P.mapX : P.map);
       this.drawMap(pass, this.windMap, 0);
     }
-    if (this.resultLines && s.resultRanges?.length) {
-      pass.setPipeline(s.xray ? P.resultLineX : P.resultLine);
-      pass.setVertexBuffer(0, this.resultLines.pos); pass.setVertexBuffer(1, this.resultLines.col);
-      for (const r of s.resultRanges) pass.draw(r.count, 1, r.first);
-    }
+    if (lines && !keep) this.drawResultLines(pass, s);
     for (const b of meshes) if (transparentMode(b)) drawMesh(b);
     if (s.windShell && this.windShell) {
       const W = this.windShell;
@@ -1809,7 +1857,30 @@ export class Renderer {
       pass.drawIndexed(W.count);
     }
     pass.end();
+    this.keptValid = keep; // the kept scene is this frame's
+    if (keep) this.drawLinesOver(enc, s);
     this.device.queue.submit([enc.finish()]);
+  }
+
+  drawResultLines(pass, s) {
+    pass.setPipeline(s.xray ? this.pipes.resultLineX : this.pipes.resultLine);
+    pass.setVertexBuffer(0, this.resultLines.verts); pass.setVertexBuffer(1, this.resultLines.col);
+    pass.setIndexBuffer(this.resultLines.idx, 'uint32');
+    for (const r of s.resultRanges) pass.drawIndexed(r.count, 1, r.first);
+  }
+
+  // The kept scene (see draw), copied, with the streamlines drawn over it, to the window.
+  drawLinesOver(enc, s) {
+    const size = [this.width, this.height];
+    enc.copyTextureToTexture({ texture: this.keptColor }, { texture: this.msaaTex }, size);
+    enc.copyTextureToTexture({ texture: this.keptDepth }, { texture: this.depthTex }, size);
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{ view: this.msaaTex.createView(), resolveTarget: this.ctx.getCurrentTexture().createView(), loadOp: 'load', storeOp: 'discard' }],
+      depthStencilAttachment: { view: this.depthTex.createView(), depthLoadOp: 'load', depthStoreOp: 'discard' },
+    });
+    pass.setBindGroup(0, this.frameBG);
+    this.drawResultLines(pass, s);
+    pass.end();
   }
 
   // The sun path diagram to draw (sunPathDiagram), or null. scale: device pixels per CSS pixel. Each
@@ -2124,19 +2195,18 @@ export class Renderer {
     return stop() ? null : out;
   }
 
-  // Result lines to draw: { pos: Float32Array, col: Uint8Array } (line-list vertices), or null for
-  // none. Each frame's s.resultRanges says which { first, count } of them are shown.
+  // Result lines to draw: { verts, col, idx } from streamlineVertices, or null for none. Each frame's
+  // s.resultRanges says which { first, count } of idx are shown.
   setResultLines(lines) {
-    this.resultLines?.pos.destroy();
-    this.resultLines?.col.destroy();
+    for (const b of Object.values(this.resultLines || {})) b.destroy();
     this.resultLines = null;
-    if (!lines?.pos.length) return;
-    const make = (arr) => {
-      const buf = this.device.createBuffer({ size: arr.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    if (!lines?.idx.length) return;
+    const make = (arr, usage) => {
+      const buf = this.device.createBuffer({ size: arr.byteLength, usage: usage | GPUBufferUsage.COPY_DST });
       this.device.queue.writeBuffer(buf, 0, arr);
       return buf;
     };
-    this.resultLines = { pos: make(lines.pos), col: make(lines.col) };
+    this.resultLines = { verts: make(lines.verts, GPUBufferUsage.VERTEX), col: make(lines.col, GPUBufferUsage.VERTEX), idx: make(lines.idx, GPUBufferUsage.INDEX) };
   }
 
   // Returns { p: world position (model-relative), id: object index } for the visible surface

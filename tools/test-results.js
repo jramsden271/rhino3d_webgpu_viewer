@@ -160,17 +160,22 @@ assert(Number.isNaN(speedAt(3, 0.5)), 'no data beside the node without any');
 const two = parseCfdMap(`[Name]\nTwo\n[Data]\nNode Number, X [ m ], Y [ m ], Z [ m ], Velocity [ m s^-1 ]\n0, 0, 0, 0, 1\n1, 1, 0, 0, 1\n2, 0, 1, 0, 1\n3, 0, 0, 5, 9\n4, 1, 0, 5, 9\n5, 0, 1, 5, 9\n[Faces]\n0, 1, 2\n3, 4, 5\n`).maps[0];
 near(cfdMapValueAt(two.results[0], cfdMapFind(two, 0.2, 0.2, 4.9)), 9);
 
-// Vertices: model units, relative to the origin, each segment the colour of its start node.
+// Vertices: model units, relative to the origin, each node its own colour.
 d = parseCfdStreamlines(`[Name]\nA\n${data(nodes)}${lines([[0, 1], [1, 2]])}\n[Name]\nB\n${data(nodes)}${lines([[3, 4]])}`);
 const velocityColour = (s) => CS.colour(lawson, s);
 const v = streamlineVertices(d.streamlines, 0.001, [100, 0, 0], velocityColour);
-assert.deepStrictEqual(v.ranges, [[{ first: 0, count: 4 }], [{ first: 4, count: 2 }]]);
-d = parseCfdStreamlines(`[Name]\nTwo lines\n${data(nodes)}${lines([[0, 1], [3, 4], [4, 5]])}`);
-assert.deepStrictEqual(streamlineVertices(d.streamlines, 1, [0, 0, 0], velocityColour).ranges, [[{ first: 0, count: 2 }, { first: 2, count: 4 }]], 'a range for each polyline');
-assert.deepStrictEqual([...v.pos.slice(0, 6)], [-100, 0, 0, 900, 0, 0]);
+// Two vertices a node, two triangles a segment: the first streamline is a polyline of 3 nodes, the second of 2.
+assert.deepStrictEqual(v.ranges, [[{ first: 0, count: 12 }], [{ first: 12, count: 6 }]]);
+d = parseCfdStreamlines(`[Name]
+Two lines
+${data(nodes)}${lines([[0, 1], [3, 4], [4, 5]])}`);
+assert.deepStrictEqual(streamlineVertices(d.streamlines, 1, [0, 0, 0], velocityColour).ranges, [[{ first: 0, count: 6 }, { first: 6, count: 12 }]], 'a range for each polyline');
+assert.deepStrictEqual([...v.verts.slice(0, 8)], [-100, 0, 0, 1, 0, 0, -1, 0], 'position, direction, side, time');
+assert.deepStrictEqual([...v.verts.slice(8, 11)], [-100, 0, 0], 'the other side at the same place');
+assert(Math.abs(v.verts[16 + 7] - 1 / 1.5) < 1e-6, 'time: 1 m at 1.5 m/s on average');
+assert.deepStrictEqual([...v.idx.slice(0, 6)], [0, 1, 2, 1, 3, 2]);
 assert.deepStrictEqual([...v.col.slice(0, 4)], [...velocityColour(1), 255]);
-assert.deepStrictEqual([...v.col.slice(4, 8)], [...velocityColour(1), 255], 'start node colours both ends');
-assert.deepStrictEqual([...v.col.slice(8, 12)], [...velocityColour(2), 255]);
+assert.deepStrictEqual([...v.col.slice(8, 12)], [...velocityColour(2), 255], 'each node its own colour');
 
 // A real file, when given one.
 if (process.argv[2]) {
