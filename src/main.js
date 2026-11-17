@@ -91,10 +91,9 @@ const site = { custom: null, city: null, epws: [], epw: null, use: null };
 // recognises a bound file any more. They are only ever read.
 let results = [];
 ColourScales.choices = prefs.colourScales || {};
-// The CFD streamlines panel. on: its master switch. off: keys (streamlineKey) of what is unticked,
-// streamlines and polylines alike. collapsed: keys of the streamlines folded up. lines: what was
-// given to the renderer, a { key, parts: [{ key, range }] } for each streamline and its polylines.
-state.streamlines = { panel: false, on: true, off: new Set(), collapsed: new Set(), lines: [] };
+// The CFD streamlines panel. on: its master switch. off: the names of the files not shown (all but
+// the one picked). lines: what was given to the renderer, a { key (file name), ranges } for each file.
+state.streamlines = { panel: false, on: true, off: new Set(), lines: [] };
 // The CFD map panel. on: its master switch. off: keys of the unticked maps. collapsed: of those
 // folded up. picked: map key -> the name of the result shown. z: metres moved up. list: what was
 // given to the renderer, a { key, map, label } for each map.
@@ -251,7 +250,7 @@ function frameState() {
   s.windMap = !!windTool?.shown();
   s.windShell = !!windTool?.shellShown();
   checkExposure();
-  s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.parts.filter((p) => !SL.off.has(p.key)).map((p) => p.range)) : [];
+  s.resultRanges = SL.on ? SL.lines.filter((l) => !SL.off.has(l.key)).flatMap((l) => l.ranges) : [];
   const [mn, mx] = visibleBounds(), c = V3.scale(V3.add(mn, mx), 0.5), R = Math.max(V3.len(V3.sub(mx, mn)) / 2, 1e-6);
   s.aoMaxRadius = R * 0.04;
   // Look: the sky behind the model, haze beyond the orbit target (perspective views only).
@@ -3255,9 +3254,7 @@ function colourLegendHtml(scale, title, unit) {
     <div class="res-scale">${bar}</div><div class="res-ticks">${ticks}</div></div>`;
 }
 
-// The CFD streamlines panel, and the lines it shows.
-const streamlineKey = (file, line) => `${file.name}|${line.name}`;
-
+// The CFD streamlines panel, and the lines it shows: one file's at a time, all of them.
 function toggleStreamlinesPanel() {
   state.streamlines.panel = !state.streamlines.panel;
   $('streamlinesPanel').hidden = !state.streamlines.panel;
@@ -3278,53 +3275,37 @@ function fillStreamlines() {
   const v = model && all.length ? streamlineVertices(all.map((a) => a.line), model.metresPerUnit, model.origin, (speed) => ColourScales.colour(wind, speed)) : null;
   setHtml($('streamlineLegend'), all.length ? colourLegendHtml(wind, 'Velocity', ColourScales.metrics.windSpeed.unit) : '');
   renderer.setResultLines(v);
-  SL.lines = all.map(({ file, line }, i) => {
-    const key = streamlineKey(file, line);
-    return { key, parts: v.ranges[i].map((range, k) => ({ key: `${key}|${k}`, range })) };
-  });
+  // SL.lines: one for each file, with the ranges of all its polylines; its key is the file's name.
+  SL.lines = files.map((file) => ({ key: file.name, ranges: all.flatMap((a, i) => (a.file === file ? v.ranges[i] : [])) }));
   if (SL.panel && !all.length) toggleStreamlinesPanel();
-  // A row for each streamline, with one under it for each polyline when it has several.
-  const makeRow = (key, parent, label, title, count) => {
-    const row = document.createElement('div');
-    row.className = 'layer-row';
-    row.title = title;
-    row.dataset.key = key;
-    if (parent) row.dataset.parent = parent;
-    row.style.paddingLeft = `${10 + (parent ? 16 : 0)}px`;
-    row.innerHTML = `<button class="caret ${count ? '' : 'empty'}" aria-label="Expand"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><input type="checkbox" class="eye" aria-label="Show" title="Show or hide"><span class="layer-name"></span>${count ? `<span class="layer-count">${count.toLocaleString()}</span>` : ''}`;
-    row.querySelector('.layer-name').textContent = label;
-    row.querySelector('.caret').addEventListener('click', () => {
-      if (SL.collapsed.has(key)) SL.collapsed.delete(key); else SL.collapsed.add(key);
-      syncStreamlines();
-    });
-    row.querySelector('input').addEventListener('change', (e) => {
-      if (e.target.checked) SL.off.delete(key); else SL.off.add(key);
-      syncStreamlines();
-      saveViewState();
-      redraw();
-    });
-    return row;
-  };
-  $('streamlineList').replaceChildren(...all.flatMap(({ file, line }, i) => {
-    const { key, parts } = SL.lines[i], several = parts.length > 1;
-    const top = makeRow(key, null, files.length > 1 ? `${line.name} · ${file.name}` : line.name, `${line.name} in ${file.name}`, several ? parts.length : 0);
-    return several ? [top, ...parts.map((p, k) => makeRow(p.key, key, `Polyline ${k + 1}`, `Polyline ${k + 1} of ${line.name}`, 0))] : [top];
+  // One file at a time: the first that is on (or the first of all) stays on, the rest go off.
+  const shown = SL.lines.find((l) => !SL.off.has(l.key)) || SL.lines[0];
+  SL.off = new Set(SL.lines.filter((l) => l !== shown).map((l) => l.key));
+  const dropdown = $('streamlinePick');
+  dropdown.replaceChildren(...files.map((file, i) => {
+    const n = file.data.streamlines.reduce((s, l) => s + l.polylines.length, 0), o = new Option(file.name.replace(/\.[^.]+$/, ''), String(i));
+    o.title = `${file.name}: ${n.toLocaleString()} ${n === 1 ? 'polyline' : 'polylines'}`;
+    return o;
   }));
   syncStreamlines();
+}
+
+// Shows one file's streamlines, and no other file's.
+function pickStreamlines(i) {
+  const SL = state.streamlines, l = SL.lines[i];
+  if (!l) return;
+  SL.off = new Set(SL.lines.filter((x) => x !== l).map((x) => x.key));
+  syncStreamlines();
+  saveViewState();
+  redraw();
 }
 
 function syncStreamlines() {
   const SL = state.streamlines;
   $('streamlinesOn').checked = SL.on;
   syncResultsMenu();
-  for (const row of $('streamlineList').children) {
-    const on = !SL.off.has(row.dataset.key), parent = row.dataset.parent;
-    row.querySelector('input').checked = on;
-    row.classList.toggle('off', !on);
-    row.classList.toggle('inherited-off', on && (!SL.on || SL.off.has(parent)));
-    row.hidden = SL.collapsed.has(parent);
-    row.querySelector('.caret').classList.toggle('collapsed', SL.collapsed.has(row.dataset.key));
-  }
+  const i = SL.lines.findIndex((l) => !SL.off.has(l.key));
+  if (i >= 0) $('streamlinePick').value = String(i);
 }
 
 // The CFD map panel, and the maps it shows.
@@ -3483,6 +3464,7 @@ function bindMapPanel() {
 function bindStreamlinesPanel() {
   $('streamlinesOn').addEventListener('change', (e) => setStreamlinesOn(e.target.checked));
   $('streamlinesClose').addEventListener('click', () => state.streamlines.panel && toggleStreamlinesPanel());
+  $('streamlinePick').addEventListener('change', (e) => pickStreamlines(+e.target.value));
 }
 
 // Set location dialog: one choice of location source, picked from a list. Changes apply as they are made.
