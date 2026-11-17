@@ -9,6 +9,7 @@ import { Meshes } from './mesh.js';
 
 export const EXPOSURE_STEPS = [5, 10, 15, 20, 30, 60]; // minutes between times
 export const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between points, at most
+export const EXPOSURE_RADII = [0, 10, 25, 50, 100, 200, 500]; // metres round the picked point (0: all of the layer)
 // The most points a surface may have. Not a GPU limit (that is about 4.2 million, the most one
 // compute pass can take): preparing the surface freezes the page, for a few seconds at this size,
 // and splitting normals at sharp edges can add points after this check and briefly needs a lot of
@@ -111,23 +112,27 @@ export const exposurePointEstimate = (area, spacing) => (2.6 * area) / (spacing 
 // (one facing as much down as up, such as a closed object or a wall, keeps the file's sides, or the
 // others with flip), then joined and cut so that no edge is longer than spacing. upOnly keeps
 // only the faces that, turned up, face within EXPOSURE_UP_ONLY of straight up (before flip). Lengths
-// are in model units. Gives
+// are in model units. within { x, y, r }: only the parts within r of (x, y) in plan (cut to a
+// square round it first, so that a big face is not refined all over). Gives
 // { pos, nrm (Float32Arrays, at the surface), shown (positions lift in front of it), idx, area }
-// or { error }.
-export function exposureSurface(objects, { spacing, flip, upOnly, lift, weldTol }) {
+// or { error } ('outside': nothing within r).
+export function exposureSurface(objects, { spacing, flip, upOnly, lift, weldTol, within = null }) {
   if (!objects.length) return { error: 'empty' };
   const faced = objects.map((list) => {
     const m = Meshes.join(list), step = Math.max(1, Math.floor(m.idx.length / 3 / 2000));
     const z = Meshes.areaNormal(m, step)[2], up = Math.abs(z) < 0.01 * Meshes.area(m, step) || z > 0;
     let faced = up ? m : Meshes.flip(m);
     if (upOnly) faced = Meshes.keepFacing(faced, [0, 0, 1], EXPOSURE_UP_ONLY);
+    if (within) faced = Meshes.clipBox(faced, within.x - within.r, within.y - within.r, within.x + within.r, within.y + within.r);
     return flip ? Meshes.flip(faced) : faced;
   });
   const joined = Meshes.weld(Meshes.join(faced), weldTol), area = Meshes.area(joined);
-  if (!joined.idx.length) return { error: upOnly ? 'noneUp' : 'empty' };
+  if (!joined.idx.length) return { error: within ? 'outside' : upOnly ? 'noneUp' : 'empty' };
   if (exposurePointEstimate(area, spacing) > EXPOSURE_MAX_POINTS * 1.5) return { error: 'tooMany', area };
-  const fine = Meshes.refine(joined, spacing, EXPOSURE_MAX_POINTS);
+  let fine = Meshes.refine(joined, spacing, EXPOSURE_MAX_POINTS);
   if (!fine) return { error: 'tooMany', area };
+  if (within) fine = Meshes.keepWithin(fine, within.x, within.y, within.r);
+  if (!fine.idx.length) return { error: 'outside' };
   const m = Meshes.sortVertices(Meshes.splitNormals(fine)), nrm = m.nrm, pos = Float32Array.from(m.pos), shown = new Float32Array(pos.length);
   for (let i = 0; i < pos.length; i++) shown[i] = pos[i] + nrm[i] * lift;
   return { pos, nrm, shown, idx: m.idx, area };

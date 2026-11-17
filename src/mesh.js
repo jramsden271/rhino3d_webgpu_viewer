@@ -79,6 +79,60 @@ export const Meshes = {
     return { pos, idx: Uint32Array.from(out) };
   },
 
+  // The mesh without the vertices no triangle uses.
+  compact({ pos, idx }) {
+    const map = new Int32Array(pos.length / 3).fill(-1), out = [], tris = new Uint32Array(idx.length);
+    for (let t = 0; t < idx.length; t++) {
+      const v = idx[t];
+      if (map[v] < 0) { map[v] = out.length / 3; out.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]); }
+      tris[t] = map[v];
+    }
+    return { pos: Float64Array.from(out), idx: tris };
+  },
+
+  // The mesh cut to the box x0..x1, y0..y1 in plan (any height). A triangle inside it is kept as it
+  // is, one across its edge is cut along it (its cut corners are its own: weld joins them to their
+  // neighbours'), and one outside it goes.
+  clipBox({ pos, idx }, x0, y0, x1, y1) {
+    const P = Array.from(pos), out = [];
+    // [axis, limit, keep the side above it]
+    const planes = [[0, x0, true], [0, x1, false], [1, y0, true], [1, y1, false]];
+    const inside = (p, [k, lim, above]) => (above ? p[k] >= lim : p[k] <= lim);
+    for (let t = 0; t < idx.length; t += 3) {
+      const corners = [idx[t], idx[t + 1], idx[t + 2]], pts = corners.map((v) => [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]]);
+      const lo = (k) => Math.min(pts[0][k], pts[1][k], pts[2][k]), hi = (k) => Math.max(pts[0][k], pts[1][k], pts[2][k]);
+      if (hi(0) < x0 || lo(0) > x1 || hi(1) < y0 || lo(1) > y1) continue;
+      if (lo(0) >= x0 && hi(0) <= x1 && lo(1) >= y0 && hi(1) <= y1) { out.push(...corners); continue; }
+      let poly = pts;
+      for (const pl of planes) {
+        const next = [];
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length], ia = inside(a, pl), ib = inside(b, pl);
+          if (ia) next.push(a);
+          if (ia !== ib) { const f = (pl[1] - a[pl[0]]) / (b[pl[0]] - a[pl[0]]); next.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]); }
+        }
+        poly = next;
+        if (poly.length < 3) break;
+      }
+      if (poly.length < 3) continue;
+      const base = P.length / 3;
+      for (const p of poly) P.push(p[0], p[1], p[2]);
+      for (let i = 1; i + 1 < poly.length; i++) out.push(base, base + i, base + i + 1);
+    }
+    return Meshes.compact({ pos: P, idx: out });
+  },
+
+  // The triangles whose middle is within r of (x, y) in plan, without the vertices left unused.
+  keepWithin({ pos, idx }, x, y, r) {
+    const out = [], r2 = r * r;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const mx = (pos[a] + pos[b] + pos[c]) / 3 - x, my = (pos[a + 1] + pos[b + 1] + pos[c + 1]) / 3 - y;
+      if (mx * mx + my * my <= r2) out.push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    return Meshes.compact({ pos, idx: out });
+  },
+
   // The same mesh seen from its other side.
   flip({ pos, idx }) {
     const out = idx.slice();

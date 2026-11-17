@@ -15,7 +15,7 @@ import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, openGroundView, skyL
 import { ColourScales } from './colourscales.js';
 import { RESULT_PARSERS, cfdMapFind, cfdMapValueAt, cfdMapValues, cfdMapVertices, parseResultsFile, resultParsersFor, streamlineVertices } from './results.js';
 import { Meshes } from './mesh.js';
-import { EXPOSURE_DATE_SPANS, EXPOSURE_LIFT, EXPOSURE_SPACINGS, EXPOSURE_STEPS, EXPOSURE_TEXEL, EXPOSURE_TIME_SPANS, exposureDays, exposureHours, exposureLayerMeshes, exposurePointEstimate, exposureSummary, exposureSunDirs, exposureSurface, exposureTimes } from './exposure.js';
+import { EXPOSURE_DATE_SPANS, EXPOSURE_LIFT, EXPOSURE_RADII, EXPOSURE_SPACINGS, EXPOSURE_STEPS, EXPOSURE_TEXEL, EXPOSURE_TIME_SPANS, exposureDays, exposureHours, exposureLayerMeshes, exposurePointEstimate, exposureSummary, exposureSunDirs, exposureSurface, exposureTimes } from './exposure.js';
 import { Camera, movementRules } from './camera.js';
 import { ChoiceList, ToolbarMenu } from './toolmenu.js';
 import { RowSelection } from './listselect.js';
@@ -3643,6 +3643,9 @@ const pickDepth = (e, d) => pickPoint(e).then((p) => { if (p && drag === d) d.de
 // results are drawn on the model until the settings change; nothing is kept.
 
 const expo = {
+  // radius: only the parts of the layer within this many metres (in plan) of centre, the point the
+  // picker last clicked (model units), so that part of a big layer can be tested finely; 0 for all.
+  radius: 0, centre: null,
   panel: false, on: true, layer: -1, flip: false, upOnly: false, summary: null, dateSpan: 'day', timeSpan: 'hours3', step: 10, spacing: 1, auto: true, picking: false,
   // Working state: the surface tested (for surfaceKey), the run going on (runKey, token), the
   // settings of the results shown (doneKey), and of a run stopped or waiting for Update.
@@ -3661,11 +3664,11 @@ const exposurePeriod = () => ({ days: exposureDays(expo.dateSpan, state.sun.doy,
 
 // The settings a surface and a run depend on, or null when there is nothing to work out.
 function exposureKeys() {
-  if (!model || expo.layer < 0 || !activeLocation()) return null;
+  if (!model || expo.layer < 0 || !activeLocation() || (expo.radius && !expo.centre)) return null;
   const { days, hours } = exposurePeriod();
   // The surface is the layer's objects. The shadows on it come from every visible object that is
   // not too transparent, so they also depend on the materials.
-  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, modelKey('objects')].join('|');
+  const surface = [expo.layer, expo.flip, expo.upOnly, expo.spacing, expo.radius ? `${expo.radius}@${expo.centre}` : 0, modelKey('objects')].join('|');
   return { surface, run: [surface, days[0], days.length, hours, expo.step, modelKey('visibility', 'appearance', 'site')].join('|') };
 }
 
@@ -3685,7 +3688,8 @@ async function runExposure() {
     syncExposurePanel();
     await new Promise((r) => setTimeout(r, 30));
     if (token !== expo.token) return;
-    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: expo.spacing * u, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u });
+    const within = expo.radius ? { x: expo.centre[0], y: expo.centre[1], r: expo.radius * u } : null;
+    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: expo.spacing * u, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u, within });
     Object.assign(expo, { surface, surfaceKey: k.surface });
     renderer.setExposurePoints(surface.error ? null : surface);
   }
@@ -3702,6 +3706,7 @@ async function runExposure() {
     expo.summary = null;
     done(surface.error === 'tooMany' ? 'Too many points to test at this spacing: try a wider one.'
       : surface.error === 'noneUp' ? 'None of the layer’s surfaces face within 45° of straight up.'
+      : surface.error === 'outside' ? `None of the layer’s surfaces shown are within ${fmtMetres(expo.radius)} of the picked point.`
       : surface.error ? 'The layer has no surfaces to analyse that are shown.' : `The sun is down at all ${times.length.toLocaleString()} times.`);
     return;
   }
@@ -3732,7 +3737,7 @@ function stopExposure() {
 function resetExposure() {
   clearTimeout(expo.timer);
   expo.token++;
-  Object.assign(expo, { layer: -1, summary: null, surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', progress: null, status: '', shown: false, stale: false });
+  Object.assign(expo, { layer: -1, centre: null, summary: null, surface: null, surfaceKey: '', runKey: '', doneKey: '', pendingKey: '', stoppedKey: '', progress: null, status: '', shown: false, stale: false });
   setExposurePicking(false);
   renderer.setExposurePoints(null);
   renderer.setExposureMap(null);
@@ -3751,7 +3756,9 @@ function setExposureLayer(layer) {
   expo.layer = layer;
   if (layer >= 0) {
     // The finest spacing that keeps the points to a quick run, to start with.
-    const u = model.metresPerUnit, area = exposureLayerMeshes(model, layer, objectOff).reduce((s, list) => s + Meshes.area(Meshes.join(list)), 0) * u * u;
+    // Within a radius, about the area of its circle at most (as for flat ground).
+    const u = model.metresPerUnit, all = exposureLayerMeshes(model, layer, objectOff).reduce((s, list) => s + Meshes.area(Meshes.join(list)), 0) * u * u;
+    const area = expo.radius && expo.centre ? Math.min(all, Math.PI * expo.radius ** 2) : all;
     expo.spacing = EXPOSURE_SPACINGS.find((s) => exposurePointEstimate(area, s) <= 200000) || EXPOSURE_SPACINGS[EXPOSURE_SPACINGS.length - 1];
   } else {
     renderer.setExposureMap(null);
@@ -3772,10 +3779,16 @@ function setExposurePicking(on) {
   if (!pickingSpot() && state.walkMarker) { placing.next = null; state.walkMarker = null; redraw(); }
 }
 
-// The picker's click on the model: the layer of the object under it.
+// The picker's click on the model: the layer of the object under it, and the centre for Within.
 function pickExposureLayer(e) {
   setExposurePicking(false);
-  pickAt(e).then((h) => { if (h?.id != null && model.objects[h.id]) setExposureLayer(model.objects[h.id].ai.layer); });
+  pickAt(e).then((h) => {
+    if (h?.id == null || !model.objects[h.id]) return;
+    const layer = model.objects[h.id].ai.layer;
+    expo.centre = h.p;
+    if (layer === expo.layer) setExposure({}); // the same layer keeps its spacing
+    else setExposureLayer(layer);
+  });
 }
 
 function setExposure(changes) {
@@ -3824,10 +3837,12 @@ function syncExposurePanel() {
   $('exposureHoursOut').textContent = fmtRange(hours, fmtClock);
   $('exposureStep').value = String(expo.step);
   $('exposureSpacing').value = String(expo.spacing);
+  $('exposureRadius').value = String(expo.radius);
   $('exposureAuto').checked = expo.auto;
   const going = expo.progress != null, ready = located && expo.layer >= 0 && expo.on;
   syncExposureProgress();
   const status = !ready ? (expo.layer < 0 ? 'Choose the layer to analyse, or pick it from the model.' : located && !expo.on ? 'Results are hidden.' : '')
+    : expo.radius && !expo.centre ? `Pick a point on the model with the picker: the surfaces within ${fmtMetres(expo.radius)} of it are analysed.`
     : expo.stale && !going ? (expo.status === 'Stopped.' ? `Stopped. ${expo.auto ? 'Change a setting, or untick and tick Update automatically' : 'Tick Update automatically'} to calculate.`
       : `${expo.shown ? 'Settings changed since these results. ' : ''}Tick Update automatically to calculate.`) : expo.status;
   $('exposureStatus').textContent = status;
@@ -3887,6 +3902,7 @@ function showExposureHelp() {
     <p><b>Surfaces:</b> choose the layer, or press the picker and click an object on it. Each object is tested on the side facing most nearly up; <b>Flip sides</b> tests the other side instead. <b>Ground/roof only</b> keeps just the parts facing within 45° of straight up, leaving out walls and the like.</p>
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
     <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date and Time widgets, shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
+    <p><b>Within</b> limits the surfaces to those within a distance (in plan) of the point last clicked with the picker, so part of a big layer, such as the ground of a whole masterplan, can be tested at a fine spacing. Pick again to move it.</p>
     <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
     <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Time widget.</p>
     <p>With <b>Update automatically</b> off, the results stay as they are while you change the settings, which keeps long periods quick to set up. Tick it again to calculate.</p>
@@ -3928,6 +3944,8 @@ function bindExposurePanel() {
   $('exposureSpacing').innerHTML = EXPOSURE_SPACINGS.map((m) => `<option value="${m}">${fmtMetres(m)}</option>`).join('');
   $('exposureStep').addEventListener('change', (e) => setExposure({ step: +e.target.value }));
   $('exposureSpacing').addEventListener('change', (e) => setExposure({ spacing: +e.target.value }));
+  $('exposureRadius').innerHTML = EXPOSURE_RADII.map((m) => `<option value="${m}">${m ? fmtMetres(m) : 'Whole layer'}</option>`).join('');
+  $('exposureRadius').addEventListener('change', (e) => setExposure({ radius: +e.target.value }));
   // Ticking it again also restarts a stopped run.
   $('exposureAuto').addEventListener('change', (e) => setExposure({ auto: e.target.checked, ...(e.target.checked ? { stoppedKey: '' } : {}) }));
   $('exposureStop').addEventListener('click', stopExposure);
