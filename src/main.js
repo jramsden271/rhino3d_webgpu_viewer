@@ -5621,10 +5621,67 @@ function toggleHelp() {
 // list of projects (recent.js) once a file is opened into it. The 3DM Viewer button opens the
 // projects menu: New, Open, the projects so far (newest first, with a filter) and Settings.
 
+// The top bar fitted to the room it has: the window's width, less the widgets in the right-hand
+// column where they sit beside it. When it doesn't fit, it gives up, in turn: the end of a long file
+// name (down to a few letters), the location's name (its pin stays), the Date and Time buttons'
+// icons, and the "3DM Viewer" label. The file name gets back what it can at each step.
+const TRIM_STEPS = ['', 'trim-loc', 'trim-icons', 'trim-brand'];
+const FILE_NAME_MIN = 6; // letters kept of a shortened file name
+let fittingTop = false, topBarWatch = null;
+function fitTopBar() {
+  const bar = document.querySelector('header.top-left'), name = $('fileName'), full = name.dataset.full ?? name.textContent;
+  if (!bar || fittingTop) return;
+  fittingTop = true;
+  try {
+    const top = bar.getBoundingClientRect().top, gap = 12;
+    // Room: up to the nearest widget in the column at the top bar's height, or the window's edge.
+    let right = innerWidth - gap;
+    for (const p of document.querySelectorAll('.side > .panel:not([hidden], .ghost)')) {
+      const r = p.getBoundingClientRect();
+      if (r.top < top + bar.offsetHeight + gap && r.bottom > top && r.width) right = Math.min(right, r.left - gap);
+    }
+    const room = right - bar.getBoundingClientRect().left;
+    bar.style.maxWidth = 'none';
+    const fits = () => bar.scrollWidth <= room;
+    const show = (n) => { name.textContent = n >= full.length ? full : `${full.slice(0, n)}…`; };
+    let done = false;
+    for (let step = 0; step < TRIM_STEPS.length && !done; step++) {
+      bar.classList.remove(...TRIM_STEPS.filter(Boolean));
+      bar.classList.add(...TRIM_STEPS.slice(1, step + 1));
+      show(full.length);
+      if (fits()) { done = true; break; }
+      // The longest start of the file name that fits, if any does.
+      let lo = Math.min(FILE_NAME_MIN, full.length), hi = full.length - 1;
+      show(lo);
+      if (!fits()) continue;
+      while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); show(mid); if (fits()) lo = mid; else hi = mid - 1; }
+      show(lo);
+      done = true;
+    }
+    name.title = model ? `${full}: file properties` : full;
+    bar.style.maxWidth = '';
+  } finally {
+    topBarWatch?.takeRecords(); // its own changes to the bar
+    fittingTop = false;
+  }
+}
+function bindTopBarFit() {
+  let queued = false;
+  const later = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; fitTopBar(); }); } };
+  window.addEventListener('resize', later);
+  // What is in the bar (names, the date and time), and widgets opening or closing beside it.
+  (topBarWatch = new MutationObserver(later)).observe(document.querySelector('header.top-left'), { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+  const side = document.querySelector('.side');
+  new MutationObserver(later).observe(side, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
+  new ResizeObserver(later).observe(side);
+  later();
+}
+
 const UNTITLED = 'Untitled project';
 let current = { id: Recent.newId(), name: UNTITLED, blank: true }; // the open project
 
 function showProjectName() {
+  $('fileName').dataset.full = current.name;
   $('fileName').textContent = current.name;
   $('fileName').title = model ? 'File properties' : current.name;
   document.title = `${current.name} · 3DM Viewer`;
@@ -6232,6 +6289,7 @@ function bindUi() {
   document.querySelectorAll('[data-act="help"]').forEach((b) => b.addEventListener('click', toggleHelp));
   document.querySelector('[data-act="date"]').addEventListener('click', toggleDatePanel);
   bindDropWidgets();
+  bindTopBarFit();
   document.querySelector('[data-act="time"]').addEventListener('click', toggleTimePanel);
   bindCompass();
   $('dateClose').addEventListener('click', () => state.datePanel && toggleDatePanel());
