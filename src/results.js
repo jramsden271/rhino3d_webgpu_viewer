@@ -16,9 +16,31 @@ function resultColumn(heading) {
   return { name: m[1].toLowerCase(), unit: m[2] ?? null };
 }
 
-// CFX streamlines: one or more [Name], [Data] (nodes) and [Lines] (pairs of node numbers) sections.
-// Gives { streamlines: [{ name, segments, polylines: [{ points, velocity }] }] }: points (metres, x,
-// y, z, ...) with the velocity (m/s) of each, so the node numbers are not kept.
+// CFD-Post's export header: lines starting "##" before the first section, e.g.
+//   ## Build 25.2 2025-05-19T16:16:34.137402
+//   ## Generated on:  2026/11/17 16:23:42
+//   ## Generated from case(s): Case 261110_REXPO_June1030am_001
+// -> { cases, exported, build } (whichever it has), or null without one. Other "#" lines are skipped.
+function cfdHeader(text) {
+  const head = {};
+  for (const raw of text.slice(0, 4096).split('\n')) {
+    const line = raw.trim();
+    if (line[0] === '[') break;
+    const m = line.match(/^#+\s*(Build|Generated on|Generated from case\(s\))\s*:?\s*(.*)$/i);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    if (key === 'build') head.build = m[2];
+    else if (key === 'generated on') head.exported = m[2];
+    else head.cases = m[2].split(/\s*,\s*/).map((c) => c.replace(/^Case\s+/i, '')).filter(Boolean);
+  }
+  return Object.keys(head).length ? head : null;
+}
+const sourceOf = (text) => { const h = cfdHeader(text); return h ? { source: h } : {}; };
+
+// CFX streamlines: one or more [Name], [Data] (nodes) and [Lines] (pairs of node numbers) sections,
+// after CFD-Post's "##" header if it has one. Gives { streamlines: [{ name, segments, polylines:
+// [{ points, velocity }] }], source }: points (metres, x, y, z, ...) with the velocity (m/s) of each,
+// so the node numbers are not kept; source is from the header (cfdHeader).
 export function parseCfdStreamlines(text) {
   if (!/^\[Lines\]\s*$/m.test(text)) return null;
   const streamlines = [];
@@ -31,7 +53,7 @@ export function parseCfdStreamlines(text) {
   };
   for (const raw of text.split('\n')) {
     const line = raw.trim();
-    if (!line) continue;
+    if (!line || line[0] === '#') continue;
     if (line[0] === '[') {
       section = line.toLowerCase();
       if (section === '[name]' && !finish()) return null;
@@ -61,7 +83,7 @@ export function parseCfdStreamlines(text) {
       cur.ends.push(b);
     }
   }
-  return finish() && streamlines.length ? { streamlines } : null;
+  return finish() && streamlines.length ? { streamlines, ...sourceOf(text) } : null;
 }
 
 // Joins segments end to end. Usually each starts where the last ended, but nothing relies on that:
@@ -95,17 +117,17 @@ const resultNumber = (s) => {
 };
 
 // CFX values on a surface: one or more [Name], [Data] (nodes, each with any number of results) and
-// [Faces] (three or more node numbers) sections. Gives { maps: [{ name, points (metres, x, y, z, ...),
-// indices (triangles, as rows of points), results: [{ name, unit, metric, values }], faces,
-// skippedFaces, missing }] }. A node without a position loses its faces (skippedFaces), and a
-// value it lacks is NaN (missing: how many nodes lack any).
+// [Faces] (three or more node numbers) sections, after CFD-Post's "##" header if it has one. Gives
+// { maps: [{ name, points (metres, x, y, z, ...), indices (triangles, as rows of points), results:
+// [{ name, unit, metric, values }], faces, skippedFaces, missing }], source (cfdHeader) }. A node without a position loses its faces
+// (skippedFaces), and a value it lacks is NaN (missing: how many nodes lack any).
 export function parseCfdMap(text) {
   if (!/^\[Faces\]\s*$/m.test(text)) return null;
   const maps = [];
   let section = null, cur = null, cols = null, scale = 1;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
-    if (!line) continue;
+    if (!line || line[0] === '#') continue;
     if (line[0] === '[') {
       section = line.toLowerCase();
       if (section === '[name]') cur = null;
@@ -153,7 +175,7 @@ export function parseCfdMap(text) {
   if (!usable.length) return null;
   return { maps: usable.map(({ name, xyz, tris, results, faces, skippedFaces, missing }) => ({ name, faces, skippedFaces, missing,
     points: Float64Array.from(xyz), indices: Uint32Array.from(tris),
-    results: results.map((r) => ({ ...r, values: Float32Array.from(r.values) })) })) };
+    results: results.map((r) => ({ ...r, values: Float32Array.from(r.values) })) })), ...sourceOf(text) };
 }
 
 // A map's positions for the GPU, in the model's units relative to its origin.
@@ -214,19 +236,22 @@ export function cfdMapFind(map, x, y, z) {
 // A result's value at a place from cfdMapFind; NaN if a corner lacks it.
 export const cfdMapValueAt = (result, h) => result.values[h.a] * h.wa + result.values[h.b] * h.wb + result.values[h.c] * h.wc;
 
+// The CFD case a file came from, for its summary.
+const caseOf = (source) => (source?.cases?.length ? [`case ${source.cases.join(', ')}`] : []);
+
 export const RESULT_PARSERS = [
   { id: 'cfdStreamlines', name: 'CFD streamlines', extensions: ['.csv'], parse: parseCfdStreamlines,
-    describe({ streamlines }) {
+    describe({ streamlines, source }) {
       const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`;
       return [count(streamlines.length, 'streamline'), count(streamlines.reduce((s, l) => s + l.polylines.length, 0), 'polyline'),
-        count(streamlines.reduce((s, l) => s + l.segments, 0), 'segment')].join(' · ');
+        count(streamlines.reduce((s, l) => s + l.segments, 0), 'segment'), ...caseOf(source)].join(' · ');
     } },
   { id: 'cfdMap', name: 'CFD map', extensions: ['.csv'], parse: parseCfdMap,
-    describe({ maps }) {
+    describe({ maps, source }) {
       const count = (n, what) => `${n.toLocaleString()} ${what}${n === 1 ? '' : 's'}`, sum = (f) => maps.reduce((s, m) => s + f(m), 0);
       const missing = sum((m) => m.missing), skipped = sum((m) => m.skippedFaces);
       return [count(maps.length, 'map'), count(sum((m) => m.results.length), 'result'), count(sum((m) => m.faces), 'face'),
-        ...(missing ? [`${count(missing, 'node')} without some results`] : []), ...(skipped ? [`${count(skipped, 'face')} not usable`] : [])].join(' · ');
+        ...(missing ? [`${count(missing, 'node')} without some results`] : []), ...(skipped ? [`${count(skipped, 'face')} not usable`] : []), ...caseOf(source)].join(' · ');
     } },
 ];
 

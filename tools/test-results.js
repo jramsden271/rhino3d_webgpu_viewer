@@ -130,6 +130,16 @@ assert(Number.isNaN(gm.results[0].values[4]));
 assert(cfdMapValues(gm.results[0])[4] > 1e20, 'a missing value is huge');
 assert.strictEqual(cfdMapValues(gm.results[0])[1], 20);
 assert.strictEqual(parsed.parser.describe(parsed.data), '1 map · 5 results · 4 faces · 1 node without some results · 2 faces not usable');
+// CFD-Post's "##" header is skipped, and its case kept for the summary.
+const header = '##\n## CFD-Post Generic Export\n##\n## Build 25.2 2025-05-19T16:16:34.137402\n##\n## Generated on:  2026/11/17 16:23:42\n##\n## Generated from case(s): Case 261110_REXPO_Oct330pm_001\n##\n\n';
+const withHeader = parseResultsFile(bytes(header + ground), 'g.csv');
+assert.strictEqual(withHeader.parser.id, 'cfdMap');
+assert.deepStrictEqual(withHeader.data.source, { build: '25.2 2025-05-19T16:16:34.137402', exported: '2026/11/17 16:23:42', cases: ['261110_REXPO_Oct330pm_001'] });
+assert(withHeader.parser.describe(withHeader.data).endsWith(' · case 261110_REXPO_Oct330pm_001'));
+d = parseCfdStreamlines(`${header}[Name]\nStream A\n${data(nodes)}${lines([[0, 1]])}`);
+assert.strictEqual(d.streamlines.length, 1);
+assert.deepStrictEqual(d.source.cases, ['261110_REXPO_Oct330pm_001']);
+assert.strictEqual(parseCfdStreamlines(`[Name]\nStream A\n${data(nodes)}${lines([[0, 1]])}`).source, undefined, 'no header, no source');
 // Each parser takes only its own files.
 assert.strictEqual(parseCfdStreamlines(ground), null);
 assert.strictEqual(parseCfdMap(`[Name]\nS\n${data(nodes)}${lines([[0, 1]])}`), null);
