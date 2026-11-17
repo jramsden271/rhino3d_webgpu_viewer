@@ -60,7 +60,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 /* The top bar trimmed to fit (fitTopBar): first the file name, then these, in turn. */
 .top-left.trim-loc #locName, .top-left.trim-icons .top-when svg, .top-left.trim-brand .brand span { display: none; }
 /* The Date and Time widgets drop down from their buttons (placed by placeDropWidget). */
-.drop-widget { position: absolute; width: 300px; max-width: calc(100vw - 24px); z-index: 30; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28); }
+.drop-widget { position: absolute; width: 300px; max-width: calc(100vw - 24px); z-index: 8; /* over widgets, windows (4-5) and toolbar menus (6); under right-click menus (20) and dialogs (50) */ box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28); }
 .brand { display: flex; align-items: center; gap: 7px; font: inherit; font-weight: 600; white-space: nowrap; color: inherit;
   border: 0; background: none; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
 .brand:hover { background: var(--hover); }
