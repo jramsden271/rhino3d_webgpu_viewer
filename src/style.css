@@ -353,7 +353,7 @@ button.swatch:hover, button.swatch:focus-visible { transform: scale(1.25); box-s
 input[type="checkbox"]:not(.switch input), .box { appearance: none; flex: none; position: relative; width: 14px; height: 14px; margin: 0; border: 1px solid var(--muted); border-radius: 3px; cursor: pointer; }
 input[type="checkbox"]:not(.switch input):checked, [aria-checked="true"] > .box { background: var(--accent); border-color: var(--accent); }
 input[type="checkbox"]:not(.switch input):checked::after, [aria-checked="true"] > .box::after { content: ""; position: absolute; inset: 0; background: var(--surface-solid); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.7l4.5-5.4' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") center / 100% no-repeat; }
-.sun-body .fine { font-size: 11.5px; color: var(--muted); }
+.sun-body .fine, .pc-body .fine { font-size: 11.5px; color: var(--muted); }
 /* Show/hide ticks are an eye: open when shown, closed when hidden. */
 input[type="checkbox"].eye:not(.switch input), .box.eye { width: 16px; height: 16px; border: none; border-radius: 3px; background: none; }
 input[type="checkbox"].eye:not(.switch input)::after, .box.eye::after { content: ""; position: absolute; inset: 0; background: var(--muted); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 10s3.6 5.5 10 5.5S22 10 22 10'/%3E%3Cpath d='m4.5 13.2-2 2.3M9 15.2l-.8 2.8M15 15.2l.8 2.8M19.5 13.2l2 2.3'/%3E%3C/svg%3E") center / 100% no-repeat; }
@@ -777,9 +777,29 @@ body.walking .walk-frame { display: block; }
 .mrt-dir { position: absolute; font-size: 11px; color: var(--muted); padding: 0 4px; white-space: nowrap; }
 .mrt-unit { text-align: right; }
 
-/* The person: title-bar buttons, the widget, and the figure in the view */
-.panel-actions .x.person-drop[aria-pressed="true"], #personPlace[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+/* People: the Person widget, the figures in the view, and the selected person's card */
+#personPlace[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .person-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 .person-buttons .btn[hidden] { display: none; }
-#gfx.over-person { cursor: grab; }
+#gfx.over-person { cursor: pointer; }
 #gfx.dragging.person-drag { cursor: grabbing; }
+.person-card { min-width: 280px; max-width: min(340px, calc(100vw - 24px)); max-height: 70vh; }
+.pc-icon { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; background: rgb(245 168 0); color: #fff; align-items: center; justify-content: center; flex: none; }
+.pc-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.pc-body { padding: 8px 12px 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.pc-fields { display: flex; gap: 10px; flex-wrap: wrap; }
+.pc-fields label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.pc-fields select { font: inherit; color: var(--text); background: var(--surface-solid); border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; }
+.pc-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 8px; width: 100%; padding: 6px 2px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.pc-row:hover { background: var(--accent-soft); }
+.pc-k { color: var(--muted); }
+.pc-v { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-v b { font-size: 14px; }
+.pc-v .fine { font-size: 11px; color: var(--muted); }
+.pc-cat { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: 11px; background: var(--cat, transparent); color: #111; }
+.pc-row .caret { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; align-self: center; transition: transform 0.15s; }
+.pc-row .caret.collapsed { transform: rotate(-90deg); }
+.pc-detail { padding: 0 0 6px; }
+.pc-detail[hidden] { display: none; }
+.pc-detail .sky-canvas { display: block; width: 100%; max-width: 260px; aspect-ratio: 1; margin: 0 auto; color: var(--muted); }
+.person-card .sun-state { margin: 0; }

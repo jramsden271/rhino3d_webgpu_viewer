@@ -185,7 +185,7 @@
   <section id="comfortPanel" class="chrome panel sun-panel" hidden aria-label="Thermal comfort" data-min>
     <div class="panel-head">
       <span>Thermal comfort</span>
-      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
+      <span class="panel-actions"><button class="link" id="comfortAdd" hidden title="Add a weather file (EPW): the UTCI needs its weather">Add EPW</button><button class="x q" id="comfortHelp" aria-label="About thermal comfort" title="How the UTCI is estimated">?</button><button class="x" id="comfortClose" aria-label="Close thermal comfort panel" title="Close (U)">×</button></span>
     </div>
     <div class="sun-body">
       <div id="comfortRead" class="utci-read"></div>
@@ -199,30 +199,28 @@
       </div>
     </div>
   </section>
-  <section id="personPanel" class="chrome panel sun-panel" hidden aria-label="Person" data-min>
+  <section id="personPanel" class="chrome panel sun-panel" hidden aria-label="People" data-min>
     <div class="panel-head">
-      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg>Person</span>
-      <span class="panel-actions"><button class="x q" id="personHelp" aria-label="About the person" title="About the person">?</button><button class="x" id="personClose" aria-label="Close person panel" title="Close">×</button></span>
+      <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg>People</span>
+      <span class="panel-actions"><button class="x q" id="personHelp" aria-label="About people" title="About people">?</button><button class="x" id="personClose" aria-label="Close person panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="personRead" class="sun-read"></div>
       <div class="person-buttons" data-full>
-        <button class="btn small" id="personPlace" aria-pressed="false" title="Click this, then where the person stands in the model (Esc to cancel)">Place</button>
-        <button class="btn small" id="personWalk" title="Start walking where the person stands">Walk from here</button>
-        <button class="btn small" id="personRemove" title="Take the person away">Remove</button>
+        <button class="btn small" id="personPlace" aria-pressed="false" title="Click this, then where the person stands in the model (Esc to cancel)">Place a person</button>
+        <button class="btn small" id="personRemove" title="Take everyone away">Remove all</button>
       </div>
-      <label class="field-row" data-full title="Standing or sitting: how much of the body the sun falls on, and the height everything is measured at">Posture <select id="comfortPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
-      <label class="field-row" data-full title="Which way the person faces: it changes how much of the body the direct sun falls on">Facing <select id="personFacing"></select></label>
+      <label class="field-row" data-full title="Standing or sitting, for the people placed from now on (each person's card sets their own)">New people <select id="comfortPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
       <div class="field" data-full>
         <div class="field-label"><span>Wind factor</span><output id="comfortWindOut"></output></div>
-        <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
+        <input type="range" id="comfortWind" min="0" max="1" step="0.05" title="Shelter from the wind, for everyone: the weather file's wind speed is multiplied by this (1 open, 0 fully sheltered)">
       </div>
     </div>
   </section>
   <section id="mrtPanel" class="chrome panel sun-panel" hidden aria-label="Radiant temperature" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h14M4 18h6"/><path d="M4 3v18"/></svg>Radiant temperature</span>
-      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="link" id="mrtAdd" hidden title="Add a weather file (EPW): the radiant temperature needs its weather">Add EPW</button><button class="x q" id="mrtHelp" aria-label="About the radiant temperature" title="About the radiant temperature">?</button><button class="x" id="mrtClose" aria-label="Close radiant temperature panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="mrtRead" class="sky-read"></div>
@@ -232,7 +230,7 @@
   <section id="skyViewPanel" class="chrome panel sun-panel" hidden aria-label="Sky view" data-min>
     <div class="panel-head">
       <span class="panel-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 15H7v-5h4v6h3v-4h3.5v3h3"/></svg>Sky view</span>
-      <span class="panel-actions"><button class="x person-drop" aria-pressed="false" title="Place the person this is worked out for (Esc to cancel)" aria-label="Place the person"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="2.6" r="1.6"/><path d="M3 8.6V7.4a3 3 0 0 1 6 0v1.2M4.6 8.6v2.6M7.4 8.6v2.6"/></svg></button><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
+      <span class="panel-actions"><button class="x q" id="skyViewHelp" aria-label="About sky view" title="About sky view">?</button><button class="x" id="skyViewClose" aria-label="Close sky view panel" title="Close">×</button></span>
     </div>
     <div class="sun-body">
       <div id="skyViewRead" class="sky-read"></div>
@@ -391,6 +389,23 @@
     <div class="inspect-actions">
       <span class="fine">Shift-click to add or remove objects</span>
       <button class="btn small" id="insHide" title="Hide from view (H)"><svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a9 9 0 0 0 4.4-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>Hide</button>
+    </div>
+  </div>
+
+  <div id="personCard" class="chrome inspect person-card" hidden role="dialog" aria-labelledby="pcTitle">
+    <div class="inspect-head"><span class="pc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2"/><path d="M12 8v7M8 11l4-2 4 2M12 15l-3 6M12 15l3 6"/></svg></span><b id="pcTitle"></b><span class="panel-actions"><button class="x" id="pcWalk" aria-label="Walk from here" title="Walk from here, looking the way they face"><svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6.6" cy="1.9" r="1.1"/><path d="M6 4.2 4.6 7.4M6 4.2l.7 3.2 2 3.3M4.6 7.4 3.2 10.7M6 4.2 4.1 5.4 3 4.6M6 4.2l1.5 1.5 1.6-.3"/></svg></button><button class="x" id="pcRemove" aria-label="Remove this person" title="Remove this person (Delete)"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.2 3.4h7.6M4.6 3.4V2h2.8v1.4M3.3 3.4l.5 7.1h4.4l.5-7.1"/></svg></button><button class="x q" id="pcHelp" aria-label="About people" title="About people">?</button><button class="x" id="pcClose" aria-label="Close" title="Close">×</button></span></div>
+    <div class="pc-body">
+      <div class="pc-fields">
+        <label title="Standing or sitting: how much of the body the sun falls on, and the height everything is measured at">Posture <select id="pcPosture"><option value="standing">Standing</option><option value="sitting">Sitting</option></select></label>
+        <label title="Which way they face: it changes how much of the body the direct sun falls on">Facing <select id="pcFacing"></select></label>
+      </div>
+      <div id="pcSun" class="sun-state"></div>
+      <button class="pc-row" data-pc="utci" aria-expanded="false" title="The UTCI where they stand: what the air temperature would feel like in calm shade"><span class="pc-k">Thermal comfort</span><span class="pc-v" id="pc-utci"></span><svg class="caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="pc-detail" id="pc-utci-detail" hidden></div>
+      <button class="pc-row" data-pc="mrt" aria-expanded="false" title="The mean radiant temperature where they stand, and how sun, sky and surroundings make it up"><span class="pc-k">Radiant temp.</span><span class="pc-v" id="pc-mrt"></span><svg class="caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="pc-detail" id="pc-mrt-detail" hidden></div>
+      <button class="pc-row" data-pc="sky" aria-expanded="false" title="How much of the sky they can see: the sky view factor, and a fisheye picture"><span class="pc-k">Sky view</span><span class="pc-v" id="pc-sky"></span><svg class="caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="pc-detail" id="pc-sky-detail" hidden><canvas id="pcSkyCanvas" class="sky-canvas"></canvas></div>
     </div>
   </div>
 
