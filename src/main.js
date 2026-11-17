@@ -1583,7 +1583,7 @@ function restoreLayersAndHidden(saved) {
   for (const id of saved.blocks || []) if (model.blocks.has(id)) state.blockOff.add(id);
   state.streamlines.on = saved.streamlines?.on !== false;
   state.streamlines.off = new Set(saved.streamlines?.off || []);
-  Object.assign(state.maps, { on: saved.maps?.on !== false, off: new Set(saved.maps?.off || []), picked: saved.maps?.picked || {}, z: Number.isFinite(saved.maps?.z) ? saved.maps.z : 0 });
+  Object.assign(state.maps, { on: saved.maps?.on !== false, off: new Set(saved.maps?.off || []), picked: saved.maps?.picked || {}, z: Number.isFinite(saved.maps?.z) ? Math.min(MAP_Z_MAX, Math.max(0, saved.maps.z)) : 0 });
   pushObjectFlags();
   syncHiddenButton();
   if (state.hidden.size) model.restored.push(`${state.hidden.size.toLocaleString()} object${state.hidden.size > 1 ? 's' : ''} hidden`);
@@ -3305,6 +3305,12 @@ const resultScale = (r) => (r.metric ? ColourScales.preferred(r.metric) : (r.dat
 const resultUnit = (r) => (r.metric ? ColourScales.metrics[r.metric].unit : r.unit);
 const pickedResult = (m) => m.map.results.find((r) => r.name === state.maps.picked[m.key]) || m.map.results[0];
 
+// The map's height slider: 0 to 50 m on a log scale (of 1 + metres), so small moves are easy to make
+// near the ground. The slider runs 0 to 1000; heights are rounded to the centimetre.
+const MAP_Z_MAX = 50;
+const mapZFromSlider = (t) => Math.round((Math.pow(MAP_Z_MAX + 1, t / 1000) - 1) * 100) / 100;
+const mapZSlider = (z) => Math.round((Math.log(1 + Math.max(0, z)) / Math.log(MAP_Z_MAX + 1)) * 1000);
+
 function toggleMapPanel() {
   state.maps.panel = !state.maps.panel;
   $('mapPanel').hidden = !state.maps.panel;
@@ -3362,8 +3368,8 @@ function syncMaps() {
   const M = state.maps;
   $('mapOn').checked = M.on;
   syncResultsMenu();
-  $('mapZ').value = M.z;
-  $('mapZOut').value = `${M.z > 0 ? '+' : ''}${M.z.toFixed(1)} m`;
+  $('mapZ').value = mapZSlider(M.z);
+  $('mapZOut').value = `${M.z > 0 ? '+' : ''}${M.z.toFixed(M.z < 10 ? 2 : 1)} m`;
   const i = M.list.findIndex((m) => !M.off.has(m.key));
   if (i >= 0) $('mapPick').value = `${i}|${pickedResult(M.list[i]).name}`;
   // The legend of the result shown (the dropdown names it).
@@ -3437,7 +3443,7 @@ function showMapHover(h) {
 function bindMapPanel() {
   $('mapOn').addEventListener('change', (e) => setMapsOn(e.target.checked));
   $('mapClose').addEventListener('click', () => state.maps.panel && toggleMapPanel());
-  $('mapZ').addEventListener('input', (e) => { state.maps.z = +e.target.value; syncMaps(); saveViewState(); redraw(); });
+  $('mapZ').addEventListener('input', (e) => { state.maps.z = mapZFromSlider(+e.target.value); syncMaps(); saveViewState(); redraw(); });
   $('mapPick').addEventListener('change', (e) => pickMap(e.target.value));
   for (const id of ['mapLegends', 'streamlineLegend']) {
     $(id).addEventListener('change', (e) => { if (e.target.dataset.metric) setColourScale(e.target.dataset.metric, e.target.value); });
