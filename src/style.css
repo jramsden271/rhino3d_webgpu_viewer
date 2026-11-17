@@ -162,6 +162,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-bottom-width: 2px;
 #weatherPanel.min:has(#weatherRead[hidden]) .sun-body { display: none; }
 #weatherPanel.min:has(#weatherRead[hidden]) .panel-head { border-bottom: 0; }
 .layers-panel { flex: 1 1 0; min-height: 140px; } /* Layers and Blocks share the height the other panels leave */
+#mapPanel { flex: 0 1 auto; min-height: 0; } /* one dropdown and a legend: as tall as it needs, shrinking (the legend scrolls) in a short window */
 /* Minimised, Layers and Blocks only hide their filter: they still share the height, down to a lower least height. */
 #layersPanel, #blocksPanel { min-height: 150px; }
 :is(#layersPanel, #blocksPanel).min { min-height: 100px; }
