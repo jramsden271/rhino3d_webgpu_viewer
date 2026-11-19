@@ -424,6 +424,7 @@ function loop() {
   // The project's thumbnail is taken once the view has settled after a change (see redraw).
   if (thumb.due && now - lastInput > THUMB_SETTLE && canThumb()) { thumb.due = false; thumb.take = true; renderer.dirty = true; }
   syncPersonFigures();
+  aimSunCamera();
   if (renderer.dirty) {
     anim.drawn = now;
     renderer.dirty = false;
@@ -4151,6 +4152,7 @@ function faceBearing(bearing) {
 }
 
 function setHeading(yaw) {
+  if (viewNow === 'sun' && !moving()) return; // the sun sets the Sun view's direction
   const eye = camera.eye;
   camera.yaw = yaw;
   if (walker.active) camera.target = V3.sub(eye, V3.scale(camera.dir, camera.distance));
@@ -4509,7 +4511,7 @@ function onKey(e) {
   if (driver.placing && k === 'escape') { e.preventDefault(); driver.exit(); return; }
   const actions = {
     f: zoomExtents,
-    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'), 5: () => { if (state.devMode) pickView('drive'); },
+    1: () => pickView('top'), 2: () => pickView('elevation'), 3: () => pickView('perspective'), 4: () => pickView('walk'), 5: () => { if (state.devMode) pickView('drive'); }, 6: () => pickView('sun'),
     m: () => setMode(MODES[(MODES.findIndex(([id]) => id === state.mode) + 1) % MODES.length][0]),
     e: () => toggle('showEdges'), c: () => toggle('showCurves'), x: () => toggle('xray'), o: () => toggle('ao'), l: () => toggle('layers'), k: () => { if (model.blocks.size) toggle('blocks'); }, s: toggleDatePanel,
     '?': toggleHelp, escape: () => {
@@ -4536,7 +4538,7 @@ function onKey(e) {
 let viewNow = 'perspective', viewCams = {};
 // How the view moves (see movementRules). A named view keeps the rules of its saved camera, so that
 // orbiting one up to straight down or through level doesn't catch it there.
-const viewRules = () => { const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
+const viewRules = () => { if (viewNow === 'sun') return 'pan'; const named = namedViewOf(viewNow); return movementRules(named ? camera.fromRhino(named) : camera); };
 function pickView(id) {
   // From walking to driving or back: out of one, then into the other.
   if ((id === 'walk' && driver.active) || (id === 'drive' && walker.active)) { leaveWalk(() => pickView(id)); return; }
@@ -4545,17 +4547,55 @@ function pickView(id) {
   if (moving()) { leaveWalk(() => { if (id !== viewNow) pickView(id); }); return; }
   walker.exit();
   driver.exit();
+  if (id === 'sun' && !sunViewDir()) { notice(activeLocation() ? 'The sun is down at this date and time, so there is no Sun view. Pick a time in daylight.' : 'The Sun view needs a location, to know where the sun is. Set one in the Date widget.', true, 6000); syncToolbar(); return; }
   if (viewNow !== id) viewCams[viewNow] = camera.snapshot();
+  if (id === 'sun') sunCam.down = false;
   const saved = viewNow !== id && viewCams[id], named = namedViewOf(id);
   viewNow = id;
+  if (!saved && !named && id === 'sun') { aimSunCamera(true); zoomExtents(); syncToolbar(); return; }
   if (!saved && !named) { setView(id, true); return; }
   camera.restore(saved || camera.fromRhino(named));
   syncToolbar();
   redraw();
 }
 
+// The Sun view: a parallel camera looking the way the sunlight goes, so what it sees is what the sun
+// lights. It pans and zooms but does not orbit: the date, time and location turn it. It turns about
+// the point on the view's centre line at the ground's height (sunViewGround), so the ground in the
+// middle of the view stays there as the sun moves. (Not the first surface at the middle: that can be
+// a canopy or a dome high above, which would swing the ground away.)
+// With the sun down it stays as it was.
+const sunCam = { down: false };
+// The ground's height, roughly: the middle of the heights of the bottoms of the parts shown, so one
+// big object reaching far down (an enclosing dome, a deep basement) does not move it.
+function sunViewGround() {
+  const z = visibleBatches().map((b) => b.min[2]).sort((a, b) => a - b);
+  return z.length ? z[z.length >> 1] : 0;
+}
+function sunViewDir() {
+  const pos = activeLocation() ? sunPosition() : null;
+  return pos && pos.altitude > 0 ? sunVector(pos.azimuth, pos.altitude, state.sun.north) : null;
+}
+// Each frame in the Sun view: turns it to the sun if the sun has moved. force: even if it has not.
+function aimSunCamera(force = false) {
+  if (viewNow !== 'sun' || moving() || !model) return;
+  const d = sunViewDir();
+  if (!d) {
+    if (!sunCam.down) { sunCam.down = true; notice('The sun is down: the Sun view stays where it was until it rises.', false, 5000); }
+    return;
+  }
+  sunCam.down = false;
+  const pitch = Math.min(Math.asin(Math.max(-1, Math.min(1, d[2]))), (89.99 * Math.PI) / 180), yaw = Math.atan2(d[1], d[0]);
+  if (!force && camera.ortho && Math.abs(pitch - camera.pitch) < 1e-6 && Math.abs(wrapAngle(yaw - camera.yaw)) < 1e-6) return;
+  // Along the centre line (which leaves the picture as it is) to the ground's height, then turned.
+  const z0 = sunViewGround(), f = camera.dir;
+  if (camera.ortho && Math.abs(f[2]) > 1e-6) camera.target = V3.add(camera.target, V3.scale(f, (z0 - camera.target[2]) / f[2]));
+  Object.assign(camera, { yaw, pitch, ortho: true });
+  redraw();
+}
+
 // The toolbar's Camera menu. Picking leaves it open, to compare views.
-const CAMERAS = [['top', 'Top', '1'], ['elevation', 'Elevation', '2'], ['perspective', 'Perspective', '3']];
+const CAMERAS = [['top', 'Top', '1'], ['elevation', 'Elevation', '2'], ['perspective', 'Perspective', '3'], ['sun', 'Sun view', '6']];
 const namedViewOf = (id) => (typeof id === 'string' && id.startsWith('named:') ? model?.views[+id.slice(6)] : null);
 const isCameraId = (id) => CAMERAS.some(([c]) => c === id) || !!namedViewOf(id);
 let cameraList = null, cameraMenu = null;
