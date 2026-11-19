@@ -15,7 +15,7 @@ import { SOLARCAL_POSTURES, UTCI_CATEGORIES, UTCI_WIND_MIN, openGroundView, skyL
 import { ColourScales } from './colourscales.js';
 import { RESULT_PARSERS, cfdMapFind, cfdMapValueAt, cfdMapValues, cfdMapVertices, parseResultsFile, resultParsersFor, streamlineVertices } from './results.js';
 import { Meshes } from './mesh.js';
-import { EXPOSURE_DATE_SPANS, EXPOSURE_LIFT, EXPOSURE_RADII, EXPOSURE_SPACINGS, EXPOSURE_STEPS, EXPOSURE_TEXEL, EXPOSURE_TIME_SPANS, exposureDays, exposureHours, exposureLayerMeshes, exposurePointEstimate, exposureSummary, exposureSunDirs, exposureSurface, exposureTimes } from './exposure.js';
+import { EXPOSURE_AUTO_SPACINGS, EXPOSURE_DATE_SPANS, EXPOSURE_LIFT, EXPOSURE_RADII, EXPOSURE_SPACINGS, EXPOSURE_STEPS, EXPOSURE_TEXEL, EXPOSURE_TIME_SPANS, exposureDays, exposureHours, exposureLayerMeshes, exposurePointEstimate, exposureSummary, exposureSunDirs, exposureSurface, exposureTimes } from './exposure.js';
 import { Camera, movementRules } from './camera.js';
 import { ChoiceList, ToolbarMenu } from './toolmenu.js';
 import { RowSelection } from './listselect.js';
@@ -3678,6 +3678,7 @@ let toolsMenu = null, toolsList = null, exposureBound = false;
 const fmtDay = (doy) => { const { month, day } = dateFromDayOfYear(EPW_YEAR, doy); return `${day} ${MONTHS[month - 1]}`; };
 const fmtRange = ([a, b], f) => (a === b ? f(a) : `${f(a)} – ${f(b)}`);
 const fmtMetres = (m) => `${m} m`;
+const fmtSpacing = (m) => `${+m.toPrecision(2)} m`; // a worked-out spacing, to 2 significant figures
 const fmtClock = (h) => (h >= 24 ? '24:00' : fmtHour(h)); // the end of the day, not the start
 
 // The days and hours tested: the chosen spans round the Date and Time widgets' date and time.
@@ -3710,7 +3711,8 @@ async function runExposure() {
     await new Promise((r) => setTimeout(r, 30));
     if (token !== expo.token) return;
     const within = expo.radius ? { x: expo.centre[0], y: expo.centre[1], r: expo.radius * u } : null;
-    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: expo.spacing * u, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u, within });
+    const auto = EXPOSURE_AUTO_SPACINGS.find((a) => a.id === expo.spacing);
+    const surface = exposureSurface(exposureLayerMeshes(model, expo.layer, objectOff), { spacing: auto ? 0 : expo.spacing * u, points: auto?.points, flip: expo.flip, upOnly: expo.upOnly, lift: EXPOSURE_LIFT * u, weldTol: 1e-4 * u, within });
     Object.assign(expo, { surface, surfaceKey: k.surface });
     renderer.setExposurePoints(surface.error ? null : surface);
   }
@@ -3733,7 +3735,7 @@ async function runExposure() {
   }
   Object.assign(expo, { status: 'Calculating…', progress: 0 });
   syncExposurePanel();
-  const lit = await renderer.exposureRun({ dirs, texel: Math.min(expo.spacing / 2, EXPOSURE_TEXEL) * u, stop: () => token !== expo.token,
+  const lit = await renderer.exposureRun({ dirs, texel: Math.min(surface.spacing / 2, EXPOSURE_TEXEL * u), stop: () => token !== expo.token,
     progress: (f) => { expo.progress = f; syncExposureProgress(); } });
   if (!lit) return;
   const values = new Float32Array(lit.length), all = EXPOSURE_FULL * dirs.length;
@@ -3743,7 +3745,7 @@ async function runExposure() {
   const sum = exposureSummary(surface, values), u2 = model.metresPerUnit ** 2;
   expo.summary = { area: sum.area * u2, exposed: sum.exposed * u2 };
   const n = surface.pos.length / 3, secs = (performance.now() - t0) / 1000;
-  done(`${times.length.toLocaleString()} ${times.length === 1 ? 'time' : 'times'}, the sun up at ${dirs.length.toLocaleString()} · ${n.toLocaleString()} points · ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
+  done(`${times.length.toLocaleString()} ${times.length === 1 ? 'time' : 'times'}, the sun up at ${dirs.length.toLocaleString()} · ${n.toLocaleString()} points${typeof expo.spacing === 'string' ? ` at ${fmtSpacing(surface.spacing * model.metresPerUnit)}` : ''} · ${secs < 10 ? secs.toFixed(1) : Math.round(secs)} s`);
 }
 
 function stopExposure() {
@@ -3924,7 +3926,7 @@ function showExposureHelp() {
     <p>Under the results: the area analysed, and how much of it is in sun and shaded on average over the period.</p>
     <p><b>Date span</b> and <b>Time span</b> are periods round the date and time in the Date and Time widgets, shown beside each, both ends included: 1 week is three days either side, 1 hour half an hour either side. Every day in the dates is tested at the times, every <b>Interval</b>. Change the Date widget and the results follow it.</p>
     <p><b>Within</b> limits the surfaces to those within a distance (in plan) of the point last clicked with the picker, so part of a big layer, such as the ground of a whole masterplan, can be tested at a fine spacing. Pick again to move it.</p>
-    <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points.</p>
+    <p><b>Grid spacing</b> is the most distance between the points tested on the surfaces: closer gives a finer result and takes longer. The colours blend between the points. <b>Coarse</b>, <b>Medium</b> and <b>Fine</b> work out a spacing from the area tested, for about 10,000, 100,000 or 1,000,000 points; the spacing used is shown when the results are ready. Surfaces already more detailed than the spacing keep their own points, so the count can come out higher.</p>
     <p>What shades the surfaces is what is shown: hide a layer or an object, and the results update without it. Times are the location’s clock time, as in the Time widget.</p>
     <p>With <b>Update automatically</b> off, the results stay as they are while you change the settings, which keeps long periods quick to set up. Tick it again to calculate.</p>
     <p>The results are not kept: they go when the model is closed.</p>` });
@@ -3962,9 +3964,10 @@ function bindExposurePanel() {
   $('exposureDateSpan').addEventListener('change', (e) => setExposure({ dateSpan: e.target.value }));
   $('exposureTimeSpan').addEventListener('change', (e) => setExposure({ timeSpan: e.target.value }));
   $('exposureStep').innerHTML = EXPOSURE_STEPS.map((m) => `<option value="${m}">every ${m} min</option>`).join('');
-  $('exposureSpacing').innerHTML = EXPOSURE_SPACINGS.map((m) => `<option value="${m}">${fmtMetres(m)}</option>`).join('');
+  $('exposureSpacing').innerHTML = EXPOSURE_AUTO_SPACINGS.map((a) => `<option value="${a.id}">${a.label}</option>`).join('')
+    + EXPOSURE_SPACINGS.map((m) => `<option value="${m}">${fmtMetres(m)}</option>`).join('');
   $('exposureStep').addEventListener('change', (e) => setExposure({ step: +e.target.value }));
-  $('exposureSpacing').addEventListener('change', (e) => setExposure({ spacing: +e.target.value }));
+  $('exposureSpacing').addEventListener('change', (e) => setExposure({ spacing: EXPOSURE_AUTO_SPACINGS.some((a) => a.id === e.target.value) ? e.target.value : +e.target.value }));
   $('exposureRadius').innerHTML = EXPOSURE_RADII.map((m) => `<option value="${m}">${m ? fmtMetres(m) : 'Whole layer'}</option>`).join('');
   $('exposureRadius').addEventListener('change', (e) => setExposure({ radius: +e.target.value }));
   // Ticking it again also restarts a stopped run.

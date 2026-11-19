@@ -142,4 +142,13 @@ const half = exposureSummary(fine, eastHalf);
 assert.ok(near(half.area, 1, 1e-6) && Math.abs(half.exposed - 0.5) < 0.05, `half in sun (${half.exposed})`);
 assert.ok(near(exposureSummary(fine, new Float32Array(fine.pos.length / 3).fill(100)).exposed, 1, 1e-6), 'all in sun');
 
+// Coarse, Medium and Fine: a spacing worked out for about this many points, on the area tested.
+const plot = { pos: Float32Array.from([0, 0, 0, 100, 0, 0, 100, 100, 0, 0, 100, 0]), idx: Uint32Array.from([0, 1, 2, 0, 2, 3]) };
+for (const points of [1e4, 1e5]) {
+  const a = exposureSurface([[plot]], { points, flip: false, lift: 0, weldTol: 1e-6 }), n = a.pos.length / 3;
+  assert.ok(n > points / 2 && n < points * 2, `about ${points} points (${n} at ${a.spacing.toFixed(3)})`);
+}
+const circ = exposureSurface([[plot]], { points: 1e4, flip: false, lift: 0, weldTol: 1e-6, within: { x: 50, y: 50, r: 20 } }), nc = circ.pos.length / 3;
+assert.ok(nc > 5e3 && nc < 2e4, `about 10,000 points within the circle (${nc})`);
+
 console.log('exposure: all checks passed');

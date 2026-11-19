@@ -9,6 +9,12 @@ import { Meshes } from './mesh.js';
 
 export const EXPOSURE_STEPS = [5, 10, 15, 20, 30, 60]; // minutes between times
 export const EXPOSURE_SPACINGS = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10]; // metres between points, at most
+// Spacings worked out from the area tested, to give about this many points.
+export const EXPOSURE_AUTO_SPACINGS = [
+  { id: 'coarse', label: 'Coarse', points: 1e4 },
+  { id: 'medium', label: 'Medium', points: 1e5 },
+  { id: 'fine', label: 'Fine', points: 1e6 },
+];
 export const EXPOSURE_RADII = [0, 10, 25, 50, 100, 200, 500]; // metres round the picked point (0: all of the layer)
 // The most points a surface may have. Not a GPU limit (that is about 4.2 million, the most one
 // compute pass can take): preparing the surface freezes the page, for a few seconds at this size,
@@ -105,18 +111,22 @@ export function exposureLayerMeshes(model, layer, skip) {
   return out;
 }
 
-// A rough count of the points a spacing gives on an area (from refining test surfaces).
-export const exposurePointEstimate = (area, spacing) => (2.6 * area) / (spacing * spacing);
+// A rough count of the points a spacing gives on an area (from refining test surfaces), and the
+// spacing that gives about that many.
+const POINTS_PER_SQUARE = 2.6;
+export const exposurePointEstimate = (area, spacing) => (POINTS_PER_SQUARE * area) / (spacing * spacing);
+export const exposureSpacingFor = (area, points) => Math.sqrt((POINTS_PER_SQUARE * area) / points);
 
 // The surface to test: objects (from exposureLayerMeshes) each turned to face up, or down with flip
 // (one facing as much down as up, such as a closed object or a wall, keeps the file's sides, or the
-// others with flip), then joined and cut so that no edge is longer than spacing. upOnly keeps
+// others with flip), then joined and cut so that no edge is longer than spacing (or, given points instead, the
+// spacing that gives about that many points on the area tested). upOnly keeps
 // only the faces that, turned up, face within EXPOSURE_UP_ONLY of straight up (before flip). Lengths
 // are in model units. within { x, y, r }: only the parts within r of (x, y) in plan (cut to a
 // square round it first, so that a big face is not refined all over). Gives
-// { pos, nrm (Float32Arrays, at the surface), shown (positions lift in front of it), idx, area }
+// { pos, nrm (Float32Arrays, at the surface), shown (positions lift in front of it), idx, area, spacing }
 // or { error } ('outside': nothing within r).
-export function exposureSurface(objects, { spacing, flip, upOnly, lift, weldTol, within = null }) {
+export function exposureSurface(objects, { spacing, points = 0, flip, upOnly, lift, weldTol, within = null }) {
   if (!objects.length) return { error: 'empty' };
   const faced = objects.map((list) => {
     const m = Meshes.join(list), step = Math.max(1, Math.floor(m.idx.length / 3 / 2000));
@@ -128,14 +138,32 @@ export function exposureSurface(objects, { spacing, flip, upOnly, lift, weldTol,
   });
   const joined = Meshes.weld(Meshes.join(faced), weldTol), area = Meshes.area(joined);
   if (!joined.idx.length) return { error: within ? 'outside' : upOnly ? 'noneUp' : 'empty' };
+  if (points) spacing = exposureSpacingFor(within ? areaWithin(joined, within) : area, points);
   if (exposurePointEstimate(area, spacing) > EXPOSURE_MAX_POINTS * 1.5) return { error: 'tooMany', area };
   let fine = Meshes.refine(joined, spacing, EXPOSURE_MAX_POINTS);
   if (!fine) return { error: 'tooMany', area };
   if (within) fine = Meshes.keepWithin(fine, within.x, within.y, within.r);
+  // Given points, once more at a spacing scaled from the count that came out, if it is well off
+  // (long thin triangles, or how the edges fall, can give twice as many).
+  const n = fine.pos.length / 3;
+  if (points && (n > points * 1.4 || n < points / 1.4)) {
+    const again = Meshes.refine(joined, spacing * Math.sqrt(n / points), EXPOSURE_MAX_POINTS);
+    if (again) {
+      spacing *= Math.sqrt(n / points);
+      fine = within ? Meshes.keepWithin(again, within.x, within.y, within.r) : again;
+    }
+  }
   if (!fine.idx.length) return { error: 'outside' };
   const m = Meshes.sortVertices(Meshes.splitNormals(fine)), nrm = m.nrm, pos = Float32Array.from(m.pos), shown = new Float32Array(pos.length);
   for (let i = 0; i < pos.length; i++) shown[i] = pos[i] + nrm[i] * lift;
-  return { pos, nrm, shown, idx: m.idx, area };
+  return { pos, nrm, shown, idx: m.idx, area, spacing };
+}
+
+// The area of a surface (cut to the square round within) inside its circle: cut coarsely first, so
+// that the circle's edge goes through small triangles. The square's area times π/4 if that is too much.
+function areaWithin(m, { x, y, r }) {
+  const coarse = Meshes.refine(m, r / 20, 2e5);
+  return coarse ? Meshes.area(Meshes.keepWithin(coarse, x, y, r)) : (Meshes.area(m) * Math.PI) / 4;
 }
 
 // The area of a surface (from exposureSurface) and how much of it is in sun on average, from the
