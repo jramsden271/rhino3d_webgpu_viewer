@@ -46,7 +46,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
-| Edges · Curves · Magic · Animations · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · `O` · `X` |
+| Edges · Curves · Magic · Animations · Pictures · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · none · `O` · `X` |
 | Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
 | Weather widget · everything under Weather in the render mode menu on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
@@ -340,6 +340,10 @@ file's Sun settings or Earth anchor point, or is 90 when the file sets neither. 
 **Download .3dm** saves a copy with your colour, material and layer changes, and **Revert changes**
 puts everything (layer colours and materials, object colours, materials and layers, the north angle,
 hidden objects and layer visibility) back to how it is in the file. The cameras stay where they are.
+
+**Pictures** (on by default): images embedded in the file, such as those placed with the Picture
+command in Rhino, are shown on their surfaces, as they are and unlit. Turn **Pictures** off in the
+render mode menu to show only the plain surfaces. They are not shown in X-ray mode.
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the

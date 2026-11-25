@@ -39,7 +39,7 @@ const canvas = $('gfx');
 //   and weather choices, its weather and results files, and the changes made to its model and how it is
 //   viewed (readStored). Lamps added in the viewer are not kept.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('3dm-viewer') || '{}'); } catch (e) { return {}; } })();
-const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, skyViewMode: state.skyView.mode, skyViewSunPath: state.skyView.sunPath, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, personColour: state.person.colour, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
+const savePrefs = () => { try { localStorage.setItem('3dm-viewer', JSON.stringify({ mode: state.mode, showEdges: state.showEdges, showCurves: state.showCurves, ao: state.ao, specials: state.specials, animations: state.animations, pictures: state.pictures, walk: walker.settings, drive: driver.settings, comfortWind: state.comfort.wind, comfortClouds: state.comfort.clouds, comfortPosture: state.comfort.posture, skyViewMode: state.skyView.mode, skyViewSunPath: state.skyView.sunPath, colourScales: ColourScales.choices, cloudSpeed: clouds.speed, sideWidth: state.sideWidth, dateMode: state.dateMode, timeMode: state.timeMode, personColour: state.person.colour, theme: state.theme })); } catch (e) { /* storage unavailable */ } };
 
 const state = {
   devMode: false, // the secret developer mode: five quick clicks on the home screen's logo; never saved, so a refresh ends it
@@ -102,6 +102,7 @@ state.maps = { panel: false, on: true, off: new Set(), collapsed: new Set(), pic
 state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
+state.pictures = typeof prefs.pictures === 'boolean' ? prefs.pictures : true; // and its Pictures item
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
 const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
@@ -6019,6 +6020,7 @@ const RENDER_TOGGLES = [
   { id: 'showCurves', label: 'Curves', hint: 'C', title: 'Curves and points' },
   { id: 'specials', label: 'Magic ✨', title: 'Magic materials: water, glass, vegetation, grass, road, paving and ground looks, set per layer, and a faint natural variation on other surfaces (Rendered view; Clay view shows only the water). Off: plain material colours only.' },
   { id: 'animations', label: 'Animations', title: 'Water ripples, drifting clouds and the flow along CFD streamlines. Off: they stand still, and the view is only redrawn when something changes, which saves the graphics card work on large models.' },
+  { id: 'pictures', label: 'Pictures', title: 'Pictures embedded in the model, such as those placed with the Picture command in Rhino, shown on their surfaces. Off: only the plain surfaces.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
 ];

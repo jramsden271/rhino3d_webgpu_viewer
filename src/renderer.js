@@ -1811,7 +1811,7 @@ export class Renderer {
       this.drawCells(pass, b);
     };
     for (const b of meshes) if (!transparentMode(b)) drawMesh(b);
-    if (!s.xray) this.drawPictures(pass);
+    if (!s.xray && s.pictures !== false) this.drawPictures(pass);
     for (const A of actors) {
       pass.setPipeline(s.xray ? P.meshVCT : P.meshVC);
       pass.setBindGroup(1, A.bg, [0]);
