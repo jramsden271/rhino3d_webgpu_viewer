@@ -5230,7 +5230,7 @@ function personAt(e) {
 // Dragging a person (left button on the figure), which selects them. A short drag only turns them,
 // to face the way the drag goes; past PERSON_MOVE_PX it moves them, their feet on the surface under
 // the cursor, facing the way they travel.
-const PERSON_MOVE_PX = 120;  // drag distance (px) at which turning becomes moving
+const PERSON_MOVE_PX = 40;   // drag distance (px) at which turning becomes moving
 const PERSON_TRAVEL = 0.15;  // m moved before they turn to face their travel
 function startPersonDrag(e, id) {
   const p = personById(id);

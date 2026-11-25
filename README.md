@@ -671,7 +671,7 @@ round. The card holds:
   While walking, the other people are shown: click one for their card, whose **Walk from here** hops
   to them (the one you were walking as stays where you were), and you walk on as them. **Remove** (or `Delete`) takes a person away.
 
-Drag a figure to move it: a drag shorter than 120 px only turns the person to face the way you drag;
+Drag a figure to move it: a drag shorter than 40 px only turns the person to face the way you drag;
 a longer one moves them, feet on the surface under the cursor, facing the way they travel.
 
 Each person's sunlight, sky view and surroundings are kept once worked out, and used again while
