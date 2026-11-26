@@ -3,7 +3,7 @@
 import { M4, V3 } from './math.js';
 import { MATERIAL_RULES, MAT_VEGETATION, MAT_WATER, SPECIAL, matchLayer } from './materials.js';
 import { MAGIC_BLOCKS, MAGIC_BY_ID, MAGIC_PARENT_LAYER, magicMeshes } from './magicblocks.js';
-import { SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, mergeScenes, mulRM, pictureSurfaces } from './extract.js';
+import { METRES_PER_UNIT, STRAY_RADIUS_M, SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, findStrays, mergeScenes, mulRM, pictureSurfaces } from './extract.js';
 import { Dialog } from './dialog.js';
 import { CITIES } from './cities.js';
 import { Recent } from './recent.js';
@@ -103,8 +103,8 @@ state.ao = typeof prefs.ao === 'boolean' ? prefs.ao : true;
 state.specials = typeof prefs.specials === 'boolean' ? prefs.specials : true; // the render mode menu's Magic item
 state.animations = typeof prefs.animations === 'boolean' ? prefs.animations : true; // and its Animations item
 state.pictures = typeof prefs.pictures === 'boolean' ? prefs.pictures : true; // and its Pictures item
+state.showStrays = false; // and its Stray geometry item: per model, off whenever one opens (see findStrays)
 const STUDIO = { top: [0.93, 0.94, 0.95, 1], bottom: [0.78, 0.8, 0.84, 1] };
-const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
 let lastInput = performance.now();
 if (typeof prefs.showEdges === 'boolean') state.showEdges = prefs.showEdges;
 if (typeof prefs.showCurves === 'boolean') state.showCurves = prefs.showCurves;
@@ -617,6 +617,15 @@ async function openSceneNow(sources, opts) {
       m.batches = buildBatches(m);
     }
     m.reader = reader;
+    // Stray geometry (findStrays), in all the files together, is left out until the render menu's
+    // Stray geometry item is ticked: built again without it, so it is in no extents or culling cells.
+    state.showStrays = m.showStrays = false;
+    m.strays = findStrays(m, STRAY_RADIUS_M / (METRES_PER_UNIT[m.units] || 1));
+    if (m.strays.size) {
+      showBusy('Leaving out stray geometry', 0.9);
+      await new Promise((r) => setTimeout(r, 20));
+      m.batches = buildBatches(m);
+    }
     model = m;
     model.projectId = opts.projectId ?? null; // the project the model is open in, if any
     model.stored = opts.stored ?? {};        // its saved changes and view (see readStored)
@@ -650,7 +659,7 @@ async function openSceneNow(sources, opts) {
     m.batches = null;
     model.loadMs = performance.now() - t0;
     resetObjectState();
-    const savedView = loadViewState();
+    const savedView = moveSavedView(loadViewState());
     restoreLayersAndHidden(savedView);
     clearHistory();
     $('undoRedo').hidden = false;
@@ -686,6 +695,7 @@ async function openSceneNow(sources, opts) {
     showProjectName();
     renderFileInfo();
     reportSkipped(m.stats);
+    reportStrays();
     return true;
   } catch (e) {
     console.error(e);
@@ -693,6 +703,20 @@ async function openSceneNow(sources, opts) {
   } finally {
     hideBusy();
   }
+}
+
+function reportStrays() {
+  const n = model.strays.size;
+  if (!n) return;
+  notice(`This model contains ${n.toLocaleString()} element${n > 1 ? 's' : ''} more than ${STRAY_RADIUS_M / 1000} km from the model centre. ${n > 1 ? 'These have' : 'This has'} been hidden to maintain performance. You can turn ${n > 1 ? 'these' : 'it'} back on by enabling 'Stray geometry' in the render menu.`);
+}
+
+// The render menu's Stray geometry item: the batches are built again with the stray geometry, or without.
+async function toggleStrays() {
+  if (!model?.strays?.size) return;
+  state.showStrays = model.showStrays = !state.showStrays;
+  syncToolbar();
+  await rebuildModel();
 }
 
 function reportSkipped(st) {
@@ -1601,13 +1625,29 @@ function loadViewState() {
   return readStored('view') || {};
 }
 
+// Positions in a saved view (the cameras, the people) are measured from the origin the model had when
+// it was saved: saved.origin, or, saved before that was kept, the middle of the first file's bounding
+// box (model.boxOrigin), which the origin then always was. Moved to the model's origin now.
+function moveSavedView(saved) {
+  const from = Array.isArray(saved.origin) && saved.origin.length === 3 && saved.origin.every(Number.isFinite) ? saved.origin : model.boxOrigin;
+  if (!from) return saved;
+  const d = V3.sub(from, model.origin);
+  if (!d.some((v) => v)) return saved;
+  const move = (p) => (Array.isArray(p) && p.length === 3 ? V3.add(p, d) : p);
+  if (saved.camera) saved.camera.target = move(saved.camera.target);
+  for (const c of Object.values(saved.cams || {})) if (c) c.target = move(c.target);
+  for (const p of saved.people || []) if (p) p.at = move(p.at);
+  if (saved.person) saved.person.at = move(saved.person.at);
+  return saved;
+}
+
 function saveViewState() {
   if (!model?.viewReady) return; // not until what was saved has been restored
   const layers = {};
   model.layers.forEach((l, i) => { if (layerOn[i] !== l.visible) layers[l.id] = layerOn[i]; });
   const now = walkFrom || camera.snapshot(); // walking saves the camera it will go back to
   try {
-    writeStored('view', { layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off], reversed: [...state.streamlines.reversed] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view }, people: state.people.map((p) => ({ at: p.at, facing: p.facing, posture: p.posture })) });
+    writeStored('view', { origin: model.origin, layers, hidden: [...state.hidden].map((i) => model.objects[i].id), blocks: [...state.blockOff], streamlines: { on: state.streamlines.on, off: [...state.streamlines.off], reversed: [...state.streamlines.reversed] }, maps: { on: state.maps.on, off: [...state.maps.off], picked: state.maps.picked, z: state.maps.z }, view: viewNow, cams: viewCams, camera: now, sun: { doy: state.sun.doy, hour: state.sun.hour }, weather: { on: state.weatherOn, ...state.view }, people: state.people.map((p) => ({ at: p.at, facing: p.facing, posture: p.posture })) });
   } catch (e) { /* storage unavailable: lasts for this session only */ }
 }
 
@@ -6023,6 +6063,7 @@ const RENDER_TOGGLES = [
   { id: 'pictures', label: 'Pictures', title: 'Pictures embedded in the model, such as those placed with the Picture command in Rhino, shown on their surfaces. Off: only the plain surfaces.' },
   { id: 'ao', label: 'Ambient occlusion', hint: 'O', title: 'Ambient occlusion: soft shading in corners and recesses' },
   { id: 'xray', label: 'X-ray', hint: 'X' },
+  { id: 'showStrays', label: 'Stray geometry', title: 'Objects far from the rest of the model, left out when it opened as they are almost certainly modelling errors. Only listed when the model has some.' },
 ];
 let modeList = null;
 
@@ -6030,6 +6071,7 @@ function bindModeMenu() {
   modeList = new ChoiceList({ label: 'Render settings', onPick: (id) => {
     if (id.startsWith('view-')) { const item = id.slice(5); setWeatherView(item, !state.view[item]); }
     else if (id === 'specials') toggleSpecials();
+    else if (id === 'showStrays') toggleStrays();
     else if (RENDER_TOGGLES.some((t) => t.id === id)) toggle(id);
     else setMode(+id);
   } });
@@ -6045,6 +6087,7 @@ function syncModeMenu() {
   const [, name, title] = MODES.find(([id]) => id === state.mode);
   modeList?.setActive(String(state.mode));
   for (const { id } of RENDER_TOGGLES) modeList?.setChecked(id, !!state[id]);
+  if (modeList) modeList.item('showStrays').hidden = !model?.strays?.size;
   $('modeName').textContent = name;
   $('btnMode').title = `${title} (M changes it)`;
 }

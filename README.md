@@ -46,7 +46,7 @@ The file can be copied anywhere (a project folder, a network drive, an email) an
 | Messages about this model · dismiss one or all | Bell, top left | |
 | Cameras | Toolbar: camera button | `1` Top · `2` Elevation · `3` Perspective · `4` Walk |
 | Render mode: Shaded (layer/object colours), Clay, Rendered (materials) | Toolbar: render mode button | `M` cycles |
-| Edges · Curves · Magic · Animations · Pictures · Ambient occlusion · X-ray | Toolbar: render mode button | `E` · `C` · none · none · none · `O` · `X` |
+| Edges · Curves · Magic · Animations · Pictures · Ambient occlusion · X-ray · Stray geometry (only when found) | Toolbar: render mode button | `E` · `C` · none · none · none · `O` · `X` · none |
 | Layers · Blocks · Date widget · Time widget | Toolbar | `L` · `K` · `S` · none |
 | Weather widget · everything under Weather in the render mode menu on or off | Toolbar: Tools → Weather · its sun and cloud icon | |
 | Results files · CFD streamlines | File icon, top left · Toolbar: Results | |
@@ -344,6 +344,15 @@ hidden objects and layer visibility) back to how it is in the file. The cameras 
 **Pictures** (on by default): images embedded in the file, such as those placed with the Picture
 command in Rhino, are shown on their surfaces, as they are and unlit. Turn **Pictures** off in the
 render mode menu to show only the plain surfaces. They are not shown in X-ray mode.
+
+**Stray geometry**: a model more than 100 km across is almost always a site with a few objects left
+far from it by mistake (a line 100 km up, a point at 0,0 in a model in site coordinates). When one
+opens, the objects reaching more than 50 km from the middle of the model (the median of all the
+objects' centres, in all its files together) are hidden, and a message says how many. They are left
+out of zoom to fit, shadows and the rest too. **Stray geometry** in the render mode menu, listed only
+when there are some, shows them again. Such a model's coordinates are also measured from that middle,
+not from the middle of its bounding box, so that geometry on the site stays precise (`src/extract.js`,
+`findStrays`).
 
 **Ambient occlusion** (`AO`, on by default) adds soft shading where surfaces meet: wall
 bases, courtyards, under canopies. It is screen-space (SSAO), so its radius scales with the
@@ -962,6 +971,7 @@ of your own, and the last three also need `vendor/`. Behaviour in the browser is
 | `node tools/test-sun.js` | Checks the sun path diagram |
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
 | `node tools/test-person.js` | Checks the person figures: facing outwards, size, standing on the ground |
+| `node tools/test-strays.js` | Checks which objects are taken for stray geometry |
 | `node tools/test-wind.js` | Checks the wind grid round a model, the inlet profile, the solid cells and the results map |
 | `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, the surroundings on level ground, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |

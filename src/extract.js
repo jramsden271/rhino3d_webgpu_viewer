@@ -1,6 +1,7 @@
 // Converts a parsed rhino3dm File3dm into flat, GPU-ready batches grouped by layer + colour.
 //
-// Precision: everything is expressed relative to `origin` (the model bounding-box centre).
+// Precision: everything is expressed relative to `origin` (the model bounding-box centre, or the
+// median of the objects' centres when the box is too big to be one site: see extractScene).
 // Top-level geometry is translated inside rhino3dm (double precision) before being read out
 // as float32; block-definition geometry is read in its local coordinates and transformed in
 // JS doubles. This keeps site-coordinate models (e.g. 6-digit eastings) free of float jitter.
@@ -17,6 +18,11 @@ const DEFAULT_MATERIAL = { name: '', rgb: [0.85, 0.84, 0.81], alpha: 1 }; // war
 const NO_REFS = { cLayer: -1, cMatLayer: -1, mLayer: -1 };
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+export const METRES_PER_UNIT = { Millimeters: 0.001, Centimeters: 0.01, Meters: 1, Kilometers: 1000, Inches: 0.0254, Feet: 0.3048, Yards: 0.9144, Miles: 1609.344 };
+// Stray geometry: an object reaching further than this from the middle of the model (the median of the
+// objects' centres) is taken for a modelling error, such as a line left far off or a point at 0,0 in a
+// model in site coordinates. Only looked for in a model more than twice this across. See findStrays.
+export const STRAY_RADIUS_M = 50_000;
 export const enumName = (e) => (e && e.constructor ? e.constructor.name.replace(/^[A-Za-z]+_/, '') : String(e));
 const rgbOf = (c) => [c.r / 255, c.g / 255, c.b / 255];
 
@@ -318,7 +324,7 @@ export function mergeScenes(parts, names, keys = null) {
   // Rhino's ids (layers, objects, block definitions) are only unique within one file, so each gets its file's
   // key in front. The original id stays as `guid` on objects and layers.
   const fileKeys = parts.map((_, k) => (keys ? String(keys[k]) : multi ? String(k) : null));
-  const out = { origin: parts[0].origin, units: parts[0].units, layers: [], materials: [], magicLayers: {}, defs: new Map(),
+  const out = { origin: parts[0].origin, boxOrigin: parts[0].boxOrigin, units: parts[0].units, layers: [], materials: [], magicLayers: {}, defs: new Map(),
     items: [], lights: [], views: parts[0].views || [], locations: parts.map((p, k) => ({ name: names[k], location: p.location })),
     location: parts.find((p) => p.location)?.location ?? null, fileKeys,
     stats: { objects: 0, triangles: 0, curves: 0, points: 0, instances: 0, unsupported: {}, noRenderMesh: {}, lights: {} } };
@@ -355,6 +361,43 @@ export function mergeScenes(parts, names, keys = null) {
   });
   out.objects = out.items;
   return out;
+}
+
+// The middle of a file's top-level objects, in its own units: the median of their boxes' centres along
+// each axis. Null if none has a box.
+async function medianCentre(objects, onProgress) {
+  const xs = [], ys = [], zs = [], total = objects.count;
+  for (let i = 0; i < total; i++) {
+    if (i % 5000 === 0) { onProgress?.(0, `Finding the middle of the model ${i.toLocaleString()} / ${total.toLocaleString()}`); await tick(); }
+    const o = objects.get(i), a = o.attributes();
+    if (a.isInstanceDefinitionObject || a.mode.value === 3 || a.mode.value === 1 || !a.visible) continue;
+    if (a.activeSpace && a.activeSpace.value === 2) continue;
+    const b = o.geometry().getBoundingBox();
+    if (!b || !b.isValid) continue;
+    const c = b.center;
+    xs.push(c[0]); ys.push(c[1]); zs.push(c[2]);
+  }
+  return xs.length ? [median(xs), median(ys), median(zs)] : null;
+}
+const median = (v) => { const s = Float64Array.from(v).sort(); return s[s.length >> 1]; };
+
+// Stray geometry: in a scene more than 2 * radius across (scene units; see STRAY_RADIUS_M), the objects
+// that reach further than radius from the median of all the objects' centres, in all its files
+// together. Uses the objects' boxes from the last buildBatches. Returns their object indices.
+export function findStrays(scene, radius) {
+  const ok = scene.items.filter((it) => it.min && it.min[0] <= it.max[0]);
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (const it of ok) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], it.min[k]); mx[k] = Math.max(mx[k], it.max[k]); }
+  const strays = new Set();
+  if (!(Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) > 2 * radius)) return strays;
+  const c = [0, 1, 2].map((k) => median(ok.map((it) => (it.min[k] + it.max[k]) / 2)));
+  scene.items.forEach((it, i) => {
+    if (!(it.min && it.min[0] <= it.max[0])) return; // nothing to show: never in the way
+    // The box's corner furthest from the middle.
+    const far = Math.hypot(...[0, 1, 2].map((k) => Math.max(Math.abs(it.min[k] - c[k]), Math.abs(it.max[k] - c[k]))));
+    if (far > radius) strays.add(i);
+  });
+  return strays;
 }
 
 export async function extractScene(rhino, doc, onProgress, originOverride = null, scale = 1) {
@@ -418,7 +461,14 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
   const bb = objects.getBoundingBox();
   // The file's geometry is in its own units. k scales it into the scene's units (1 for the first file;
   // see readModel), and origin is in the scene's units, so the source origin is origin / k.
-  const origin = originOverride || (bb && bb.isValid ? bb.center : [0, 0, 0]);
+  // The box's centre, unless the box is too big to be one site (stray geometry, see findStrays): a few
+  // objects far off would put its centre far from the model, where float32 coordinates are coarse
+  // (0.125 m steps at 1,000 km). Then it is the median of the objects' centres, which strays can't move.
+  // boxOrigin: the box's centre, the origin before there was this rule, for views saved then.
+  const boxOrigin = bb && bb.isValid ? bb.center : [0, 0, 0];
+  const fileMpu = METRES_PER_UNIT[enumName(doc.settings().modelUnitSystem)] || 1;
+  const tooBig = bb && bb.isValid && Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]) * fileMpu > 2 * STRAY_RADIUS_M;
+  const origin = originOverride || (tooBig && (await medianCentre(objects, onProgress))) || boxOrigin;
   const k = scale;
   const srcOrigin = origin.map((v) => v / k);
   const negOrigin = [-srcOrigin[0], -srcOrigin[1], -srcOrigin[2]];
@@ -547,7 +597,7 @@ export async function extractScene(rhino, doc, onProgress, originOverride = null
     }
     items.push(it);
   }
-  return { origin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
+  return { origin, boxOrigin: originOverride ? null : boxOrigin, units: enumName(doc.settings().modelUnitSystem), layers, materials, magicLayers, defs, items,
     stats, location: readLocation(doc), views: readNamedViews(doc, origin), objects: items, lights };
 }
 
@@ -826,6 +876,7 @@ export function buildBatches(scene) {
   };
 
   items.forEach((it, objId) => {
+    if (scene.strays?.has(objId) && !scene.showStrays) return; // left out, keeping its box (see findStrays)
     rec = it;
     it.magicXf = null;
     it.min = [Infinity, Infinity, Infinity]; it.max = [-Infinity, -Infinity, -Infinity]; it.triangles = 0;
