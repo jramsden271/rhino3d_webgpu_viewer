@@ -6,9 +6,10 @@
 // Each entry:
 //   id, name          id is what is remembered with the model, so it must not change
 //   fit               how an instance is sized from its source block. 'height': uniformly, to the
-//                     height of the source's box
+//                     height of the source's box; a flat source (a tree drawn in plan, see FLAT_M)
+//                     uniformly to its width instead, its foliage as wide as the source
 //   ground            the source's box reaches down to the ground below its centre, if it stops short
-//                     of it (trees need ground to grow from; see magicPlacement)
+//                     of it (trees need ground to grow from; see magicPlacement). Not for a flat source
 //   randomRotation    each instance also gets its own fixed turn about the vertical
 //   parts             meshes in metres, with the anchor at (0, 0, 0), on a key of MAGIC_LAYERS
 //
@@ -22,6 +23,9 @@ const MAGIC_LAYERS = {
   trunks: { name: 'Trunks', rgb: [97 / 255, 85 / 255, 46 / 255] }, // must match no magic material: "tree" would
 };
 export const MAGIC_PARENT_LAYER = 'Magic blocks';
+// A source block less tall than this (metres) is flat: a tree drawn in plan, round its trunk. It is
+// sized by its width and stands at the middle of its bottom, with no ground looked for.
+export const FLAT_M = 0.1;
 
 export const MAGIC_BLOCKS = [
   { id: 'deciduous', name: 'Deciduous tree', fit: 'height', ground: true, randomRotation: true, parts: [
@@ -69,13 +73,19 @@ export function magicMeshes(block, unit) {
     let top = 0;
     for (const p of block.parts) for (let i = 2; i < p.pos.length; i += 3) top = Math.max(top, p.pos[i]);
     block.height = top * unit;
+    // Its width: the foliage's, twice its furthest reach from the trunk (the vertical through the anchor).
+    let reach = 0;
+    for (const p of block.parts) if (p.layer === 'foliage') for (let i = 0; i < p.pos.length; i += 3) reach = Math.max(reach, Math.hypot(p.pos[i], p.pos[i + 1]));
+    block.width = 2 * reach * unit;
   }
   return block.meshes;
 }
 
 // Where the ground is looked for under an instance of a block whose box is [x0, y0, z0, x1, y1, z1]
 // in its own coordinates, with transform xf: from a tenth of the way up the box at its centre in
-// plan, as a block's base often sits a little way into the ground. Also the box's height range.
+// plan, as a block's base often sits a little way into the ground. Also the box's height range, and its
+// width: the average of its two sides, as scaled by the instance (however it is turned: a square
+// symbol turned 45° is no wider).
 export function magicSource(box, xf) {
   const [x0, y0, z0, x1, y1, z1] = box, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
   let lo = Infinity, hi = -Infinity;
@@ -83,18 +93,26 @@ export function magicSource(box, xf) {
     const w = xf[8] * x + xf[9] * y + xf[10] * z + xf[11];
     lo = Math.min(lo, w); hi = Math.max(hi, w);
   }
-  return { x: xf[0] * cx + xf[1] * cy + xf[2] * cz + xf[3], y: xf[4] * cx + xf[5] * cy + xf[6] * cz + xf[7], lo, hi, top: lo + (hi - lo) * 0.1 };
+  const sx = Math.hypot(xf[0], xf[4], xf[8]), sy = Math.hypot(xf[1], xf[5], xf[9]);
+  return { x: xf[0] * cx + xf[1] * cy + xf[2] * cz + xf[3], y: xf[4] * cx + xf[5] * cy + xf[6] * cz + xf[7], lo, hi, top: lo + (hi - lo) * 0.1,
+    width: ((x1 - x0) * sx + (y1 - y0) * sy) / 2 };
 }
+
+// Whether a source is flat (see FLAT_M), for an entry whose meshes are in the model's units (magicMeshes).
+export const magicFlat = (block, source) => source.hi - source.lo < FLAT_M * block.unit;
 
 // The transform that places a library entry for an instance: anchored at the source's centre in plan,
 // upright, and turned as the instance is. The height comes from the source's box, extended down to
 // the ground if the entry asks for that and the box stops short of it. ground: the height found, or
-// null (none below, or not looked for yet), when the box is used as it is. A source with no height
-// (a 2D symbol) gets the entry at its real size. seed: -1..1, stable for the instance.
+// null (none below, or not looked for yet), when the box is used as it is. A flat source (magicFlat)
+// is sized by its width instead, standing at its bottom whatever the ground; one with no width either
+// gets the entry at its real size. seed: -1..1, stable for the instance.
 export function magicPlacement(block, source, xf, ground, seed) {
-  const base = block.ground && ground != null ? Math.min(source.lo, ground) : source.lo;
+  const flat = magicFlat(block, source);
+  const base = !flat && block.ground && ground != null ? Math.min(source.lo, ground) : source.lo;
   const height = source.hi - base;
-  const s = height > block.height * 1e-3 ? height / block.height : 1;
+  const s = flat ? (source.width > 0 && block.width > 0 ? source.width / block.width : 1)
+    : height > block.height * 1e-3 ? height / block.height : 1;
   const yaw = Math.atan2(xf[4], xf[0]) + (block.randomRotation ? seed * Math.PI : 0), c = Math.cos(yaw) * s, n = Math.sin(yaw) * s;
   return new Float64Array([c, -n, 0, source.x, n, c, 0, source.y, 0, 0, s, base, 0, 0, 0, 1]);
 }

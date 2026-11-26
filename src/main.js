@@ -778,10 +778,12 @@ function layerEffective(i) {
   return true;
 }
 
-function applyLayerVisibility() {
+// recheck: look again for the ground under magic blocks (recheckMagicGround); not after a build that
+// only moved them onto the ground found, which would look again, and so on.
+function applyLayerVisibility(recheck = true) {
   for (const b of renderer.batches) b.visible = b.layers.every((l) => l < 0 || l >= layerOn.length || layerEffective(l));
   for (const p of renderer.pictures || []) p.visible = p.layer < 0 || p.layer >= layerOn.length || layerEffective(p.layer);
-  recheckMagicGround();
+  if (recheck) recheckMagicGround();
   schedulePeopleColours(); // what is shown shades people, and they see it
   saveViewState();
   redraw();
@@ -981,7 +983,7 @@ function showBlocksHelp() {
   Dialog.open({ title: 'Blocks', html: true, width: 420, body: `<p>Every block with an instance in the model, including those only used inside other blocks. The number is its copies in the model: a sub-block used 3 times in a block placed 10 times has 30.</p>
     <p>The eye hides every copy of a block. A copy shows only if it and every block around it are shown. A row is dimmed when none of its copies can show because of the blocks around it. <b>Unhide all</b> doesn't turn blocks back on.</p>
     <p>The tag is the block's sub-element setting: where the objects inside it get their colour and material. Click it, or double-click the row, to change it. It applies to every instance of the block, and doesn't reach its sub-blocks unless you apply it to them.</p>
-    <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
+    <p>The same window can choose a <b>magic block</b>: geometry from the viewer's library that replaces every instance of the block, sized to its height. A tree stands on the visible ground below the block's centre, or at the bottom of the block if there is none. A flat block (under 0.1 m tall, such as a tree drawn in plan) is sized to its width instead, and stands at the middle of its bottom. The tag then reads "magic". Saving a copy of the .3dm places the magic block in place of those instances, and leaves the block definitions as they were.</p>
     ${ROW_SELECT_HELP('blocks')}
     <p>Clicking a tag on a selected row sets all the selected blocks.</p>
     <p><b>Right-click</b> to select a block's instances in the view, add its sub-blocks to the selected rows, or change its setting.</p>
@@ -1417,7 +1419,7 @@ function pushMagicBatches() {
   renderer.setModel(buildBatches(model));
   bumpModel('objects');
   syncPictures();
-  applyLayerVisibility();
+  applyLayerVisibility(false);
   applyLayerMaterials(false);
   pushObjectFlags();
 }
@@ -1431,13 +1433,16 @@ async function settleMagicGround() {
   pushMagicBatches();
 }
 
-// Finds the ground under [key, point] entries and records it. Returns whether any of it moved.
+// Finds the ground under [key, point] entries and records it. Returns whether any of it moved. Where the
+// GPU rejected the work, what was found before stays.
 async function lookForMagicGround(entries) {
+  if (!entries.length) return false;
   const u = 1 / model.metresPerUnit, bottom = Math.min(...renderer.batches.map((b) => b.min[2])) - u;
-  const found = await renderer.groundBelow(entries.map(([, p]) => p), bottom, 0.05 * u, (b) => model.layers[b.layer]?.magic);
+  const found = await renderer.groundBelowMany(entries.map(([, p]) => p), bottom, 0.05 * u, (b) => model.layers[b.layer]?.magic);
   let moved = false;
   entries.forEach(([key], i) => {
     const was = model.magicGround.get(key), z = found[i];
+    if (z === undefined) return;
     if (was === undefined || (was == null) !== (z == null) || Math.abs(was - z) > 0.01 * u) moved = true;
     model.magicGround.set(key, z);
   });
@@ -6975,3 +6980,4 @@ function fatal(title, text) {
 }
 
 boot();
+

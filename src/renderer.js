@@ -2447,7 +2447,8 @@ export class Renderer {
   // The ground below many points at once, by the same rules as probe(): the highest visible surface
   // below each point ({ x, y, top }), down to `bottom`, leaving out vegetation and any batch `skip`
   // says to. Each point looks straight down through one texel of half size `half`. Resolves to an
-  // array of heights, null where there is nothing (or if the GPU rejected the work).
+  // array of heights, null where there is nothing, undefined where the GPU rejected the work.
+  // One render pass per point: for many points, groundBelowMany.
   groundBelow(points, bottom, half, skip) {
     const run = async () => {
       const out = new Array(points.length).fill(null);
@@ -2491,7 +2492,7 @@ export class Renderer {
         const failed = await dev.popErrorScope();
         await this.groundRead.mapAsync(GPUMapMode.READ);
         const v = new Float32Array(this.groundRead.getMappedRange());
-        if (!failed) for (let i = 0; i < n; i++) if (v[i * 4 + 3] > 0) out[from + i] = v[i * 4 + 2];
+        for (let i = 0; i < n; i++) out[from + i] = failed ? undefined : v[i * 4 + 3] > 0 ? v[i * 4 + 2] : null;
         this.groundRead.unmap();
       }
       return out;
@@ -2499,6 +2500,92 @@ export class Renderer {
     this.groundQueue = (this.groundQueue || Promise.resolve()).then(run, run);
     return this.groundQueue;
   }
+
+  // The ground below many points, by groundBelow's rules, a tile of the model at a time: each square of
+  // PROBE.groundTile texels (of half size `half`) that holds a point is drawn once, looking straight
+  // down from the highest of its points' tops, and each point reads its own texel. Thousands of points
+  // take a few passes, not one each. Something seen above a point's own top (an overhang below
+  // another point's top) is not its ground: such points are looked for again one at a time.
+  async groundBelowMany(points, bottom, half, skip) {
+    const S = PROBE.groundTile, texel = 2 * half, T = S * texel, tiles = new Map();
+    points.forEach((p, i) => {
+      const key = `${Math.floor(p.x / T)},${Math.floor(p.y / T)}`;
+      if (!tiles.has(key)) tiles.set(key, []);
+      tiles.get(key).push(i);
+    });
+    const out = new Array(points.length).fill(null);
+    const run = async () => {
+      if (!this.batches.length) return;
+      const dev = this.device, U = GPUBufferUsage, READS = 4096; // texels read back at once, 256 bytes apart
+      if (!this.tileTex) {
+        const RA = GPUTextureUsage.RENDER_ATTACHMENT;
+        this.tileTex = dev.createTexture({ size: [S, S], format: 'rgba32float', usage: RA | GPUTextureUsage.COPY_SRC });
+        this.tileDepth = dev.createTexture({ size: [S, S], format: DEPTH, usage: RA });
+        this.tileRead = dev.createBuffer({ size: READS * 256, usage: U.MAP_READ | U.COPY_DST });
+        this.tileBuf = dev.createBuffer({ size: FRAME_SIZE, usage: U.UNIFORM | U.COPY_DST });
+      }
+      const solid = this.batches.filter((b) => b.visible && b.kind === 'mesh' && b.special !== MAT_VEGETATION && !skip(b));
+      const group = this.probeBindGroup(this.tileBuf), color = this.tileTex.createView(), depth = this.tileDepth.createView();
+      let pending = [], scope = false; // the points whose texels are in tileRead, in order; whether an error scope is open
+      const watch = () => { if (!scope) { dev.pushErrorScope('validation'); scope = true; } };
+      const flush = async () => {
+        const failed = scope ? await dev.popErrorScope() : null;
+        scope = false;
+        if (!pending.length) return;
+        await this.tileRead.mapAsync(GPUMapMode.READ, 0, pending.length * 256);
+        const v = new Float32Array(this.tileRead.getMappedRange(0, pending.length * 256));
+        pending.forEach((i, j) => { out[i] = failed ? undefined : v[j * 64 + 3] > 0 ? v[j * 64 + 2] : null; });
+        this.tileRead.unmap();
+        pending = [];
+      };
+      for (const [key, idx] of tiles) {
+        const [ti, tj] = key.split(',').map(Number), x0 = ti * T, y1 = (tj + 1) * T;
+        let top = -Infinity;
+        for (const i of idx) top = Math.max(top, points[i].top);
+        watch();
+        const vp = M4.mul(M4.ortho(T / 2, 1, 0, Math.max(top - bottom, half)), M4.lookAt([x0 + T / 2, y1 - T / 2, top], [x0 + T / 2, y1 - T / 2, top - 1], [0, 1, 0]));
+        dev.queue.writeBuffer(this.tileBuf, 0, Float32Array.from(vp));
+        let enc = dev.createCommandEncoder();
+        const pass = enc.beginRenderPass({
+          colorAttachments: [{ view: color, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+          depthStencilAttachment: { view: depth, depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
+        });
+        pass.setPipeline(this.pipes.pick);
+        pass.setBindGroup(0, group);
+        this.cull(vp, true);
+        for (const b of solid) {
+          if (!this.seen(b)) continue;
+          pass.setVertexBuffer(0, b.gpu.pos); pass.setVertexBuffer(1, b.gpu.oid);
+          pass.setIndexBuffer(b.gpu.idx, 'uint32');
+          this.drawCells(pass, b);
+        }
+        pass.end();
+        // Each point's texel: columns run along x from the tile's west edge, rows down from its north edge.
+        for (const i of idx) {
+          const p = points[i], c = Math.min(S - 1, Math.max(0, Math.floor((p.x - x0) / texel))), r = Math.min(S - 1, Math.max(0, Math.floor((y1 - p.y) / texel)));
+          enc.copyTextureToBuffer({ texture: this.tileTex, origin: [c, r] }, { buffer: this.tileRead, offset: pending.length * 256 }, [1, 1]);
+          pending.push(i);
+          if (pending.length === READS) {
+            dev.queue.submit([enc.finish()]);
+            await flush();
+            watch();
+            enc = dev.createCommandEncoder();
+          }
+        }
+        dev.queue.submit([enc.finish()]);
+      }
+      await flush();
+    };
+    this.groundQueue = (this.groundQueue || Promise.resolve()).then(run, run);
+    await this.groundQueue;
+    // Seen above their own tops: looked for again, one at a time.
+    const again = points.flatMap((p, i) => (out[i] != null && out[i] > p.top ? [i] : []));
+    if (again.length) {
+      const found = await this.groundBelow(again.map((i) => points[i]), bottom, half, skip);
+      again.forEach((i, j) => { out[i] = found[j]; });
+    }
+    return out;
+  }
 }
 
-export const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64 };
+export const PROBE = { ground: 128, wallW: 32, wallH: 16, groundBatch: 64, groundTile: 1024 };

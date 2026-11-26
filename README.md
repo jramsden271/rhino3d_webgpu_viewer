@@ -196,7 +196,13 @@ replaces every instance of the block, for example a nicer tree for a simple tree
 has a placeholder deciduous tree and a palm tree. Each instance is sized uniformly to the height of its
 block's box. A tree also needs ground to grow from, so its box reaches down to the highest visible
 surface below the box's centre (vegetation doesn't count), and stops at its own bottom if there is
-none. Hiding or showing what is below moves it to match. Trees also get their own fixed turn. The
+none: a canopy drawn floating, without a trunk, gets one down to the ground. Hiding or showing what
+is below moves it to match. The ground is found a tile of the model at a time (about 100 m square),
+each drawn once from above, so thousands of trees take a few passes (`groundBelowMany` in
+`src/renderer.js`). A **flat** block, under 0.1 m tall, is a tree drawn in plan round its trunk: it
+is sized uniformly so the foliage is as wide as the block (the average of its two sides, as scaled
+by the instance), and stands at the middle of its bottom, with no ground looked for. Trees also get
+their own fixed turn. The
 leaves and trunks are on the **Magic blocks** layers, which appear in the Layers panel while in use.
 The tag then reads "magic", and the sub-element setting doesn't apply.
 
@@ -972,6 +978,7 @@ of your own, and the last three also need `vendor/`. Behaviour in the browser is
 | `node tools/test-exposure.js` | Checks the analysis meshes and sun exposure periods |
 | `node tools/test-person.js` | Checks the person figures: facing outwards, size, standing on the ground |
 | `node tools/test-strays.js` | Checks which objects are taken for stray geometry |
+| `node tools/make-tree-test.js` | Writes `samples/tree-test.3dm`: floating canopies on sloping ground (one at an overhang) and flat tree symbols, for checking magic trees |
 | `node tools/test-wind.js` | Checks the wind grid round a model, the inlet profile, the solid cells and the results map |
 | `node tools/test-skyview.js` | Checks the sky view factors against skies with known answers, the surroundings on level ground, and the fisheye layout |
 | `node tools/make-magic-block.js tree`, or `from <file.3dm> <block> <id> <name>` | Prints an entry for the magic block library in `src/magicblocks.js` |

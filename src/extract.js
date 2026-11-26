@@ -8,7 +8,7 @@
 
 import { V3 } from './math.js';
 import { MAT_VEGETATION, matchLayer } from './materials.js';
-import { addMagicLayers, magicMeshes, magicPlacement, magicSource } from './magicblocks.js';
+import { addMagicLayers, magicFlat, magicMeshes, magicPlacement, magicSource } from './magicblocks.js';
 
 const MAX_BATCH_VERTS = 4_000_000;
 const CHUNKS_ACROSS = 32; // grid cells across the model (a square site; a long thin one has fewer)
@@ -835,7 +835,7 @@ export function buildBatches(scene) {
     if (!box) return;
     const meshes = magicMeshes(block, unit), source = magicSource(box, xf);
     let ground = null;
-    if (block.ground) {
+    if (block.ground && !magicFlat(block, source)) { // a flat source stands where it is (magicPlacement)
       const key = `${source.x.toFixed(3)},${source.y.toFixed(3)},${source.top.toFixed(3)}`;
       scene.magicPoints.set(key, source);
       if (magicGround.has(key)) ground = magicGround.get(key);
