@@ -27,25 +27,46 @@
 // A project's weather files are kept as copies, so they come back without another permission prompt. So are
 // its results files, each under its own key, as they can be large and the list is read often.
 
+// The browser's storage and file access can stop answering, with no prompt and no error: Edge did, with
+// its saved data for the site in a bad state, until that was cleared. Calls that could leave the viewer
+// waiting for ever are given a time to answer, then fail with a TimeoutError saying so (message).
+export function answerWithin(promise, ms, message) {
+  let timer;
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(message), { name: 'TimeoutError' })), ms); });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+const STORE_MS = 20000; // for a read or write of the browser's storage
+const SAME_MS = 10000;  // for comparing a saved file with one opened
+
+const sameEntry = (a, b) => answerWithin(a.isSameEntry(b), SAME_MS, 'The browser did not answer when comparing files.').catch(() => false);
+
 export const Recent = {
   supported: typeof window.showOpenFilePicker === 'function' && 'indexedDB' in window,
 
+  // Called with the error when the browser's storage fails or stops answering (set by main.js, to say so).
+  onTrouble: null,
+  trouble(e) { this.onTrouble?.(e); },
+
   db() {
-    return (this.dbp ||= new Promise((resolve, reject) => {
+    const open = (this.dbp ||= answerWithin(new Promise((resolve, reject) => {
       const r = indexedDB.open('3dm-viewer', 1);
       r.onupgradeneeded = () => r.result.createObjectStore('kv');
       r.onsuccess = () => resolve(r.result);
       r.onerror = () => reject(r.error);
-    }));
+      r.onblocked = () => reject(new Error("The browser's storage for this site is held by another tab."));
+    }), STORE_MS, "The browser's storage for this site did not answer."));
+    open.catch(() => { if (this.dbp === open) this.dbp = null; }); // tried again next time
+    return open;
   },
 
   async store(mode, fn) {
     const db = await this.db();
-    return new Promise((resolve, reject) => {
+    return answerWithin(new Promise((resolve, reject) => {
       const tx = db.transaction('kv', mode), req = fn(tx.objectStore('kv'));
       tx.oncomplete = () => resolve(req?.result);
       tx.onerror = () => reject(tx.error);
-    });
+      tx.onabort = () => reject(tx.error || new Error('The browser cancelled a change to its storage for this site.'));
+    }), STORE_MS, "The browser's storage for this site did not answer.");
   },
 
   newId() { return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`; },
@@ -56,11 +77,11 @@ export const Recent = {
       const list = (await this.store('readonly', (s) => s.get('recent'))) || [];
       if (this.toProjects(list)) await this.save(list);
       return list;
-    } catch (e) { return []; }
+    } catch (e) { this.trouble(e); return []; }
   },
 
   async save(list) {
-    try { await this.store('readwrite', (s) => s.put(list, 'recent')); } catch (e) { /* storage unavailable */ }
+    try { await this.store('readwrite', (s) => s.put(list, 'recent')); } catch (e) { this.trouble(e); }
   },
 
   // MIGRATION (remove after 2026-12-09): records saved before projects held one 3dm file at their top level
@@ -93,7 +114,7 @@ export const Recent = {
     for (let pi = 0; pi < list.length; pi++) {
       for (let fi = 0; fi < list[pi].files.length; fi++) {
         const h = list[pi].files[fi].handle;
-        if (h && await h.isSameEntry(handle).catch(() => false)) return [pi, fi];
+        if (h && await sameEntry(h, handle)) return [pi, fi];
       }
     }
     return null;
@@ -110,7 +131,7 @@ export const Recent = {
       for (const { handle, file } of entries) {
         if (!handle) continue;
         let rec = null;
-        for (const f of project.files) if (f.handle && await f.handle.isSameEntry(handle).catch(() => false)) rec = f;
+        for (const f of project.files) if (f.handle && await sameEntry(f.handle, handle)) rec = f;
         if (!rec) project.files.push((rec = { id: this.newId(), handle }));
         Object.assign(rec, { name: file.name, size: file.size, modified: file.lastModified, off: false });
       }
@@ -126,7 +147,7 @@ export const Recent = {
     return this.serial(async () => {
       const list = await this.list(), project = list.find((p) => p.id === projectId);
       if (!project) return null;
-      for (const f of project.files) if (f.handle && await f.handle.isSameEntry(handle).catch(() => false)) return f.id;
+      for (const f of project.files) if (f.handle && await sameEntry(f.handle, handle)) return f.id;
       const rec = { id: this.newId(), name: file.name, size: file.size, modified: file.lastModified, handle };
       project.files.push(rec);
       await this.save(list);

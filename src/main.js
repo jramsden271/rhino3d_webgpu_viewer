@@ -6,7 +6,7 @@ import { MAGIC_BLOCKS, MAGIC_BY_ID, MAGIC_PARENT_LAYER, magicMeshes } from './ma
 import { METRES_PER_UNIT, STRAY_RADIUS_M, SUB_SOURCES, blockTable, buildBatches, enumName, extractModel, extractScene, findStrays, mergeScenes, mulRM, pictureSurfaces } from './extract.js';
 import { Dialog } from './dialog.js';
 import { CITIES } from './cities.js';
-import { Recent } from './recent.js';
+import { Recent, answerWithin } from './recent.js';
 import { Zip } from './zip.js';
 import { dateFromDayOfYear, dayOfYear, daysInYear, fmtHour, moonLight, moonPosition, siderealTime, solarPosition, sunLight, sunPathDiagram, sunVector } from './sun.js';
 import { EPW, EPW_YEAR } from './epw.js';
@@ -6638,11 +6638,15 @@ async function openDemo() {
 
 // A project file's contents as a Blob: its own file, or its entry in the zip the project was opened from (read
 // in place: nothing is unpacked). Null when the browser was not given permission to read it.
+// Each step is given a time to answer (answerWithin): checking permission should be at once; asking for
+// it waits for the person to answer the browser's prompt; reading may wait for a cloud drive (OneDrive) to
+// fetch the file.
 async function projectFileBlob(f) {
   const h = f.zip || f.handle;
   if (!h) return null;
-  if ((await h.queryPermission({ mode: 'read' })) !== 'granted' && (await h.requestPermission({ mode: 'read' })) !== 'granted') return null;
-  const file = await h.getFile();
+  const ask = (p, s) => answerWithin(p, s * 1000, `The browser did not answer when asked for ${f.zip ? f.zip.name || f.name : f.name}.`);
+  if ((await ask(h.queryPermission({ mode: 'read' }), 15)) !== 'granted' && (await ask(h.requestPermission({ mode: 'read' }), 120)) !== 'granted') return null;
+  const file = await ask(h.getFile(), 300);
   if (!f.zip) return file;
   const e = (await Zip.entries(file)).find((x) => x.name === f.entry);
   if (!e) throw Object.assign(new Error(`${f.entry} is not in ${file.name}`), { name: 'NotFoundError' });
@@ -6690,7 +6694,7 @@ async function showProject(projectId, given = null) {
     if (!files.length && project.files.length) notice(`Nothing in ${project.name} is in the view. Tick a file in Attach files to show it.`, true);
   } catch (e) {
     hideBusy();
-    notice(`Could not open ${project.name}: ${e.message}`, true);
+    notice(`Could not open ${project.name}: ${e.message}${e.name === 'TimeoutError' ? ` ${STUCK_BROWSER}` : ''}`, true);
   }
   renderRecent();
   attachDialog?.refresh();
@@ -6868,6 +6872,18 @@ function hideBusy() { $('busy').hidden = true; }
 // action: { label, run } adds a link that runs it and dismisses the notice.
 const NOTICE_MS = 10000;
 // error: true for an error, 'info' for news that needs no action.
+// What to do when the browser stops answering for this site (see answerWithin in recent.js).
+const STUCK_BROWSER = "If this keeps happening, the browser's saved data for this site may be in a bad state: clearing it (the icon left of the address bar, then Cookies and site data) usually puts it right. That empties this browser's list of recent projects; your files are not touched. Projects saved as zips can be opened again from them.";
+
+// The browser's storage failing (recent.js): said once, as every list and save after it fails too.
+let storageTroubleSaid = false;
+Recent.onTrouble = (e) => {
+  console.error(e);
+  if (storageTroubleSaid) return;
+  storageTroubleSaid = true;
+  notice(`Recent projects and their settings can't be read or saved: ${e.message || e} ${STUCK_BROWSER}`, true);
+};
+
 function notice(text, error = false, timeout = 0, action = null) {
   const n = document.createElement('div');
   const kind = (error === 'info' ? ' info' : error ? ' error' : '') + (timeout ? ' brief' : '');

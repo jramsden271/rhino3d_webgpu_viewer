@@ -61,6 +61,12 @@ preferences are kept in the browser's local storage and projects in its IndexedD
 makes no requests of its own (no analytics or tracking), except to download a model named in a
 `?model=` link.
 
+If the browser's saved data for the site gets into a bad state, opening, reading or attaching files can
+stop with no prompt and no error (Edge did this once). The viewer gives the browser a time to answer
+each such step (`answerWithin` in `src/recent.js`) and then says what happened. Clearing the site's
+data in the browser puts it right, though it empties that browser's list of recent projects (the files
+themselves are not touched).
+
 The **compass** at the bottom left points to north on the screen, from the model's north angle
 (click the file name to see or change it), and turns as the view does. Drag it like a dial to rotate the view, keeping its tilt; the drag
 carries on outside the compass, where it is easier to control. Click its **N**, or the
